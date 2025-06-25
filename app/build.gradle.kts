@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.genzopia.Instagame"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.genzopia.Instagame"
@@ -14,12 +14,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
-        viewBinding =true
+        viewBinding = true
     }
 
     buildTypes {
@@ -31,50 +30,57 @@ android {
             )
         }
     }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
+
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
+            languageVersion.set(JavaLanguageVersion.of(17))
         }
     }
-
-
 }
 
 dependencies {
+    implementation(platform(libs.firebase.bom)) // Firebase BOM centralized
 
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
-    implementation(libs.firebase.auth.ktx)
 
+    implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage.ktx)
-    implementation(libs.navigation.ui)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.ext.junit)
-    androidTestImplementation(libs.espresso.core)
     implementation(libs.firebase.analytics)
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.circleimageview)
-    implementation (libs.play.services.auth)
-    implementation (platform(libs.firebase.bom.v3210))
+
     implementation(libs.lifecycle.livedata.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
     implementation(libs.navigation.fragment)
-    implementation (libs.firebase.auth)
+    implementation(libs.navigation.ui)
+
+    implementation(libs.circleimageview)
+    implementation(libs.subsampling.scale.image.view)
+    implementation(libs.play.services.auth)
+
+    val mozillaComponentsVersion = "138.0.4"
+    val geckoVersionStable = "112.2.0"
+
+    implementation("org.mozilla.components:browser-state:$mozillaComponentsVersion")
+    implementation("org.mozilla.components:concept-engine:$mozillaComponentsVersion")
+    implementation("org.mozilla.components:browser-engine-gecko:$geckoVersionStable")  // stable Gecko engine
+
     implementation(libs.glide)
-    implementation (libs.subsampling.scale.image.view)
-    annotationProcessor ("com.github.bumptech.glide:compiler:4.15.0")// Annotation processor for Glide
+    annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
 
-
-
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.ext.junit)
+    androidTestImplementation(libs.espresso.core)
 }
