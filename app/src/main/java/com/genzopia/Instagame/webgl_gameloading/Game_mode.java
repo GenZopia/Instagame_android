@@ -1,4 +1,4 @@
-package com.genzopia.Instagame;
+package com.genzopia.Instagame.webgl_gameloading;
 
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
@@ -42,7 +42,7 @@ public class Game_mode extends AppCompatActivity {
         geckoSession.open(runtime);
 
         binding.geckoView.setSession(geckoSession);
-        geckoSession.loadUri("https://tetr.io");
+        geckoSession.loadUri("www.youtube.com");
     }
 
     @Override

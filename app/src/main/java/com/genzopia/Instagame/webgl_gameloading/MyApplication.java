@@ -1,4 +1,4 @@
-package com.genzopia.Instagame;
+package com.genzopia.Instagame.webgl_gameloading;
 
 import android.app.Application;
 import android.content.Context;

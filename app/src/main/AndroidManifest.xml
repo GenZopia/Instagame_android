@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:name=".MyApplication"
+        android:name=".webgl_gameloading.MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -17,7 +17,7 @@
             android:name=".MainActivity2"
             android:exported="false" />
         <activity
-            android:name=".Game_mode"
+            android:name=".webgl_gameloading.Game_mode"
             android:exported="false" />
         <activity
             android:name=".LoginActivities.ForgotPassword"
