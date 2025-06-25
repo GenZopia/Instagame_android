@@ -1,47 +1,52 @@
 package com.genzopia.Instagame.ui.home;
 
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 
+import com.genzopia.Instagame.Game_mode;
+import com.genzopia.Instagame.MyApplication;
 import com.genzopia.Instagame.databinding.FragmentHomeBinding;
-
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
-import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.GeckoSessionSettings;
 
 public class HomeFragment extends Fragment {
-
     private FragmentHomeBinding binding;
     private GeckoSession geckoSession;
-    private GeckoRuntime geckoRuntime;
 
+
+    @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
-
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
-        GeckoView geckoView = binding.geckoView;  // Make sure geckoView is in fragment_home.xml
-        geckoSession = new GeckoSession();
-        geckoRuntime = GeckoRuntime.create(requireContext());
+        binding.button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent=new Intent(getContext(), Game_mode.class);
+                startActivity(intent);
 
-        geckoSession.open(geckoRuntime);
-        geckoView.setSession(geckoSession);
+            }
+        });
 
-        // Load any website
-        geckoSession.loadUri("https://www.google.com");
+
 
         return root;
     }
 
+
+
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        binding = null;
     }
 }
