@@ -1,4 +1,4 @@
-package com.genzopia.Instagame;
+package com.genzopia.Instagame.ui.profile;
 
 
 
@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 import com.bumptech.glide.Glide;
+import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.databinding.ActivityFullScreenImageBinding;
 
 

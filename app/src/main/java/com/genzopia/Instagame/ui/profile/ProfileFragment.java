@@ -19,7 +19,6 @@ import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
 
-import com.genzopia.Instagame.FullScreenImageActivity;
 import com.genzopia.Instagame.R;
 
 import com.genzopia.Instagame.LoginActivities.LoginActivity;

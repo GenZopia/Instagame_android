@@ -19,7 +19,7 @@
             android:name=".MainActivity"
             android:exported="false" />
         <activity
-            android:name=".FullScreenImageActivity"
+            android:name=".ui.profile.FullScreenImageActivity"
             android:exported="false" />
         <activity
             android:name=".LoginActivities.RegisterActivity"
