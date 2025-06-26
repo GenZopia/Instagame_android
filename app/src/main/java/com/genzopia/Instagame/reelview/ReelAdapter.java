@@ -1,7 +1,6 @@
 package com.genzopia.Instagame.reelview;
 
 import android.content.Context;
-import android.media.browse.MediaBrowser;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -15,6 +14,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
 import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 
@@ -24,12 +25,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
     private Context context;
     private List<ReelItem> reelItems;
-    private GestureDetector gestureDetector;
+    private RecyclerView recyclerView;
 
-    public ReelAdapter(Context context, List<ReelItem> reelItems) {
+    public ReelAdapter(Context context, List<ReelItem> reelItems, RecyclerView recyclerView) {
         this.context = context;
         this.reelItems = reelItems;
-        this.gestureDetector = new GestureDetector(context, new DoubleTapListener());
+        this.recyclerView = recyclerView;
     }
 
     @NonNull
@@ -50,16 +51,55 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         return reelItems.size();
     }
 
+    @Override
+    public void onViewRecycled(@NonNull ReelViewHolder holder) {
+        super.onViewRecycled(holder);
+        holder.releasePlayer();
+    }
+
+    public void pausePlayers() {
+        for (int i = 0; i < getItemCount(); i++) {
+            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder != null) {
+                holder.pausePlayer();
+            }
+        }
+    }
+
+    public void resumePlayers() {
+        for (int i = 0; i < getItemCount(); i++) {
+            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder != null) {
+                holder.resumePlayer();
+            }
+        }
+    }
+
+    public void releaseAllPlayers() {
+        for (int i = 0; i < getItemCount(); i++) {
+            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder != null) {
+                holder.releasePlayer();
+            }
+        }
+    }
+
     class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
         TextView tvTitle, tvLikes;
         SimpleExoPlayer player;
+        GestureDetector gestureDetector;
 
         public ReelViewHolder(@NonNull View itemView) {
             super(itemView);
             playerView = itemView.findViewById(R.id.player_view);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
+
+            // Hide all controls
+            playerView.setUseController(false);
+
+            gestureDetector = new GestureDetector(context, new DoubleTapListener());
 
             itemView.setOnTouchListener((v, event) -> {
                 gestureDetector.onTouchEvent(event);
@@ -75,6 +115,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Initialize player
             releasePlayer();
             player = new SimpleExoPlayer.Builder(context).build();
+
+            // Set loop mode
+            player.setRepeatMode(Player.REPEAT_MODE_ALL);
+
+            // Hide all controls
+            playerView.setUseController(false);
+            playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
+
             playerView.setPlayer(player);
 
             // Prepare media
@@ -83,11 +131,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             player.prepare();
             player.setPlayWhenReady(true);
 
-            // Set double click listener
-            itemView.setOnClickListener(v -> {
-                // Store secret for double tap access
-                v.setTag(R.id.secret_tag, reelItem.getSecret());
-            });
+            // Store secret for double tap access
+            itemView.setTag(R.id.secret_tag, reelItem.getSecret());
+        }
+        void pausePlayer() {
+            if (player != null) {
+                player.setPlayWhenReady(false);
+            }
+        }
+
+        void resumePlayer() {
+            if (player != null) {
+                player.setPlayWhenReady(true);
+            }
         }
 
         void releasePlayer() {
@@ -96,17 +152,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 player = null;
             }
         }
-    }
 
-    private class DoubleTapListener extends GestureDetector.SimpleOnGestureListener {
-        @Override
-        public boolean onDoubleTap(MotionEvent e) {
-            View view = ((RecyclerView) gestureDetector.getContext()).findChildViewUnder(e.getX(), e.getY());
-            if (view != null) {
-                String secret = (String) view.getTag(R.id.secret_tag);
+        class DoubleTapListener extends GestureDetector.SimpleOnGestureListener {
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                String secret = (String) itemView.getTag(R.id.secret_tag);
                 Toast.makeText(context, secret, Toast.LENGTH_SHORT).show();
+                return true;
             }
-            return true;
         }
     }
 }

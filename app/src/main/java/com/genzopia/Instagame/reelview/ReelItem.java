@@ -2,13 +2,14 @@ package com.genzopia.Instagame.reelview;
 
 import java.util.ArrayList;
 
+// ReelItem class (if you want to keep it here)
 public class ReelItem {
-    private String videoUrl;
-    private String title;
-    private String likeCount;
-    private String description;
-    private String developerId;
-    private String secret;
+    private final String videoUrl;
+    private final String title;
+    private final String likeCount;
+    private final String description;
+    private final String developerId;
+    private final String secret;
 
     public ReelItem(ArrayList<String> data) {
         this.videoUrl = data.get(0);
@@ -19,7 +20,6 @@ public class ReelItem {
         this.secret = data.get(5);
     }
 
-    // Getters
     public String getVideoUrl() { return videoUrl; }
     public String getTitle() { return title; }
     public String getLikeCount() { return likeCount; }
