@@ -6,16 +6,12 @@ import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 
 import com.genzopia.Instagame.R;
-import com.genzopia.Instagame.channel_view.Fragment.DetailsFragment;
-import com.genzopia.Instagame.channel_view.Fragment.GamesFragment;
-import com.genzopia.Instagame.channel_view.Fragment.VideosFragment;
+import com.genzopia.Instagame.channel_view.Fragment.DetailFragment.DetailsFragment;
+import com.genzopia.Instagame.channel_view.Fragment.GamesFragment.GamesFragment;
+import com.genzopia.Instagame.channel_view.Fragment.VideosFragment.VideosFragment;
 
 public class ChannelActivity extends AppCompatActivity {
 

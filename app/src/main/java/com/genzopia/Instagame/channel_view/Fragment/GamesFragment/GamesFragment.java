@@ -1,4 +1,4 @@
-package com.genzopia.Instagame.channel_view.Fragment;
+package com.genzopia.Instagame.channel_view.Fragment.GamesFragment;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;
