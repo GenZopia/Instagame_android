@@ -2,19 +2,21 @@ package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.os.SystemClock;
+import android.content.Intent;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
+import com.genzopia.Instagame.MainActivity;
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 import de.hdodenhof.circleimageview.CircleImageView;
 
 public class VideoViewHolder extends RecyclerView.ViewHolder {
@@ -45,7 +47,22 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
         playerView.setUseController(false); // Disable default controls
 
-        // Single touch listener combining both visual feedback and global listener
+        // Ensure taps on thumbnail or video trigger click on videoContainer
+        playerView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                videoContainer.performClick();
+            }
+            return true;
+        });
+
+        thumbnail.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                videoContainer.performClick();
+            }
+            return true;
+        });
+
+        // Touch interaction for visual and playback feedback
         videoContainer.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
@@ -53,7 +70,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     initialX = event.getX();
                     initialY = event.getY();
                     v.setAlpha(0.7f);
-                    playVideo(); // Start playback immediately on touch
+                    playVideo(); // Start playback on touch
                     if (globalTouchListener != null) {
                         globalTouchListener.onTouch(v, event);
                     }
@@ -62,7 +79,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     v.setAlpha(1.0f);
-                    pauseVideo(); // Pause playback on release
+                    pauseVideo(); // Pause on release
                     if (globalTouchListener != null) {
                         globalTouchListener.onTouch(v, event);
                     }
@@ -72,15 +89,15 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         });
     }
 
-        public void setGlobalTouchListener(View.OnTouchListener listener) {
+    public void setGlobalTouchListener(View.OnTouchListener listener) {
         this.globalTouchListener = listener;
     }
 
     public void bind(VideoItem videoItem, Context context) {
         this.currentItem = videoItem;
-        videoContainer.setTag(videoItem.id); // Store video ID in container tag
+        videoContainer.setTag(videoItem.id);
 
-        // Reset to default state
+        // Reset state
         thumbnail.setVisibility(View.VISIBLE);
         playerView.setVisibility(View.INVISIBLE);
 
@@ -96,18 +113,32 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                 .placeholder(R.drawable.btn_endcall_normal)
                 .into(channelIcon);
 
+        // Set text
         title.setText(videoItem.title);
         channelName.setText(videoItem.channelName);
         viewsAndTime.setText(videoItem.views + " • " + videoItem.timeAgo);
 
-        // Setup player
+        // 👇 Handle click on title → Navigate to Dashboard
+        title.setOnClickListener(v -> {
+            TempStorage.videoId = videoItem.id;
+            BottomNavigationView navView = ((MainActivity) context).findViewById(R.id.nav_view);
+            navView.setSelectedItemId(R.id.navigation_dashboard);
+        });
+
+        // 👇 Handle click on channel icon → Open ChannelActivity
+        channelIcon.setOnClickListener(v -> {
+            Intent intent = new Intent(context, ChannelActivity.class);
+            intent.putExtra("channel_name", videoItem.channelName);
+            context.startActivity(intent);
+        });
+
+        // Setup ExoPlayer
         ExoPlayer player = playerManager.getPlayer(context, videoItem.id, videoItem.videoUrl);
         playerView.setPlayer(player);
     }
 
     public void playVideo() {
         if (currentItem == null) return;
-
         playerManager.playVideo(currentItem.id);
         thumbnail.setVisibility(View.INVISIBLE);
         playerView.setVisibility(View.VISIBLE);
@@ -115,7 +146,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void pauseVideo() {
         if (currentItem == null) return;
-
         playerManager.pauseVideo(currentItem.id);
         thumbnail.setVisibility(View.VISIBLE);
         playerView.setVisibility(View.INVISIBLE);
@@ -123,7 +153,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void releasePlayer() {
         if (currentItem == null) return;
-
         playerManager.releasePlayer(currentItem.id);
         playerView.setPlayer(null);
         currentItem = null;

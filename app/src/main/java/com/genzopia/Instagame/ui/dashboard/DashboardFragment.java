@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
@@ -16,6 +17,7 @@ import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.databinding.FragmentDashboardBinding;
 import com.genzopia.Instagame.reelview.ReelAdapter;
 import com.genzopia.Instagame.reelview.ReelItem;
+import com.genzopia.Instagame.vertical_recylerview_custom.TempStorage;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,11 +37,16 @@ public class DashboardFragment extends Fragment {
 
         reelView = root.findViewById(R.id.reel_view);
 
+
         LinearLayoutManager layoutManager = new LinearLayoutManager(
                 getContext(),
                 LinearLayoutManager.VERTICAL,
                 false
         );
+        if (TempStorage.videoId != null) {
+            Toast.makeText(requireContext(), TempStorage.videoId, Toast.LENGTH_SHORT).show();
+            TempStorage.videoId = null; // Clear after use
+        }
         reelView.setLayoutManager(layoutManager);
 
         SnapHelper snapHelper = new PagerSnapHelper();
