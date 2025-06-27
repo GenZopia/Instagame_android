@@ -2,8 +2,10 @@ package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -26,6 +28,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private final PlayerManager playerManager = PlayerManager.getInstance();
     private View.OnTouchListener globalTouchListener;
     private VideoItem currentItem;
+    private long touchDownTime;
+    private static final int TOUCH_SLOP = 8; // pixels
+    private float initialX, initialY;
 
     @SuppressLint("ClickableViewAccessibility")
     public VideoViewHolder(@NonNull View itemView) {
@@ -44,22 +49,30 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         videoContainer.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
+                    touchDownTime = System.currentTimeMillis();
+                    initialX = event.getX();
+                    initialY = event.getY();
                     v.setAlpha(0.7f);
-                    break;
+                    playVideo(); // Start playback immediately on touch
+                    if (globalTouchListener != null) {
+                        globalTouchListener.onTouch(v, event);
+                    }
+                    return true;
+
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     v.setAlpha(1.0f);
-                    break;
-            }
-
-            if (globalTouchListener != null) {
-                return globalTouchListener.onTouch(v, event);
+                    pauseVideo(); // Pause playback on release
+                    if (globalTouchListener != null) {
+                        globalTouchListener.onTouch(v, event);
+                    }
+                    return true;
             }
             return false;
         });
     }
 
-    public void setGlobalTouchListener(View.OnTouchListener listener) {
+        public void setGlobalTouchListener(View.OnTouchListener listener) {
         this.globalTouchListener = listener;
     }
 

@@ -9,6 +9,7 @@ public class VideoItem {
     public String thumbnailUrl;
     public String channelIconUrl;
     public String videoUrl;  // Add video URL
+    public boolean isPlaying;
 
     public VideoItem(String id, String title, String channelName,
                      String views, String timeAgo, String thumbnailUrl,
