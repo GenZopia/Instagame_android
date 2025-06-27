@@ -33,10 +33,8 @@ public class DashboardFragment extends Fragment {
         binding = FragmentDashboardBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
-        // Initialize RecyclerView
         reelView = root.findViewById(R.id.reel_view);
 
-        // Set layout manager with smooth scrolling disabled for better snap effect
         LinearLayoutManager layoutManager = new LinearLayoutManager(
                 getContext(),
                 LinearLayoutManager.VERTICAL,
@@ -44,14 +42,11 @@ public class DashboardFragment extends Fragment {
         );
         reelView.setLayoutManager(layoutManager);
 
-        // Add snap helper for Instagram-like snapping
         SnapHelper snapHelper = new PagerSnapHelper();
         snapHelper.attachToRecyclerView(reelView);
 
-        // Disable nested scrolling for smoother snapping
         reelView.setNestedScrollingEnabled(false);
 
-        // Create sample data - Replace with your actual data
         createSampleData();
 
         reelAdapter = new ReelAdapter(requireContext(), reelItems, reelView);
@@ -60,11 +55,10 @@ public class DashboardFragment extends Fragment {
         return root;
     }
 
-
     private void createSampleData() {
         ArrayList<ArrayList<String>> dataList = new ArrayList<>();
         dataList.add(new ArrayList<>(Arrays.asList(
-                " https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
                 "Beautiful Sunset",
                 "15K",
                 "Enjoying the sunset at the beach",
@@ -102,13 +96,16 @@ public class DashboardFragment extends Fragment {
     }
 
     @Override
-    public void onDestroyView() {
-        super.onDestroyView();
+    public void onStop() {
+        super.onStop();
         if (reelAdapter != null) {
             reelAdapter.releaseAllPlayers();
         }
-        binding = null;
     }
 
-
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        binding = null;
+    }
 }

@@ -14,7 +14,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
 import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
@@ -57,6 +56,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         holder.releasePlayer();
     }
 
+    @Override
+    public void onViewDetachedFromWindow(@NonNull ReelViewHolder holder) {
+        super.onViewDetachedFromWindow(holder);
+        holder.releasePlayer();
+    }
+
     public void pausePlayers() {
         for (int i = 0; i < getItemCount(); i++) {
             ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
@@ -96,9 +101,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
 
-            // Hide all controls
             playerView.setUseController(false);
-
             gestureDetector = new GestureDetector(context, new DoubleTapListener());
 
             itemView.setOnTouchListener((v, event) -> {
@@ -108,32 +111,25 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
 
         void bind(ReelItem reelItem) {
-            // Set text
             tvTitle.setText(reelItem.getTitle());
             tvLikes.setText(reelItem.getLikeCount() + " likes");
 
-            // Initialize player
             releasePlayer();
             player = new SimpleExoPlayer.Builder(context).build();
 
-            // Set loop mode
             player.setRepeatMode(Player.REPEAT_MODE_ALL);
-
-            // Hide all controls
             playerView.setUseController(false);
             playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
-
             playerView.setPlayer(player);
 
-            // Prepare media
             MediaItem mediaItem = MediaItem.fromUri(reelItem.getVideoUrl());
             player.setMediaItem(mediaItem);
             player.prepare();
             player.setPlayWhenReady(true);
 
-            // Store secret for double tap access
             itemView.setTag(R.id.secret_tag, reelItem.getSecret());
         }
+
         void pausePlayer() {
             if (player != null) {
                 player.setPlayWhenReady(false);
@@ -151,6 +147,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 player.release();
                 player = null;
             }
+            playerView.setPlayer(null); // ✅ Important
         }
 
         class DoubleTapListener extends GestureDetector.SimpleOnGestureListener {
