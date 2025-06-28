@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.databinding.FragmentHomeBinding;
-import com.genzopia.Instagame.profile_recyclerview.ImageItem;
+import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.ImageItem;
 import com.genzopia.Instagame.vertical_recylerview_custom.HomeAdapter;
 import com.genzopia.Instagame.vertical_recylerview_custom.VideoItem;
 

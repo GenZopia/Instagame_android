@@ -5,35 +5,23 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Looper;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.R;
-import com.genzopia.Instagame.profile_recyclerview.ImageAdapter;
-import com.genzopia.Instagame.profile_recyclerview.ImageItem;
+import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.ImageAdapter;
+import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.ImageItem;
 import com.genzopia.Instagame.webgl_gameloading.Game_mode;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.ui.PlayerView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.LogRecord;
 
 import android.os.Handler;
-
-import de.hdodenhof.circleimageview.CircleImageView;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 

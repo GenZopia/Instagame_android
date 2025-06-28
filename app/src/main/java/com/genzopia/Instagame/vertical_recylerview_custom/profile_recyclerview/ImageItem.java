@@ -1,4 +1,4 @@
-package com.genzopia.Instagame.profile_recyclerview;
+package com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview;
 
 public class ImageItem {
     private String id;

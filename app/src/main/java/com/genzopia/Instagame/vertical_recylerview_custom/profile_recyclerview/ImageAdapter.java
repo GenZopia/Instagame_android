@@ -1,4 +1,4 @@
-package com.genzopia.Instagame.profile_recyclerview;
+package com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview;
 
 import android.content.Context;
 import android.view.LayoutInflater;
@@ -7,7 +7,6 @@ import android.view.ViewGroup;
 import de.hdodenhof.circleimageview.CircleImageView;
 
 
-import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
