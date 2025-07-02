@@ -55,6 +55,14 @@ dependencies {
     implementation(libs.activity)
     implementation(libs.constraintlayout)
 
+    // --- CAMERA X DEPENDENCIES (add if not already present) ---
+    implementation ("androidx.camera:camera-core:1.4.2")
+    implementation ("androidx.camera:camera-camera2:1.4.2")
+    implementation ("androidx.camera:camera-lifecycle:1.4.2")
+    implementation ("androidx.camera:camera-video:1.2.2")
+    implementation ("androidx.camera:camera-view:1.4.2")
+    // ---------------------------------------------------------
+
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database)
     implementation(libs.firebase.firestore)
@@ -75,9 +83,9 @@ dependencies {
 
     implementation("org.mozilla.components:browser-state:$mozillaComponentsVersion")
     implementation("org.mozilla.components:concept-engine:$mozillaComponentsVersion")
-    implementation("org.mozilla.components:browser-engine-gecko:$geckoVersionStable")  // stable Gecko engine
-    implementation ("com.google.android.exoplayer:exoplayer:2.19.1")
-    implementation ("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("org.mozilla.components:browser-engine-gecko:$geckoVersionStable")
+    implementation("com.google.android.exoplayer:exoplayer:2.19.1")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 
     implementation(libs.glide)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
