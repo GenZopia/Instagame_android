@@ -24,6 +24,7 @@ public class VideosAdapter_gallery extends RecyclerView.Adapter<VideosAdapter_ga
     private final Context context;
     private final List<Uri> videos;
     private final OnVideoClickListener listener;
+    private Uri selectedUri;
 
     public VideosAdapter_gallery(Context context, List<Uri> videos, OnVideoClickListener listener) {
         this.context = context;
@@ -31,25 +32,34 @@ public class VideosAdapter_gallery extends RecyclerView.Adapter<VideosAdapter_ga
         this.listener = listener;
     }
 
+    public void setSelectedUri(Uri uri) {
+        this.selectedUri = uri;
+        notifyDataSetChanged();
+    }
+
     @NonNull
     @Override
     public VideoViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View v = LayoutInflater.from(context)
-                .inflate(R.layout.item_video_thumbnail, parent, false);
+        View v = LayoutInflater.from(context).inflate(R.layout.item_video_thumbnail, parent, false);
         return new VideoViewHolder(v);
     }
 
     @Override
     public void onBindViewHolder(@NonNull VideoViewHolder holder, int position) {
         Uri uri = videos.get(position);
-        // load thumbnail
+
         Glide.with(context)
                 .load(uri)
                 .centerCrop()
                 .into(holder.thumb);
 
+        boolean isSelected = uri.equals(selectedUri);
+        holder.overlay.setVisibility(isSelected ? View.VISIBLE : View.GONE);
+
         holder.itemView.setOnClickListener(v -> {
-            if (listener != null) listener.onVideoClick(uri);
+            if (listener != null) {
+                listener.onVideoClick(uri);
+            }
         });
     }
 
@@ -60,11 +70,13 @@ public class VideosAdapter_gallery extends RecyclerView.Adapter<VideosAdapter_ga
 
     static class VideoViewHolder extends RecyclerView.ViewHolder {
         ImageView thumb, playOverlay;
+        View overlay;
+
         VideoViewHolder(@NonNull View itemView) {
             super(itemView);
             thumb = itemView.findViewById(R.id.img_thumb);
             playOverlay = itemView.findViewById(R.id.img_play_overlay);
+            overlay = itemView.findViewById(R.id.img_selected_overlay); // <-- must be in XML
         }
     }
 }
-

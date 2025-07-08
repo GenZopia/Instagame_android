@@ -1,22 +1,27 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/video_grid_item_size"
-    android:layout_margin="2dp">
+    android:layout_height="wrap_content"
+    android:layout_margin="0.5dp">
 
     <ImageView
         android:id="@+id/img_thumb"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="150dp"
         android:scaleType="centerCrop" />
 
-    <!-- optional: a play overlay -->
     <ImageView
         android:id="@+id/img_play_overlay"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:layout_gravity="center"
-        android:src="@android:drawable/ic_media_play"
-         />
+        android:src="@drawable/mozac_ic_play_badge_fill_16"
+        android:visibility="gone"/>
+
+    <View
+        android:id="@+id/img_selected_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:background="#A3005CFF"
+        android:visibility="gone"/>
 </FrameLayout>
