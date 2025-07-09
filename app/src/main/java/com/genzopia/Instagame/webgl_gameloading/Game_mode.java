@@ -2,6 +2,7 @@ package com.genzopia.Instagame.webgl_gameloading;
 
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
+import android.util.Log;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,6 +16,10 @@ import org.mozilla.geckoview.GeckoSessionSettings;
 public class Game_mode extends AppCompatActivity {
     private ActivityGameModeBinding binding;
     private GeckoSession geckoSession;
+    
+    // Variables to store developer ID and game ID
+    private String developerId;
+    private String gameId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,6 +29,14 @@ public class Game_mode extends AppCompatActivity {
         // Inflate and set layout
         binding = ActivityGameModeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // Retrieve intent extras
+        developerId = getIntent().getStringExtra("developer_id");
+        gameId = getIntent().getStringExtra("game_id");
+        
+        // Log the received values for debugging
+        Log.d("Game_mode", "Developer ID: " + developerId);
+        Log.d("Game_mode", "Game ID: " + gameId);
 
         // Lock to landscape
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -56,5 +69,14 @@ public class Game_mode extends AppCompatActivity {
         }
 
         binding = null;
+    }
+    
+    // Getter methods for accessing the stored values
+    public String getDeveloperId() {
+        return developerId;
+    }
+    
+    public String getGameId() {
+        return gameId;
     }
 }

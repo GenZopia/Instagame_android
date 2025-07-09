@@ -70,7 +70,7 @@ public class DashboardFragment extends Fragment {
                 "15K",
                 "Enjoying the sunset at the beach",
                 "user_123",
-                "SECRET_1"
+                "GAME_1"
         )));
         dataList.add(new ArrayList<>(Arrays.asList(
                 "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/demoDev/Minecraft%20/videoplayback.mp4",
@@ -78,7 +78,7 @@ public class DashboardFragment extends Fragment {
                 "22K",
                 "Hiking adventure in the Alps",
                 "user_456",
-                "SECRET_2"
+                "GAME_2"
         )));
 
         for (ArrayList<String> data : dataList) {
@@ -98,7 +98,10 @@ public class DashboardFragment extends Fragment {
     public void onResume() {
         super.onResume();
         if (reelAdapter != null) {
-            reelAdapter.resumePlayers();
+            // Add a small delay to ensure the view is properly attached
+            reelView.post(() -> {
+                reelAdapter.resumePlayers();
+            });
         }
     }
 
@@ -106,13 +109,16 @@ public class DashboardFragment extends Fragment {
     public void onStop() {
         super.onStop();
         if (reelAdapter != null) {
-            reelAdapter.releaseAllPlayers();
+            reelAdapter.pausePlayers();
         }
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        if (reelAdapter != null) {
+            reelAdapter.releaseAllPlayers();
+        }
         binding = null;
     }
 }

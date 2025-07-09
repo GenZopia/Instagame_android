@@ -1,6 +1,7 @@
 package com.genzopia.Instagame.reelview;
 
 import android.content.Context;
+import android.content.Intent;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -13,18 +14,23 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.webgl_gameloading.Game_mode;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder> {
 
     private Context context;
     private List<ReelItem> reelItems;
     private RecyclerView recyclerView;
+    private Map<String, SimpleExoPlayer> playerMap = new HashMap<>();
+    private String currentlyPlayingVideoId = null;
 
     public ReelAdapter(Context context, List<ReelItem> reelItems, RecyclerView recyclerView) {
         this.context = context;
@@ -59,34 +65,54 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     @Override
     public void onViewDetachedFromWindow(@NonNull ReelViewHolder holder) {
         super.onViewDetachedFromWindow(holder);
-        holder.releasePlayer();
+        holder.pausePlayer();
+    }
+
+    @Override
+    public void onViewAttachedToWindow(@NonNull ReelViewHolder holder) {
+        super.onViewAttachedToWindow(holder);
+        holder.resumePlayer();
     }
 
     public void pausePlayers() {
-        for (int i = 0; i < getItemCount(); i++) {
-            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
-            if (holder != null) {
-                holder.pausePlayer();
+        for (SimpleExoPlayer player : playerMap.values()) {
+            if (player != null) {
+                player.setPlayWhenReady(false);
             }
         }
     }
 
     public void resumePlayers() {
-        for (int i = 0; i < getItemCount(); i++) {
-            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
-            if (holder != null) {
-                holder.resumePlayer();
+        for (SimpleExoPlayer player : playerMap.values()) {
+            if (player != null) {
+                player.setPlayWhenReady(true);
             }
         }
     }
 
     public void releaseAllPlayers() {
-        for (int i = 0; i < getItemCount(); i++) {
-            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
-            if (holder != null) {
-                holder.releasePlayer();
+        for (SimpleExoPlayer player : playerMap.values()) {
+            if (player != null) {
+                player.release();
             }
         }
+        playerMap.clear();
+        currentlyPlayingVideoId = null;
+    }
+
+    private SimpleExoPlayer getOrCreatePlayer(String videoId, String videoUrl) {
+        if (playerMap.containsKey(videoId)) {
+            return playerMap.get(videoId);
+        }
+
+        SimpleExoPlayer player = new SimpleExoPlayer.Builder(context).build();
+        player.setMediaItem(MediaItem.fromUri(videoUrl));
+        player.prepare();
+        player.setRepeatMode(Player.REPEAT_MODE_ALL);
+        player.setPlayWhenReady(true);
+
+        playerMap.put(videoId, player);
+        return player;
     }
 
     class ReelViewHolder extends RecyclerView.ViewHolder {
@@ -94,6 +120,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         TextView tvTitle, tvLikes;
         SimpleExoPlayer player;
         GestureDetector gestureDetector;
+        String currentVideoId;
 
         public ReelViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -114,20 +141,25 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             tvTitle.setText(reelItem.getTitle());
             tvLikes.setText(reelItem.getLikeCount() + " likes");
 
-            releasePlayer();
-            player = new SimpleExoPlayer.Builder(context).build();
+            currentVideoId = reelItem.getVideoId();
+            
+            // Release previous player if different video
+            if (player != null && player.getMediaItemCount() > 0) {
+                String currentMediaId = player.getMediaItemAt(0).mediaId;
+                if (!currentVideoId.equals(currentMediaId)) {
+                    releasePlayer();
+                }
+            }
 
-            player.setRepeatMode(Player.REPEAT_MODE_ALL);
+            // Get or create player
+            player = getOrCreatePlayer(currentVideoId, reelItem.getVideoId());
+            
             playerView.setUseController(false);
             playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
             playerView.setPlayer(player);
 
-            MediaItem mediaItem = MediaItem.fromUri(reelItem.getVideoUrl());
-            player.setMediaItem(mediaItem);
-            player.prepare();
-            player.setPlayWhenReady(true);
-
-            itemView.setTag(R.id.secret_tag, reelItem.getSecret());
+            itemView.setTag(R.id.gameid_tag, reelItem.getGameId());
+            itemView.setTag(R.id.developerid_tag, reelItem.getDeveloperId());
         }
 
         void pausePlayer() {
@@ -145,18 +177,34 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         void releasePlayer() {
             if (player != null) {
                 player.release();
+                if (currentVideoId != null) {
+                    playerMap.remove(currentVideoId);
+                }
                 player = null;
             }
-            playerView.setPlayer(null); // ✅ Important
+            playerView.setPlayer(null);
         }
 
         class DoubleTapListener extends GestureDetector.SimpleOnGestureListener {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                String secret = (String) itemView.getTag(R.id.secret_tag);
-                Toast.makeText(context, secret, Toast.LENGTH_SHORT).show();
+                String gameid = (String) itemView.getTag(R.id.gameid_tag);
+                String developerId = (String) itemView.getTag(R.id.developerid_tag);
+                
+                // Pause current player before launching activity
+                if (player != null) {
+                    player.setPlayWhenReady(false);
+                }
+                
+                // Launch Game_mode activity with intent extras
+                Intent intent = new Intent(context, Game_mode.class);
+                intent.putExtra("developer_id", developerId);
+                intent.putExtra("game_id", gameid);
+                context.startActivity(intent);
+                
                 return true;
             }
         }
     }
 }
+
