@@ -2,6 +2,7 @@ package com.genzopia.Instagame.reelview;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -20,22 +21,29 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder> {
 
     private Context context;
     private List<ReelItem> reelItems;
     private RecyclerView recyclerView;
-    private Map<String, SimpleExoPlayer> playerMap = new HashMap<>();
-    private String currentlyPlayingVideoId = null;
+    private SimpleExoPlayer sharedPlayer;
+    private ReelViewHolder currentPlayingViewHolder = null;
+    private int currentPlayingPosition = -1;
+    private boolean isPausedByHold = false;
 
     public ReelAdapter(Context context, List<ReelItem> reelItems, RecyclerView recyclerView) {
         this.context = context;
         this.reelItems = reelItems;
         this.recyclerView = recyclerView;
+        initializePlayer();
+    }
+
+    private void initializePlayer() {
+        sharedPlayer = new SimpleExoPlayer.Builder(context).build();
+        sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
+        sharedPlayer.setPlayWhenReady(false);
     }
 
     @NonNull
@@ -48,7 +56,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     @Override
     public void onBindViewHolder(@NonNull ReelViewHolder holder, int position) {
         ReelItem item = reelItems.get(position);
-        holder.bind(item);
+        holder.bind(item, position);
     }
 
     @Override
@@ -59,142 +67,231 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     @Override
     public void onViewRecycled(@NonNull ReelViewHolder holder) {
         super.onViewRecycled(holder);
-        holder.releasePlayer();
+        if (currentPlayingViewHolder == holder) {
+            pauseCurrentVideo();
+        }
     }
 
     @Override
     public void onViewDetachedFromWindow(@NonNull ReelViewHolder holder) {
         super.onViewDetachedFromWindow(holder);
-        holder.pausePlayer();
+        if (currentPlayingViewHolder == holder) {
+            pauseCurrentVideo();
+        }
     }
 
     @Override
     public void onViewAttachedToWindow(@NonNull ReelViewHolder holder) {
         super.onViewAttachedToWindow(holder);
-        holder.resumePlayer();
+        // Don't auto-play here, let the scroll listener handle it
+    }
+
+    private void playVideoAtPosition(int position) {
+        if (position < 0 || position >= reelItems.size()) return;
+        
+        // If already playing this position, do nothing
+        if (currentPlayingPosition == position) return;
+        
+        // Pause current video and detach player
+        pauseCurrentVideo();
+        
+        // Get the holder for this position
+        ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder == null) return;
+        
+        // Set up the player for this video
+        ReelItem item = reelItems.get(position);
+        sharedPlayer.setMediaItem(MediaItem.fromUri(item.getVideoId()));
+        sharedPlayer.prepare();
+        sharedPlayer.setPlayWhenReady(true);
+        
+        // Attach player to the holder's PlayerView
+        holder.playerView.setPlayer(sharedPlayer);
+        
+        // Update current playing state
+        currentPlayingViewHolder = holder;
+        currentPlayingPosition = position;
+        isPausedByHold = false;
+        
+        // Start progress updates
+        holder.startProgressUpdates();
+    }
+
+    private void pauseCurrentVideo() {
+        if (sharedPlayer != null) {
+            sharedPlayer.setPlayWhenReady(false);
+        }
+        if (currentPlayingViewHolder != null) {
+            currentPlayingViewHolder.stopProgressUpdates();
+            // Detach player from the current view
+            currentPlayingViewHolder.playerView.setPlayer(null);
+            currentPlayingViewHolder = null;
+        }
+        currentPlayingPosition = -1;
+        isPausedByHold = false;
     }
 
     public void pausePlayers() {
-        for (SimpleExoPlayer player : playerMap.values()) {
-            if (player != null) {
-                player.setPlayWhenReady(false);
+        pauseCurrentVideo();
+    }
+
+    public void resumePlayers() {
+        // Find the first visible item and play it
+        if (recyclerView.getLayoutManager() != null) {
+            int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
+            if (firstVisible >= 0 && firstVisible < getItemCount()) {
+                // Only play if it's different from current position
+                if (currentPlayingPosition != firstVisible) {
+                    playVideoAtPosition(firstVisible);
+                }
             }
         }
     }
 
-    public void resumePlayers() {
-        for (SimpleExoPlayer player : playerMap.values()) {
-            if (player != null) {
-                player.setPlayWhenReady(true);
+    public void ensureOnlyCurrentVideoPlays() {
+        // Pause all videos except the current one
+        if (recyclerView.getLayoutManager() != null) {
+            int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
+            if (firstVisible >= 0 && firstVisible < getItemCount()) {
+                if (currentPlayingPosition != firstVisible) {
+                    playVideoAtPosition(firstVisible);
+                }
             }
         }
     }
 
     public void releaseAllPlayers() {
-        for (SimpleExoPlayer player : playerMap.values()) {
-            if (player != null) {
-                player.release();
+        pauseCurrentVideo();
+        if (sharedPlayer != null) {
+            sharedPlayer.release();
+            sharedPlayer = null;
+        }
+    }
+
+    public void handleScrollStateChange(int newState) {
+        if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+            // When scrolling stops, find the first visible item and play it
+            if (recyclerView.getLayoutManager() != null) {
+                int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
+                if (firstVisible >= 0 && firstVisible < getItemCount()) {
+                    // Only play if it's different from current position
+                    if (currentPlayingPosition != firstVisible) {
+                        playVideoAtPosition(firstVisible);
+                    }
+                }
             }
+        } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+            // Pause video when scrolling starts
+            pauseCurrentVideo();
         }
-        playerMap.clear();
-        currentlyPlayingVideoId = null;
     }
 
-    private SimpleExoPlayer getOrCreatePlayer(String videoId, String videoUrl) {
-        if (playerMap.containsKey(videoId)) {
-            return playerMap.get(videoId);
-        }
-
-        SimpleExoPlayer player = new SimpleExoPlayer.Builder(context).build();
-        player.setMediaItem(MediaItem.fromUri(videoUrl));
-        player.prepare();
-        player.setRepeatMode(Player.REPEAT_MODE_ALL);
-        player.setPlayWhenReady(true);
-
-        playerMap.put(videoId, player);
-        return player;
-    }
-
-    class ReelViewHolder extends RecyclerView.ViewHolder {
+    public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
         TextView tvTitle, tvLikes;
-        SimpleExoPlayer player;
+        View progressLine;
         GestureDetector gestureDetector;
         String currentVideoId;
+        int position;
+        private android.os.Handler progressHandler;
+        private Runnable progressRunnable;
+        private boolean isHolding = false;
 
         public ReelViewHolder(@NonNull View itemView) {
             super(itemView);
             playerView = itemView.findViewById(R.id.player_view);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
+            progressLine = itemView.findViewById(R.id.progress_line);
 
             playerView.setUseController(false);
-            gestureDetector = new GestureDetector(context, new DoubleTapListener());
+            gestureDetector = new GestureDetector(context, new CustomGestureListener());
 
             itemView.setOnTouchListener((v, event) -> {
-                gestureDetector.onTouchEvent(event);
-                return true;
+                boolean handled = gestureDetector.onTouchEvent(event);
+                
+                // Handle touch up for hold/pause functionality
+                if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    onTouchUp();
+                }
+                
+                return handled;
             });
         }
 
-        void bind(ReelItem reelItem) {
+        void bind(ReelItem reelItem, int pos) {
+            position = pos;
             tvTitle.setText(reelItem.getTitle());
             tvLikes.setText(reelItem.getLikeCount() + " likes");
 
             currentVideoId = reelItem.getVideoId();
             
-            // Release previous player if different video
-            if (player != null && player.getMediaItemCount() > 0) {
-                String currentMediaId = player.getMediaItemAt(0).mediaId;
-                if (!currentVideoId.equals(currentMediaId)) {
-                    releasePlayer();
-                }
-            }
-
-            // Get or create player
-            player = getOrCreatePlayer(currentVideoId, reelItem.getVideoId());
+            // Clear any previous player attachment
+            playerView.setPlayer(null);
             
-            playerView.setUseController(false);
-            playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
-            playerView.setPlayer(player);
+            // Reset progress line and set pivot point
+            progressLine.setScaleX(0f);
+            progressLine.setPivotX(0f); // Set pivot to left side for left-to-right scaling
 
             itemView.setTag(R.id.gameid_tag, reelItem.getGameId());
             itemView.setTag(R.id.developerid_tag, reelItem.getDeveloperId());
         }
 
-        void pausePlayer() {
-            if (player != null) {
-                player.setPlayWhenReady(false);
-            }
-        }
-
-        void resumePlayer() {
-            if (player != null) {
-                player.setPlayWhenReady(true);
-            }
-        }
-
-        void releasePlayer() {
-            if (player != null) {
-                player.release();
-                if (currentVideoId != null) {
-                    playerMap.remove(currentVideoId);
+        void startProgressUpdates() {
+            stopProgressUpdates();
+            progressHandler = new android.os.Handler();
+            progressRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    if (sharedPlayer != null && sharedPlayer.getDuration() > 0) {
+                        float progress = (float) sharedPlayer.getCurrentPosition() / sharedPlayer.getDuration();
+                        progressLine.setScaleX(progress);
+                    }
+                    if (progressHandler != null) {
+                        progressHandler.postDelayed(this, 100); // Update every 100ms
+                    }
                 }
-                player = null;
-            }
-            playerView.setPlayer(null);
+            };
+            progressHandler.post(progressRunnable);
         }
 
-        class DoubleTapListener extends GestureDetector.SimpleOnGestureListener {
+        void stopProgressUpdates() {
+            if (progressHandler != null) {
+                progressHandler.removeCallbacksAndMessages(null);
+                progressHandler = null;
+            }
+            progressRunnable = null;
+        }
+
+        class CustomGestureListener extends GestureDetector.SimpleOnGestureListener {
+
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                // Toggle play/pause on single tap
+                if (currentPlayingPosition == position) {
+                    if (sharedPlayer != null) {
+                        if (sharedPlayer.isPlaying()) {
+                            sharedPlayer.setPlayWhenReady(false);
+                        } else {
+                            sharedPlayer.setPlayWhenReady(true);
+                        }
+                    }
+                }
+                return true;
+            }
+
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 String gameid = (String) itemView.getTag(R.id.gameid_tag);
                 String developerId = (String) itemView.getTag(R.id.developerid_tag);
                 
-                // Pause current player before launching activity
-                if (player != null) {
-                    player.setPlayWhenReady(false);
-                }
+                // Pause current video before launching activity
+                pauseCurrentVideo();
                 
                 // Launch Game_mode activity with intent extras
                 Intent intent = new Intent(context, Game_mode.class);
@@ -204,6 +301,43 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 
                 return true;
             }
+
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+                // Handle hold to pause
+                if (!isHolding && e1 != null) {
+                    long pressDuration = e2.getEventTime() - e1.getDownTime();
+                    if (pressDuration > 200) { // 200ms hold threshold
+                        isHolding = true;
+                        if (currentPlayingPosition == position && sharedPlayer != null && sharedPlayer.isPlaying()) {
+                            sharedPlayer.setPlayWhenReady(false);
+                            isPausedByHold = true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public void onLongPress(MotionEvent e) {
+                // Alternative long press detection
+                isHolding = true;
+                if (currentPlayingPosition == position && sharedPlayer != null && sharedPlayer.isPlaying()) {
+                    sharedPlayer.setPlayWhenReady(false);
+                    isPausedByHold = true;
+                }
+            }
+        }
+
+        // Method to handle touch up (release)
+        public void onTouchUp() {
+            if (isHolding && isPausedByHold && currentPlayingPosition == position) {
+                if (sharedPlayer != null) {
+                    sharedPlayer.setPlayWhenReady(true);
+                    isPausedByHold = false;
+                }
+            }
+            isHolding = false;
         }
     }
 }

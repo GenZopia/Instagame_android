@@ -59,6 +59,15 @@ public class DashboardFragment extends Fragment {
         reelAdapter = new ReelAdapter(requireContext(), reelItems, reelView);
         reelView.setAdapter(reelAdapter);
 
+        // Add scroll listener for smooth video transitions
+        reelView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                reelAdapter.handleScrollStateChange(newState);
+            }
+        });
+
         return root;
     }
 
@@ -73,7 +82,7 @@ public class DashboardFragment extends Fragment {
                 "GAME_1"
         )));
         dataList.add(new ArrayList<>(Arrays.asList(
-                "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/demoDev/Minecraft%20/videoplayback.mp4",
+                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
                 "Mountain Hike",
                 "22K",
                 "Hiking adventure in the Alps",
@@ -99,9 +108,9 @@ public class DashboardFragment extends Fragment {
         super.onResume();
         if (reelAdapter != null) {
             // Add a small delay to ensure the view is properly attached
-            reelView.post(() -> {
-                reelAdapter.resumePlayers();
-            });
+            reelView.postDelayed(() -> {
+                reelAdapter.ensureOnlyCurrentVideoPlays();
+            }, 100); // 100ms delay
         }
     }
 
