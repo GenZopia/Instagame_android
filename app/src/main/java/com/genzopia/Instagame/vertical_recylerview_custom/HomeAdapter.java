@@ -7,7 +7,6 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -154,12 +153,11 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
     static class ProfileViewHolder extends RecyclerView.ViewHolder {
         RecyclerView profileRecyclerView;
-        Button button;
 
         ProfileViewHolder(View itemView) {
             super(itemView);
             profileRecyclerView = itemView.findViewById(R.id.profileRecyclerView);
-            button = itemView.findViewById(R.id.button);
+
         }
 
         void bind(List<ImageItem> profileItems) {
@@ -169,9 +167,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             ImageAdapter adapter = new ImageAdapter(profileItems, itemView.getContext());
             profileRecyclerView.setAdapter(adapter);
 
-            button.setOnClickListener(v -> {
-                itemView.getContext().startActivity(new Intent(itemView.getContext(), Game_mode.class));
-            });
+
         }
     }
 
