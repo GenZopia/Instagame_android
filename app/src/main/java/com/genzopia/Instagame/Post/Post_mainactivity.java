@@ -27,6 +27,7 @@ public class Post_mainactivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
         setContentView(R.layout.activity_post_mainactivity);
         TabLayout tabLayout = findViewById(R.id.custom_bottom_tabs);
         ViewPager2 viewPager = findViewById(R.id.view_pager);

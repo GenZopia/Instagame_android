@@ -75,8 +75,18 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     @Override
     public void onViewDetachedFromWindow(@NonNull ReelViewHolder holder) {
         super.onViewDetachedFromWindow(holder);
+        // Only pause if this is the currently playing view and it's completely out of view
         if (currentPlayingViewHolder == holder) {
-            pauseCurrentVideo();
+            // Check if the view is completely out of view
+            if (recyclerView.getLayoutManager() != null) {
+                int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
+                int lastVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findLastVisibleItemPosition();
+                
+                if (holder.getAdapterPosition() < firstVisible || holder.getAdapterPosition() > lastVisible) {
+                    // View is completely out of view, pause the video
+                    pauseCurrentVideo();
+                }
+            }
         }
     }
 
@@ -181,8 +191,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
             }
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-            // Pause video when scrolling starts
-            pauseCurrentVideo();
+            // Don't pause video when scrolling starts, let it continue playing
+            // Only pause when the view is completely out of view
         }
     }
 
@@ -203,11 +213,53 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
             progressLine = itemView.findViewById(R.id.progress_line);
+            View progressContainer = itemView.findViewById(R.id.progress_container);
 
             playerView.setUseController(false);
             gestureDetector = new GestureDetector(context, new CustomGestureListener());
 
+            // Add touch listener for progress container (much larger touch area)
+            progressContainer.setOnTouchListener((v, event) -> {
+                if (currentPlayingPosition == position && sharedPlayer != null && sharedPlayer.getDuration() > 0) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                        case MotionEvent.ACTION_MOVE:
+                            float x = event.getX();
+                            float width = progressContainer.getWidth();
+                            float progress = x / width;
+                            
+                            // Clamp progress between 0 and 1
+                            progress = Math.max(0f, Math.min(1f, progress));
+                            
+                            // Update progress line
+                            progressLine.setScaleX(progress);
+                            
+                            // Seek video to the new position
+                            long newPosition = (long) (progress * sharedPlayer.getDuration());
+                            sharedPlayer.seekTo(newPosition);
+                            
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                            return true;
+                    }
+                }
+                return false;
+            });
+
             itemView.setOnTouchListener((v, event) -> {
+                // Let the progress container handle its own touches
+                if (progressContainer.getVisibility() == View.VISIBLE) {
+                    // Check if touch is on the progress container area
+                    float touchY = event.getY();
+                    float containerY = progressContainer.getY();
+                    float containerHeight = progressContainer.getHeight();
+                    
+                    if (touchY >= containerY && touchY <= containerY + containerHeight) {
+                        // Let the progress container handle this touch
+                        return false;
+                    }
+                }
+                
                 boolean handled = gestureDetector.onTouchEvent(event);
                 
                 // Handle touch up for hold/pause functionality

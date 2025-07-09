@@ -24,6 +24,7 @@ public class Game_mode extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
         EdgeToEdge.enable(this);
 
         // Inflate and set layout

@@ -3,11 +3,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:fillViewport="true">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        android:paddingBottom="80dp">
 
         <Button
             android:id="@+id/privacybtn"
@@ -201,13 +203,15 @@
 
             <TextView
                 android:id="@+id/userName"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="10dp"
+                android:fontFamily="@font/inter_bold"
+                android:text="User Name"
+                android:textColor="#000000"
                 android:textSize="20sp"
-                android:textStyle="bold"
-                android:textColor="@color/black"
-                android:text="User" />
+                tools:ignore="MissingConstraints" />
+
         </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>

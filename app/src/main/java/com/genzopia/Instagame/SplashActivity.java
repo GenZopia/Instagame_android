@@ -12,6 +12,7 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
         setContentView(R.layout.activity_splash);
 
         // Set the duration for the splash screen (e.g., 2 seconds)
@@ -25,4 +26,5 @@ public class SplashActivity extends AppCompatActivity {
             }
         }, 2000); // 2000 milliseconds = 2 seconds
     }
+
 }
