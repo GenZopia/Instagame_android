@@ -191,25 +191,23 @@ public class LoginActivity extends AppCompatActivity {
                             String profilePhotoUrl = user.getPhotoUrl() != null ? user.getPhotoUrl().toString() : "";
                             String dob = "";  // Example DOB, replace with your logic
                             String mobileNumber = user.getPhoneNumber(); // Example mobile number, replace with your logic
-                            boolean app_online_status = false; // Default value
-                            boolean peoplevideocall = false; // Default value
-                            boolean videocall_online_status = false; // Default value
 
-                            // Create the User object with all the required fields
+                            // Create the User object with the correct constructor
                             User firebaseUser = new User(
+                                    user.getUid(), // userId
                                     emailAddress,
                                     fullName,
-                                    profilePhotoUrl,
                                     dob,
-                                    mobileNumber,
-                                    app_online_status,
-                                    0 // Default value for bolocoin
+                                    mobileNumber != null ? mobileNumber : "-1"
                             );
+
+                            // Set additional properties
+                            firebaseUser.setProfile_photo_url(profilePhotoUrl);
 
                             // Store the user data in Firebase Realtime Database
                             database.getReference()
                                     .child("users")
-                                    .child(emailAddress.replace(".", ",")) // Ensure email format for Firebase
+                                    .child(user.getUid()) // Use UID instead of email as the key
                                     .setValue(firebaseUser)
                                     .addOnCompleteListener(task1 -> {
                                         if (task1.isSuccessful()) {

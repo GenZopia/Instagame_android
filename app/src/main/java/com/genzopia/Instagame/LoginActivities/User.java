@@ -1,83 +1,82 @@
 package com.genzopia.Instagame.LoginActivities;
 
 public class User {
-    private String emailAddress;  // Changed to emailAddress
-    private String fullName;
-    private String profilePhotoUrl;
-    private String dob;
-    private String mobileNumber;
-    private boolean app_online_status; // Changed to app_online_status
+    private String user_id;
+    private String date_of_birth;
+    private String email;
+    private String full_name;
+    private String mobile_no;
+    private String profile_photo_url;
+    private String followers;
 
-    private long coin; // Changed to coin
-
+    // Empty constructor required for Firebase
     public User() {
     }
 
-    public User(String emailAddress, String fullName, String profilePhotoUrl, String dob, String mobileNumber, boolean app_online_status, long coin) {
-        this.emailAddress = emailAddress; // Changed from email
-        this.fullName = fullName;
-        this.profilePhotoUrl = profilePhotoUrl;
-        this.dob = dob;
-        this.mobileNumber = mobileNumber;
-        this.app_online_status = app_online_status; // Changed from appOnlineStatus
-
-        this.coin = coin; // Changed from coin
+    public User(String user_id, String email, String full_name, String date_of_birth, String mobile_no) {
+        this.user_id = user_id;
+        this.date_of_birth = date_of_birth;
+        this.email = email;
+        this.full_name = full_name;
+        this.mobile_no = mobile_no;
+        this.profile_photo_url = ""; // Will be updated after uploading to Firebase Storage
+        this.followers = "0"; // Initially 0 followers
     }
 
-    // Getters and setters for all fields
-    public String getEmailAddress() { // Changed from getEmail()
-        return emailAddress;
+    // Getters and Setters
+    public String getuser_id() {
+        return user_id;
     }
 
-    public void setEmailAddress(String emailAddress) { // Changed from setEmail()
-        this.emailAddress = emailAddress;
+    public void setuser_id(String user_id) {
+        this.user_id = user_id;
     }
 
-    public String getFullName() {
-        return fullName;
+    public String getDate_of_birth() {
+        return date_of_birth;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
+    public void setDate_of_birth(String date_of_birth) {
+        this.date_of_birth = date_of_birth;
     }
 
-    public String getProfilePhotoUrl() {
-        return profilePhotoUrl;
+    public String getEmail() {
+        return email;
     }
 
-    public void setProfilePhotoUrl(String profilePhotoUrl) {
-        this.profilePhotoUrl = profilePhotoUrl;
+    public void setEmail(String email) {
+        this.email = email;
     }
 
-    public String getDob() {
-        return dob;
+    public String getFull_name() {
+        return full_name;
     }
 
-    public void setDob(String dob) {
-        this.dob = dob;
+    public void setFull_name(String full_name) {
+        this.full_name = full_name;
     }
 
-    public String getMobileNumber() {
-        return mobileNumber;
+    public String getMobile_no() {
+        return mobile_no;
     }
 
-    public void setMobileNumber(String mobileNumber) {
-        this.mobileNumber = mobileNumber;
+    public void setMobile_no(String mobile_no) {
+        this.mobile_no = mobile_no;
     }
 
-    public boolean isApp_online_status() { // Changed to isApp_online_status()
-        return app_online_status;
+    public String getProfile_photo_url() {
+        return profile_photo_url;
     }
 
-    public void setApp_online_status(boolean app_online_status) { // Changed to setApp_online_status()
-        this.app_online_status = app_online_status;
+    public void setProfile_photo_url(String profile_photo_url) {
+        this.profile_photo_url = profile_photo_url;
     }
 
-    public long getcoin() { // Changed from getcoin()
-        return coin;
+    public String getFollowers() {
+        return followers;
     }
 
-    public void setcoin(long coin) { // Changed from setcoin()
-        this.coin = coin;
+    public void setFollowers(String followers) {
+        this.followers = followers;
     }
 }

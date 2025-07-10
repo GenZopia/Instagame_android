@@ -1,140 +1,162 @@
 package com.genzopia.Instagame.LoginActivities
 
-import android.app.Activity
+import android.app.DatePickerDialog
 import android.content.Intent
-import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
-import android.view.animation.AnimationUtils
-import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import com.genzopia.Instagame.R
+import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.databinding.ActivityRegisterBinding
-
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageReference
-
+import java.util.*
 
 class RegisterActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityRegisterBinding
-    private lateinit var firebaseAuth: FirebaseAuth
-    private lateinit var storageRef: StorageReference
-    private lateinit var signin: TextView
+    private lateinit var auth: FirebaseAuth
+    private lateinit var database: FirebaseDatabase
+    private lateinit var storage: FirebaseStorage
     private var selectedImageUri: Uri? = null
-    private val IMAGE_PICK_CODE = 1
 
-
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == IMAGE_PICK_CODE && resultCode == Activity.RESULT_OK && data != null) {
-            // Get the selected image URI
-            selectedImageUri = data.data
-            // Set the selected image to the circular button
-            binding.profilePicture.setImageURI(selectedImageUri)
+    private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            selectedImageUri = it
+            binding.profilePicture.setImageURI(it)
         }
-    }
-
-    private fun isDarkMode(context: RegisterActivity): Boolean {
-        val nightModeFlags: Int =
-            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return nightModeFlags == Configuration.UI_MODE_NIGHT_YES
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         binding = ActivityRegisterBinding.inflate(layoutInflater)
-
         setContentView(binding.root)
 
-        firebaseAuth = FirebaseAuth.getInstance()
-        signin = binding.txtSignInInstead
+        auth = FirebaseAuth.getInstance()
+        database = FirebaseDatabase.getInstance()
+        storage = FirebaseStorage.getInstance()
 
-        signin.setOnClickListener {
-            val intent = Intent(this, LoginActivity::class.java)
-            startActivity(intent)
+        // Date picker for date of birth
+        binding.txtDOB.setOnClickListener {
+            val calendar = Calendar.getInstance()
+            DatePickerDialog(
+                this,
+                { _, year, month, day ->
+                    binding.txtDOB.setText("$day/${month + 1}/$year")
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)
+            ).show()
         }
 
-
-
-
-        storageRef = FirebaseStorage.getInstance().reference
-
+        // Profile image picker
         binding.profilePicture.setOnClickListener {
-            val intent = Intent(Intent.ACTION_PICK)
-            intent.type = "image/*"
-            startActivityForResult(intent, IMAGE_PICK_CODE)
+            getContent.launch("image/*")
         }
 
-        // Add Full name, Mobile no., and profile photo URL (optional) in real-time database
+        // Register button click
         binding.btnRegister.setOnClickListener {
             val email = binding.txtRegisterEmailAddress.text.toString()
-            val pass = binding.txtRegisterPass.text.toString()
-            val dob = binding.txtDOB.text.toString()
+            val password = binding.txtRegisterPass.text.toString()
+            val confirmPassword = binding.txtRegisterConfirmPass.text.toString()
             val fullName = binding.txtFullName.text.toString()
-            val mobileNumber = binding.txtMobileNumber.text.toString()
-            val confirmPass = binding.txtRegisterConfirmPass.text.toString()
+            val dob = binding.txtDOB.text.toString()
+            val mobileNo = binding.txtMobileNumber.text.toString()
 
-            if (email.isNotEmpty() && pass.isNotEmpty() && confirmPass.isNotEmpty() && fullName.isNotEmpty() && mobileNumber.isNotEmpty() && dob.isNotEmpty()) {
-                if (pass == confirmPass) {
-                    // Change button text to "Signing Up..." and start animation
-                    binding.btnRegister.text = "Signing Up..."
-                    val animation = AnimationUtils.loadAnimation(this, R.anim.text_fade)
-                    binding.btnRegister.startAnimation(animation)
-
-                    firebaseAuth.createUserWithEmailAndPassword(email, pass)
-                        .addOnCompleteListener { authTask ->
-                            if (authTask.isSuccessful) {
-                                val userId = firebaseAuth.currentUser?.uid
-
-                                if (selectedImageUri != null) {
-                                    val profileImageRef = storageRef.child("users/$email/profile.jpg")
-                                    val uploadTask = profileImageRef.putFile(selectedImageUri!!)
-
-                                    uploadTask.continueWithTask { task ->
-                                        if (!task.isSuccessful) {
-                                            task.exception?.let {
-                                                throw it
-                                            }
-                                        }
-                                        profileImageRef.downloadUrl
-                                    }.addOnCompleteListener { task ->
-                                        if (task.isSuccessful) {
-                                            val downloadUri = task.result
-                                            saveUserToDatabase(fullName, mobileNumber, email, downloadUri.toString(), dob)
-                                        } else {
-                                            showToastAndResetButton("Failed to upload image")
-                                        }
-                                    }
-                                } else {
-                                    // If no image is selected, continue with registration without a profile photo URL
-                                    saveUserToDatabase(fullName, mobileNumber, email, null, dob)
-                                }
-                            } else {
-                                showToastAndResetButton("Failed to register")
-                            }
-                        }
-                } else {
-                    Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(this, "Please fill in all required fields", Toast.LENGTH_SHORT).show()
+            if (validateInputs(email, password, confirmPassword, fullName, dob, mobileNo)) {
+                registerUser(email, password, fullName, dob, mobileNo)
             }
+        }
+
+        // Sign in link click
+        binding.txtSignInInstead.setOnClickListener {
+            finish() // Go back to login activity
         }
     }
 
-    private fun saveUserToDatabase(fullName: String, mobileNumber: String, email: String, profilePhotoUrl: String?, dob: String) {
-        val Firebase_login_realtimeDatabase= Firebase_login_realtimeDatabase()
-        Firebase_login_realtimeDatabase.create_user(email,fullName,profilePhotoUrl,dob,mobileNumber,false,0,this)
+    private fun validateInputs(
+        email: String,
+        password: String,
+        confirmPassword: String,
+        fullName: String,
+        dob: String,
+        mobileNo: String
+    ): Boolean {
+        if (email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() || fullName.isEmpty() || dob.isEmpty() || mobileNo.isEmpty()) {
+            Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (password != confirmPassword) {
+            Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (selectedImageUri == null) {
+            Toast.makeText(this, "Please select a profile picture", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return true
     }
 
-    private fun showToastAndResetButton(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        binding.btnRegister.clearAnimation()
-        binding.btnRegister.text = "Register"
+    private fun registerUser(
+        email: String,
+        password: String,
+        fullName: String,
+        dob: String,
+        mobileNo: String
+    ) {
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    val user_id = auth.currentUser?.uid ?: return@addOnCompleteListener
+                    uploadProfileImage(user_id, email, fullName, dob, mobileNo)
+                } else {
+                    Toast.makeText(this, "Registration failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+    }
+
+    private fun uploadProfileImage(
+        user_id: String,
+        email: String,
+        fullName: String,
+        dob: String,
+        mobileNo: String
+    ) {
+        val storageRef = storage.reference.child("profile_images/$user_id.jpg")
+        
+        storageRef.putFile(selectedImageUri!!)
+            .addOnSuccessListener {
+                storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
+                    saveUserToDatabase(user_id, email, fullName, dob, mobileNo, downloadUrl.toString())
+                }
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Failed to upload profile image", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun saveUserToDatabase(
+        user_id: String,
+        email: String,
+        fullName: String,
+        dob: String,
+        mobileNo: String,
+        profilePhotoUrl: String
+    ) {
+        val user = User(user_id, email, fullName, dob, mobileNo)
+        user.profile_photo_url = profilePhotoUrl
+
+        database.reference.child("users").child(user_id)
+            .setValue(user)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Registration successful", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this, MainActivity::class.java))
+                finish()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Failed to save user data", Toast.LENGTH_SHORT).show()
+            }
     }
 }

@@ -1,60 +1,75 @@
 package com.genzopia.Instagame.LoginActivities;
 
-import android.content.Context;
+import android.app.Activity;
 import android.content.Intent;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import com.genzopia.Instagame.MainActivity;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
-public class Firebase_login_realtimeDatabase extends AppCompatActivity {
-    private String sharedPrefFile = "LoginPrefs";
-    private FirebaseDatabase database;
-// In Firebase_login_realtimeDatabase.java
+public class Firebase_login_realtimeDatabase {
+    private DatabaseReference databaseReference;
+    private FirebaseAuth auth;
 
-    public void create_user(String emailAddress, String fullName, String profilePhotoUrl,
-                            String dob, String mobileNumber, boolean app_online_status, int coin, Context con) {
-        database = FirebaseDatabase.getInstance();
-        User firebaseUser = new User(emailAddress, fullName, profilePhotoUrl, dob, mobileNumber, app_online_status, coin);
-
-        database.getReference("users")
-                .child(emailAddress.replace(".", ","))
-                .setValue(firebaseUser)
-                .addOnCompleteListener(task1 -> {
-                    if (task1.isSuccessful()) {
-                        con.getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE).edit()
-                                .putString("email", emailAddress)
-                                .apply();
-                        con.startActivity(new Intent(con, MainActivity.class)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-                    } else {
-                        Toast.makeText(con, "User creation failed: " + task1.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                });
+    public Firebase_login_realtimeDatabase() {
+        databaseReference = FirebaseDatabase.getInstance().getReference();
+        auth = FirebaseAuth.getInstance();
     }
 
-    public void create_user_register(String emailAddress, String fullName, String profilePhotoUrl,
-                            String dob, String mobileNumber, boolean app_online_status, int coin, Context con) {
-        database = FirebaseDatabase.getInstance();
-        User firebaseUser = new User(emailAddress, fullName, profilePhotoUrl, dob, mobileNumber, app_online_status, coin);
+    public void handleGoogleSignIn(GoogleSignInAccount account, Activity activity) {
+        String userId = auth.getCurrentUser().getUid();
+        
+        // Check if user already exists
+        databaseReference.child("users").child(userId).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                if (!dataSnapshot.exists()) {
+                    // New user - create profile
+                    User user = new User(
+                        userId,
+                        account.getEmail() != null ? account.getEmail() : "-1",
+                        account.getDisplayName() != null ? account.getDisplayName() : "-1",
+                        "-1", // Date of birth not available from Google
+                        "-1"  // Mobile number not available from Google
+                    );
+                    
+                    // Set profile photo if available, otherwise -1
+                    user.setProfile_photo_url(account.getPhotoUrl() != null ? 
+                        account.getPhotoUrl().toString() : "-1");
 
-        database.getReference("users")
-                .child(emailAddress.replace(".", ","))
-                .setValue(firebaseUser)
-                .addOnCompleteListener(task1 -> {
-                    if (task1.isSuccessful()) {
-                        con.getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE).edit()
-                                .putString("email", emailAddress)
-                                .apply();
-                        con.startActivity(new Intent(con, LoginActivity.class)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-                    } else {
-                        Toast.makeText(con, "User creation failed: " + task1.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                });
+                    // Save user data
+                    databaseReference.child("users").child(userId).setValue(user)
+                        .addOnSuccessListener(aVoid -> {
+                            Toast.makeText(activity, "Welcome to GenZopia!", Toast.LENGTH_SHORT).show();
+                            goToMainActivity(activity);
+                        })
+                        .addOnFailureListener(e -> 
+                            Toast.makeText(activity, "Failed to create profile", Toast.LENGTH_SHORT).show()
+                        );
+                } else {
+                    // Existing user - just go to main activity
+                    goToMainActivity(activity);
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                Toast.makeText(activity, "Database error: " + databaseError.getMessage(), 
+                    Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-
+    private void goToMainActivity(Activity activity) {
+        Intent intent = new Intent(activity, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        activity.startActivity(intent);
+        activity.finish();
+    }
 }

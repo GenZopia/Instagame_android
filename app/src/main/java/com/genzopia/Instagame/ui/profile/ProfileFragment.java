@@ -97,8 +97,10 @@ public class ProfileFragment extends Fragment {
         String email = sharedPreferences.getString("email", "");
         if (email == null || email.isEmpty()) return;
 
+        // Get current user ID from Firebase Auth
+        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         userRef = FirebaseDatabase.getInstance().getReference()
-                .child("users").child(email.replace(".", ","));
+                .child("users").child(userId);
 
         userListener = new ValueEventListener() {
             @Override
@@ -106,21 +108,21 @@ public class ProfileFragment extends Fragment {
                 if (!dataSnapshot.exists() || !isAdded()) return;
 
                 // Profile photo
-                String profilePhotoUrl = dataSnapshot.child("profilePhotoUrl").getValue(String.class);
-                if (profilePhotoUrl != null && getActivity() != null) {
+                String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
+                if (profilePhotoUrl != null && !profilePhotoUrl.equals("-1") && getActivity() != null) {
                     Glide.with(ProfileFragment.this)
                             .load(profilePhotoUrl)
+                            .placeholder(R.drawable.profile)
                             .error(R.drawable.profile)
                             .into(profileImage);
                     sharedPreferences.edit().putString("profilePhotoUrl", profilePhotoUrl).apply();
                 }
 
                 // Username and full name
-                String fullName = dataSnapshot.child("fullName").getValue(String.class);
-                String username = dataSnapshot.child("username").getValue(String.class);
-                usernameTop.setText(username != null ? username : fullName);
+                String fullName = dataSnapshot.child("full_name").getValue(String.class);
+                usernameTop.setText(fullName);
 
-                // Bio and website
+                // Bio and website (these fields might need to be added to User class if needed)
                 String userBio = dataSnapshot.child("bio").getValue(String.class);
                 String userWebsite = dataSnapshot.child("website").getValue(String.class);
                 bio.setText(userBio != null ? userBio : "Add a bio to tell your story!");
@@ -128,11 +130,11 @@ public class ProfileFragment extends Fragment {
 
                 // Stats
                 long posts = dataSnapshot.child("posts").getChildrenCount();
-                long followers = dataSnapshot.child("followers").getChildrenCount();
+                String followers = dataSnapshot.child("followers").getValue(String.class);
                 long following = dataSnapshot.child("following").getChildrenCount();
 
                 postsCount.setText(String.valueOf(posts));
-                followersCount.setText(String.valueOf(followers));
+                followersCount.setText(followers != null ? followers : "0");
                 followingCount.setText(String.valueOf(following));
             }
 
@@ -182,12 +184,6 @@ public class ProfileFragment extends Fragment {
     }
 
     private void logout() {
-        FirebaseDatabase database = FirebaseDatabase.getInstance();
-        String gmail = sharedPreferences.getString("email", "");
-        String encodedGmail = gmail != null ? gmail.replace(".", ",") : "";
-        DatabaseReference myRef = database.getReference("users").child(encodedGmail).child("app_online_status");
-        myRef.setValue(false);
-
         clearSharedPreferences();
         
         if (auth != null) {
