@@ -16,12 +16,14 @@
         android:layout_height="24dp"
         android:layout_gravity="center"
         android:src="@drawable/mozac_ic_play_badge_fill_16"
-        android:visibility="gone"/>
+        android:visibility="gone"
+        android:tint="?android:attr/textColorPrimary" />
 
     <View
         android:id="@+id/img_selected_overlay"
         android:layout_width="match_parent"
         android:layout_height="150dp"
-        android:background="#A3005CFF"
+        android:background="@color/instagram_orange"
+        android:alpha="0.4"
         android:visibility="gone"/>
 </FrameLayout>

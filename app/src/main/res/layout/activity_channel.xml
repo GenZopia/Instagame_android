@@ -3,7 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="vertical"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?android:colorBackground">
 
     <!-- Scrollable Content -->
     <ScrollView
@@ -52,14 +53,16 @@
                         android:layout_height="wrap_content"
                         android:text="DualWielded"
                         android:textStyle="bold"
-                        android:textSize="18sp" />
+                        android:textSize="18sp"
+                        android:textColor="?android:attr/textColorPrimary" />
 
                     <TextView
                         android:id="@+id/subscriberCount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="44.5K subscribers • 48 videos"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -86,13 +89,14 @@
                         android:layout_height="wrap_content"
                         android:text="Games"
                         android:textStyle="bold"
-                        android:padding="12dp" />
+                        android:padding="12dp"
+                        android:textColor="?android:attr/textColorPrimary" />
 
                     <View
                         android:id="@+id/underlineGames"
                         android:layout_width="match_parent"
                         android:layout_height="2dp"
-                        android:background="#FF0000"
+                        android:background="@color/instagram_orange"
                         android:visibility="visible" />
                 </LinearLayout>
 
@@ -110,13 +114,14 @@
                         android:layout_height="wrap_content"
                         android:text="Videos"
                         android:textStyle="bold"
-                        android:padding="12dp" />
+                        android:padding="12dp"
+                        android:textColor="?android:attr/textColorPrimary" />
 
                     <View
                         android:id="@+id/underlineVideos"
                         android:layout_width="match_parent"
                         android:layout_height="2dp"
-                        android:background="#FF0000"
+                        android:background="@color/instagram_orange"
                         android:visibility="gone" />
                 </LinearLayout>
 
@@ -134,24 +139,25 @@
                         android:layout_height="wrap_content"
                         android:text="Details"
                         android:textStyle="bold"
-                        android:padding="12dp" />
+                        android:padding="12dp"
+                        android:textColor="?android:attr/textColorPrimary" />
 
                     <View
                         android:id="@+id/underlineDetails"
                         android:layout_width="match_parent"
                         android:layout_height="2dp"
-                        android:background="#FF0000"
+                        android:background="@color/instagram_orange"
                         android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
+
+            <!-- Fragment Container -->
+            <FrameLayout
+                android:id="@+id/fragmentContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
         </LinearLayout>
     </ScrollView>
-
-    <!-- Fragment Container always visible and takes remaining space -->
-    <FrameLayout
-        android:id="@+id/fragmentContainer"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-       />
 </LinearLayout>

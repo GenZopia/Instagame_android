@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
+    android:background="?android:colorBackground"
     tools:context=".LoginActivities.LoginActivity">
 
     <ImageView
@@ -55,7 +56,8 @@
             android:layout_marginTop="-45dp"
             android:paddingEnd="8dp"
             android:paddingRight="8dp"
-            android:src="@drawable/visibility" />
+            android:src="@drawable/visibility"
+            app:tint="?android:attr/textColorSecondary" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <TextView
@@ -68,22 +70,20 @@
         android:fontFamily="@font/inter_bold"
         android:text="Forgot Password?"
         android:textAlignment="textEnd"
-        android:textColor="@color/black"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="16sp" />
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnLoginNow"
+        style="@style/Widget.Instagram.Button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/txtForgotPassword"
         android:layout_marginTop="21dp"
         android:layout_marginBottom="16dp"
-        android:backgroundTint="#2196F3"
         android:padding="16dp"
         android:text="Login"
-        android:textColor="@android:color/white"
-        android:textSize="16sp"
-        app:cornerRadius="10dp" />
+        android:textSize="16sp" />
 
     <TextView
         android:id="@+id/txtSignUpNow"
@@ -94,41 +94,6 @@
         android:fontFamily="@font/inter_medium"
         android:padding="8dp"
         android:text="Don't have an account? Sign Up Now"
-        android:textColor="@color/black"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="14sp" />
-    <!-- Add your new LinearLayout below the txtSignUpNow TextView -->
-    <LinearLayout
-        android:id="@+id/loginBtn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/txtSignUpNow"
-        android:layout_alignStart="@+id/txtSignUpNow"
-        android:layout_alignEnd="@+id/txtSignUpNow"
-
-        android:layout_marginTop="16dp"
-
-        android:background="@drawable/white_rounded_bg"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:padding="5dp">
-
-        <ImageView
-            android:id="@+id/imageView5"
-            android:layout_width="16dp"
-            android:layout_height="wrap_content"
-            app:srcCompat="@drawable/google" />
-
-        <TextView
-            android:id="@+id/textView5"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_marginLeft="8dp"
-            android:fontFamily="@font/roboto_bold"
-            android:text="Sign in with Google"
-            android:textColor="@color/black"
-            android:textSize="16sp" />
-    </LinearLayout>
-
-
 </RelativeLayout>

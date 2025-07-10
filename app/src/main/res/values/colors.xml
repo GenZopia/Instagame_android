@@ -1,22 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base colors -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <color name="viewfinder_laser">#ffcc0000</color>
-    <color name="plazabase_color">#FC5A1B</color>
-    <color name="result_points">#c099cc00</color>
-    <color name="base_app_bg">#ccdbee</color>
-    <color name="green">#FF0BC957</color>
-    <color name="blue">#3D8FEF</color>
-    <color name="btnbackground">#3D8FEF</color>
-    <color name="background_color">#141218</color>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
+    <!-- Instagram brand colors -->
+    <color name="instagram_orange">#FF6B35</color>
+    <color name="instagram_orange_light">#FF8A65</color>
+    <color name="instagram_orange_dark">#E55A2B</color>
+
+    <!-- Light theme colors -->
+    <color name="background_primary">#FFFFFF</color>
+    <color name="background_secondary">#FAFAFA</color>
+    <color name="text_primary">#262626</color>
+    <color name="text_secondary">#8E8E93</color>
+    <color name="text_tertiary">#C7C7CC</color>
+    <color name="border_light">#DBDBDB</color>
+    <color name="divider_light">#F0F0F0</color>
+
+    <!-- Dark theme colors -->
+    <color name="background_dark">#000000</color>
+    <color name="background_dark_secondary">#121212</color>
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#EBEBF5</color>
+    <color name="border_dark">#38383A</color>
+    <color name="divider_dark">#1C1C1E</color>
+
+    <!-- Button colors -->
+    <color name="button_primary">@color/instagram_orange</color>
+    <color name="button_primary_disabled">#FFB3A3</color>
+    <color name="button_secondary">#F8F9FA</color>
+    <color name="button_secondary_dark">#2C2C2E</color>
+
+    <!-- Tab colors -->
     <color name="tab_selected">#FFFFFF</color>
     <color name="tab_unselected">#808080</color>
-
 </resources>
