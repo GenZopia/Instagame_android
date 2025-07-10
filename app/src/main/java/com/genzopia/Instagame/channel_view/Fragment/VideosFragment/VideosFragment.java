@@ -29,20 +29,19 @@ public class VideosFragment extends Fragment {
                              @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_videos, container, false);
 
-        recyclerView = view.findViewById(R.id.recyclerView);
+        recyclerView = view.findViewById(R.id.videosRecyclerView);
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 3, RecyclerView.VERTICAL, false));
 
-        // Sample Data
+        // Initialize video list
         videoList = new ArrayList<>();
-        videoList = new ArrayList<>();
-// Real YouTube Shorts examples:
+        // Real YouTube Shorts examples:
         videoList.add(new VideoItem_channel("hKwrn5-7FjQ",
                 "https://i.ytimg.com/vi/hKwrn5-7FjQ/maxresdefault.jpg", "2.3M views"));
         videoList.add(new VideoItem_channel("pKML4pZozDY",
                 "https://i.ytimg.com/vi/pKML4pZozDY/maxresdefault.jpg", "1.1M views"));
         videoList.add(new VideoItem_channel("dQw4w9WgXcQ",
                 "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", "900K views"));
-// Additional real or sample Shorts:
+        // Additional real or sample Shorts:
         videoList.add(new VideoItem_channel("B-s71n0dHUk",
                 "https://i.ytimg.com/vi/B-s71n0dHUk/maxresdefault.jpg", "3.4M views"));
         videoList.add(new VideoItem_channel("ydPkyvWtmg4",
