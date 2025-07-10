@@ -1,29 +1,50 @@
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="0.5dp">
 
-    <ImageView
-        android:id="@+id/img_thumb"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:scaleType="centerCrop" />
+        android:layout_height="wrap_content">
 
-    <ImageView
-        android:id="@+id/img_play_overlay"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_gravity="center"
-        android:src="@drawable/mozac_ic_play_badge_fill_16"
-        android:visibility="gone"
-        android:tint="?android:attr/textColorPrimary" />
+        <ImageView
+            android:id="@+id/img_thumb"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintDimensionRatio="16:9"
+            android:scaleType="centerCrop"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
-    <View
-        android:id="@+id/img_selected_overlay"
-        android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:background="@color/instagram_orange"
-        android:alpha="0.4"
-        android:visibility="gone"/>
+        <ImageView
+            android:id="@+id/img_play_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintWidth_percent="0.15"
+            app:layout_constraintDimensionRatio="1:1"
+            android:layout_gravity="center"
+            android:src="@drawable/mozac_ic_play_badge_fill_16"
+            android:visibility="gone"
+            android:tint="?android:attr/textColorPrimary"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <View
+            android:id="@+id/img_selected_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@color/instagram_orange"
+            android:alpha="0.4"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="@id/img_thumb"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </FrameLayout>

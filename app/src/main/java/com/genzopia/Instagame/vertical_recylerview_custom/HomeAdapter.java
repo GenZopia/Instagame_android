@@ -2,7 +2,6 @@
 package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.content.Context;
-import android.content.Intent;
 import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -13,9 +12,10 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
-import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.ImageAdapter;
 import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.ImageItem;
-import com.genzopia.Instagame.webgl_gameloading.Game_mode;
+
+import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.StoryProfileAdapter;
+import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.StoryGridLayoutManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -151,25 +151,19 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             }
         }
     }
+
     static class ProfileViewHolder extends RecyclerView.ViewHolder {
         RecyclerView profileRecyclerView;
 
         ProfileViewHolder(View itemView) {
             super(itemView);
             profileRecyclerView = itemView.findViewById(R.id.profileRecyclerView);
-
+            profileRecyclerView.setLayoutManager(new StoryGridLayoutManager(itemView.getContext()));
         }
 
         void bind(List<ImageItem> profileItems) {
-            profileRecyclerView.setLayoutManager(
-                    new LinearLayoutManager(itemView.getContext(), LinearLayoutManager.HORIZONTAL, false)
-            );
-            ImageAdapter adapter = new ImageAdapter(profileItems, itemView.getContext());
+            StoryProfileAdapter adapter = new StoryProfileAdapter(profileItems);
             profileRecyclerView.setAdapter(adapter);
-
-
         }
     }
-
-
 }

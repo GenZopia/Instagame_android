@@ -19,8 +19,8 @@
     <color name="divider_light">#F0F0F0</color>
 
     <!-- Dark theme colors -->
-    <color name="background_dark">#000000</color>
-    <color name="background_dark_secondary">#121212</color>
+    <color name="background_primary_dark">#000000</color>
+    <color name="background_secondary_dark">#121212</color>
     <color name="text_primary_dark">#FFFFFF</color>
     <color name="text_secondary_dark">#EBEBF5</color>
     <color name="border_dark">#38383A</color>

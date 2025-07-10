@@ -19,7 +19,7 @@
             android:gravity="center"
             android:layout_weight="6"
             android:textSize="20sp"
-            android:textColor="@color/black"
+            android:textAppearance="@style/TextAppearance.Instagram.Subtitle1"
             android:text="someone is calling"
             android:id="@+id/incomingNameTV"/>
 
@@ -46,18 +46,22 @@
         android:id="@+id/whoToCallLayout">
         <EditText
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:hint="who to call ?"
+            android:layout_height="48dp"
+            android:hint="Who to call?"
+            android:textAppearance="@style/TextAppearance.Instagram.Body1"
             android:layout_margin="30dp"
+            android:padding="12dp"
+            android:background="@drawable/bgedittext"
             android:id="@+id/targetUserNameEt"/>
         <androidx.appcompat.widget.AppCompatButton
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:background="@drawable/rounded_button"
-
+            android:layout_height="48dp"
+            android:background="@drawable/button_background"
+            android:textColor="@color/white"
+            android:textAppearance="@style/TextAppearance.Instagram.Button"
             android:layout_below="@id/targetUserNameEt"
             android:layout_marginHorizontal="30dp"
-            android:text="call"
+            android:text="Call"
             android:id="@+id/callBtn"/>
     </RelativeLayout>
     <RelativeLayout
@@ -139,6 +143,5 @@
         </LinearLayout>
 
     </RelativeLayout>
-
 
 </RelativeLayout>

@@ -8,8 +8,8 @@
         <shape android:shape="rectangle">
             <corners android:radius="8dp"/>
             <stroke android:width="2dp"
-                android:color="@color/teal_700"/>
-            <solid android:color="@color/white"/>
+                android:color="@color/instagram_orange"/>
+            <solid android:color="?android:attr/colorBackground"/>
         </shape>
     </item>
 </layer-list>
