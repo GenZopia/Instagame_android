@@ -2,6 +2,7 @@ package com.genzopia.Instagame.Post;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
@@ -20,6 +21,8 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import de.hdodenhof.circleimageview.CircleImageView;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.UUID;
 import com.google.firebase.database.DataSnapshot;
@@ -61,6 +64,9 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     // Firebase references
     private DatabaseReference userRef;
     private ValueEventListener userListener;
+    
+    // Video upload variables
+    private String videoUniqueId;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -98,6 +104,9 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             return;
         }
         videoUri = Uri.parse(uriString);
+        
+        // Generate unique video ID
+        videoUniqueId = "video_" + UUID.randomUUID().toString().replace("-", "");
 
         // Setup video preview
         videoView.setVideoURI(videoUri);
@@ -275,19 +284,35 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     }
 
     private void doUploadWithInfo(String title, String description, String gameTag) {
-        File file = FileUtils.getFileFromUri(this, videoUri);
-        if (file == null) {
+        File originalFile = FileUtils.getFileFromUri(this, videoUri);
+        if (originalFile == null) {
             Toast.makeText(this, "Unable to read file", Toast.LENGTH_SHORT).show();
             return;
         }
+        
+        // Create renamed file with unique ID
+        String fileExtension = getFileExtension(originalFile.getName());
+        File renamedFile = new File(getCacheDir(), videoUniqueId + fileExtension);
+        
+        try {
+            // Copy the original file to the renamed file
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Files.copy(originalFile.toPath(), renamedFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "Error preparing file for upload", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
         btnConfirmUpload.setEnabled(false);
         btnConfirmUpload.setText("Uploading...");
-        String videoId = UUID.randomUUID().toString();
+        
         FileUploader.uploadFileToWorker(
-                file,
+                renamedFile,
                 "video",
                 Map.of(
-                        "video_id", videoId,
+                        "video_id", videoUniqueId,
                         "title", title,
                         "description", description,
                         "game_tag", gameTag
@@ -297,12 +322,24 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                     btnConfirmUpload.setText("Upload");
                     if (success) {
                         Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
+                        // Clean up the renamed file
+                        renamedFile.delete();
                         finish();
                     } else {
                         Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
+                        // Clean up the renamed file on failure too
+                        renamedFile.delete();
                     }
                 })
         );
+    }
+    
+    private String getFileExtension(String fileName) {
+        int lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            return fileName.substring(lastDotIndex);
+        }
+        return ".mp4"; // Default extension
     }
 
     @Override
