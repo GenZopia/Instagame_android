@@ -33,6 +33,8 @@ import java.util.List;
 import android.widget.ArrayAdapter;
 import android.text.Editable;
 import android.text.TextWatcher;
+import com.bumptech.glide.Glide;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class VideoUploadInfoActivity extends AppCompatActivity {
     private VideoView videoView;
@@ -44,7 +46,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     // User info views
     private CircleImageView userAvatar;
     private TextView userName;
-    private TextView userId;
+    private TextView userUsername;
     private ImageView editbutton;
     private AutoCompleteTextView gameDropdown;
     private TextView gameTagText;
@@ -55,6 +57,10 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private TextInputLayout titleInputLayout;
     private TextInputLayout gameDropdownLayout;
     private TextInputLayout descInputLayout;
+    
+    // Firebase references
+    private DatabaseReference userRef;
+    private ValueEventListener userListener;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -68,7 +74,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         btnConfirmUpload = findViewById(R.id.btnConfirmUpload);
         userAvatar = findViewById(R.id.userAvatar);
         userName = findViewById(R.id.userName);
-        userId = findViewById(R.id.userId);
+
         editbutton=findViewById(R.id.editIcon);
         gameDropdown = findViewById(R.id.gameDropdown);
         gameTagText = findViewById(R.id.gameTagText);
@@ -113,10 +119,8 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         }
         gameTagChipGroup.setSingleSelection(true);
 
-        // Example user info (replace with real user data)
-        userName.setText("INDIAN CHESS");
-        userId.setText("@bhartiyachess");
-        userAvatar.setImageResource(R.drawable.ic_launcher_foreground); // Replace with real avatar
+        // Fetch user data from Firebase
+        fetchUserData();
 
         gameAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, gameNames);
         gameDropdown.setAdapter(gameAdapter);
@@ -228,6 +232,48 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         });
     }
 
+    private void fetchUserData() {
+        // Get current user ID from Firebase Auth
+        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        userRef = FirebaseDatabase.getInstance().getReference()
+                .child("users").child(userId);
+
+        userListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                if (!dataSnapshot.exists()) return;
+
+                // Profile photo
+                String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
+                if (profilePhotoUrl != null && !profilePhotoUrl.equals("-1")) {
+                    Glide.with(VideoUploadInfoActivity.this)
+                            .load(profilePhotoUrl)
+                            .placeholder(R.drawable.profile)
+                            .error(R.drawable.profile)
+                            .into(userAvatar);
+                }
+
+                // Username and full name
+                String fullName = dataSnapshot.child("full_name").getValue(String.class);
+                String username = dataSnapshot.child("username").getValue(String.class);
+                
+                if (fullName != null && !fullName.isEmpty()) {
+                    userName.setText(fullName);
+                }
+                
+                if (username != null && !username.isEmpty()) {
+                    userUsername.setText("@" + username);
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(VideoUploadInfoActivity.this, "Failed to fetch user data", Toast.LENGTH_SHORT).show();
+            }
+        };
+        userRef.addValueEventListener(userListener);
+    }
+
     private void doUploadWithInfo(String title, String description, String gameTag) {
         File file = FileUtils.getFileFromUri(this, videoUri);
         if (file == null) {
@@ -257,5 +303,13 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                     }
                 })
         );
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (userRef != null && userListener != null) {
+            userRef.removeEventListener(userListener);
+        }
     }
 } 
