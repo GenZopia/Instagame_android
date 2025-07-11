@@ -17,6 +17,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import de.hdodenhof.circleimageview.CircleImageView;
 import java.io.File;
 import java.util.Map;
@@ -30,6 +31,8 @@ import androidx.annotation.NonNull;
 import java.util.ArrayList;
 import java.util.List;
 import android.widget.ArrayAdapter;
+import android.text.Editable;
+import android.text.TextWatcher;
 
 public class VideoUploadInfoActivity extends AppCompatActivity {
     private VideoView videoView;
@@ -47,6 +50,11 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private TextView gameTagText;
     private ArrayAdapter<String> gameAdapter;
     private List<String> gameNames = new ArrayList<>();
+    
+    // TextInputLayout references for error display
+    private TextInputLayout titleInputLayout;
+    private TextInputLayout gameDropdownLayout;
+    private TextInputLayout descInputLayout;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -64,6 +72,11 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         editbutton=findViewById(R.id.editIcon);
         gameDropdown = findViewById(R.id.gameDropdown);
         gameTagText = findViewById(R.id.gameTagText);
+        
+        // Get TextInputLayout references for error display
+        titleInputLayout = findViewById(R.id.titleInputLayout);
+        gameDropdownLayout = findViewById(R.id.gameDropdownLayout);
+        descInputLayout = findViewById(R.id.descInputLayout);
 
         editbutton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -71,8 +84,6 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                 VideoUploadInfoActivity.super.onBackPressed();
             }
         });
-
-
 
         // Get video URI from intent
         String uriString = getIntent().getStringExtra("video_uri");
@@ -129,27 +140,91 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         gameDropdown.setOnItemClickListener((parent, view, position, id) -> {
             String selected = gameAdapter.getItem(position);
             gameTagText.setText("@" + selected);
+            gameDropdownLayout.setError(null); // Clear error when valid selection is made
         });
 
+        // Add text change listener for game dropdown validation
+        gameDropdown.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                String input = s.toString().trim();
+                if (!input.isEmpty()) {
+                    boolean hasMatch = false;
+                    for (String gameName : gameNames) {
+                        if (gameName.equalsIgnoreCase(input)) {
+                            hasMatch = true;
+                            break;
+                        }
+                    }
+                    if (!hasMatch) {
+                        gameDropdownLayout.setError("No game match");
+                    } else {
+                        gameDropdownLayout.setError(null);
+                        gameTagText.setText("@" + input);
+                    }
+                } else {
+                    gameDropdownLayout.setError(null);
+                    gameTagText.setText("");
+                }
+            }
+        });
 
         btnConfirmUpload.setOnClickListener(v -> {
+            // Clear previous errors
+            titleInputLayout.setError(null);
+            gameDropdownLayout.setError(null);
+            descInputLayout.setError(null);
+            
             String title = inputTitle.getText() != null ? inputTitle.getText().toString().trim() : "";
             String description = inputDescription.getText() != null ? inputDescription.getText().toString().trim() : "";
-            int checkedChipId = gameTagChipGroup.getCheckedChipId();
-            String gameTag = null;
-            if (checkedChipId != -1) {
-                Chip selectedChip = gameTagChipGroup.findViewById(checkedChipId);
-                gameTag = selectedChip.getText().toString();
-            }
+            String gameInput = gameDropdown.getText() != null ? gameDropdown.getText().toString().trim() : "";
+            
+            // Validate title
             if (title.isEmpty()) {
-                inputTitle.setError("Title required");
+                titleInputLayout.setError("Title required");
                 return;
             }
-            if (gameTag == null) {
-                Toast.makeText(this, "Please select a game tag", Toast.LENGTH_SHORT).show();
+            if (title.length() > 50) {
+                titleInputLayout.setError("Title must be less than 50 characters");
                 return;
             }
-            doUploadWithInfo(title, description, gameTag);
+            
+            // Validate description
+            if (description.length() > 200) {
+                descInputLayout.setError("Description must be less than 200 characters");
+                return;
+            }
+            
+            // Validate game dropdown
+            if (gameInput.isEmpty()) {
+                gameDropdownLayout.setError("Please select a game");
+                return;
+            }
+            
+            // Check if game input matches any game in the list
+            boolean hasGameMatch = false;
+            String matchedGame = null;
+            for (String gameName : gameNames) {
+                if (gameName.equalsIgnoreCase(gameInput)) {
+                    hasGameMatch = true;
+                    matchedGame = gameName;
+                    break;
+                }
+            }
+            
+            if (!hasGameMatch) {
+                gameDropdownLayout.setError("No game match");
+                return;
+            }
+            
+            // All validations passed, proceed with upload
+            doUploadWithInfo(title, description, "@" + matchedGame);
         });
     }
 
