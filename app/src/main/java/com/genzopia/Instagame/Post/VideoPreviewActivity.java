@@ -13,6 +13,12 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
+import android.app.AlertDialog;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import com.google.android.material.textfield.TextInputEditText;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -125,20 +131,17 @@ public class VideoPreviewActivity extends AppCompatActivity {
                     currentTimeText.setText(formatTime(progress));
                 }
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-                // Pause updates while seeking
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                // Resume updates after seeking
-            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         // Upload button
-        uploadBtn.setOnClickListener(v -> doUpload());
+        uploadBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(this, VideoUploadInfoActivity.class);
+            intent.putExtra("video_uri", videoUri.toString());
+            startActivity(intent);
+            finish();
+        });
 
         // Save to Gallery button
         saveToGalleryBtn.setOnClickListener(v -> saveToGallery());

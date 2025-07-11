@@ -43,6 +43,7 @@
             android:name=".Post.Post_mainactivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
         <activity
             android:name=".channel_view.ChannelActivity"
             android:exported="false"
@@ -80,6 +81,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".Post.VideoUploadInfoActivity"
+            android:screenOrientation="portrait" />
     </application>
 
 </manifest>
