@@ -3,6 +3,8 @@ package com.genzopia.Instagame.Post;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
+import android.widget.ImageView;
 import android.widget.Toast;
 import android.widget.VideoView;
 import android.widget.TextView;
@@ -30,6 +32,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private CircleImageView userAvatar;
     private TextView userName;
     private TextView userId;
+    private ImageView editbutton;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -44,6 +47,15 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         userAvatar = findViewById(R.id.userAvatar);
         userName = findViewById(R.id.userName);
         userId = findViewById(R.id.userId);
+        editbutton=findViewById(R.id.editIcon);
+
+        editbutton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                VideoUploadInfoActivity.super.onBackPressed();
+            }
+        });
+
 
 
         // Get video URI from intent
@@ -58,6 +70,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         videoView.setVideoURI(videoUri);
         videoView.setOnPreparedListener(mp -> {
             mp.setLooping(true);
+            mp.setVolume(0f, 0f); // Mute the video
             videoView.start();
         });
 
