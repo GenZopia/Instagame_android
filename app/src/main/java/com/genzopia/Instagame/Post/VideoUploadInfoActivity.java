@@ -9,6 +9,7 @@ import android.widget.Toast;
 import android.widget.VideoView;
 import android.widget.TextView;
 import android.widget.LinearLayout;
+import android.widget.AutoCompleteTextView;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import com.genzopia.Instagame.R;
@@ -20,6 +21,15 @@ import de.hdodenhof.circleimageview.CircleImageView;
 import java.io.File;
 import java.util.Map;
 import java.util.UUID;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+import androidx.annotation.NonNull;
+import java.util.ArrayList;
+import java.util.List;
+import android.widget.ArrayAdapter;
 
 public class VideoUploadInfoActivity extends AppCompatActivity {
     private VideoView videoView;
@@ -33,6 +43,10 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private TextView userName;
     private TextView userId;
     private ImageView editbutton;
+    private AutoCompleteTextView gameDropdown;
+    private TextView gameTagText;
+    private ArrayAdapter<String> gameAdapter;
+    private List<String> gameNames = new ArrayList<>();
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -48,6 +62,8 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         userName = findViewById(R.id.userName);
         userId = findViewById(R.id.userId);
         editbutton=findViewById(R.id.editIcon);
+        gameDropdown = findViewById(R.id.gameDropdown);
+        gameTagText = findViewById(R.id.gameTagText);
 
         editbutton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -90,6 +106,30 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         userName.setText("INDIAN CHESS");
         userId.setText("@bhartiyachess");
         userAvatar.setImageResource(R.drawable.ic_launcher_foreground); // Replace with real avatar
+
+        gameAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, gameNames);
+        gameDropdown.setAdapter(gameAdapter);
+
+        // Fetch game names from Firebase
+        DatabaseReference gamesRef = FirebaseDatabase.getInstance().getReference("games");
+        gamesRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                gameNames.clear();
+                for (DataSnapshot gameSnap : snapshot.getChildren()) {
+                    String name = gameSnap.child("game_name").getValue(String.class);
+                    if (name != null) gameNames.add(name);
+                }
+                gameAdapter.notifyDataSetChanged();
+            }
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+
+        gameDropdown.setOnItemClickListener((parent, view, position, id) -> {
+            String selected = gameAdapter.getItem(position);
+            gameTagText.setText("@" + selected);
+        });
 
 
         btnConfirmUpload.setOnClickListener(v -> {
