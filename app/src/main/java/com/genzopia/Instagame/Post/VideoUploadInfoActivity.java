@@ -62,7 +62,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         });
 
         // Setup game tag chips
-        String[] gameTags = {"#chess", "#sudoku", "#ludo", "#carrom", "#cricket"};
+        String[] gameTags = {"#Action", "#Adventure", "#Puzzle", "#Strategy", "#Sports","#Others"};
         for (String tag : gameTags) {
             Chip chip = new Chip(this);
             chip.setText(tag);

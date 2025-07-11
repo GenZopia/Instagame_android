@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Torch body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2C10.9,2 10,2.9 10,4v1h4V4C14,2.9 13.1,2 12,2z"/>
+    <!-- Torch handle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9,5h6v12h-6z"/>
+    <!-- Light beam -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,6l8,0l-2,4l-4,0z"/>
+    <!-- Torch base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,17h4v2h-4z"/>
+</vector> 

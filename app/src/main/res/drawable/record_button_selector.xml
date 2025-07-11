@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true">
+        <shape android:shape="oval">
+            <stroke
+                android:width="3dp"
+                android:color="@color/instagram_orange" />
+            <solid android:color="@color/instagram_orange" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <stroke
+                android:width="3dp"
+                android:color="@color/instagram_orange" />
+            <solid android:color="#1AFFFFFF" />
+        </shape>
+    </item>
+</selector> 

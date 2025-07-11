@@ -1,0 +1,41 @@
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/videosFragment">
+
+    <fragment
+        android:id="@+id/videosFragment"
+        android:name="com.genzopia.Instagame.ui.post.VideosFragment"
+        android:label="Videos"
+        tools:layout="@layout/fragment_videos">
+        <action
+            android:id="@+id/action_videosFragment_to_videoPreviewFragment"
+            app:destination="@id/videoPreviewFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/shortFragment"
+        android:name="com.genzopia.Instagame.ui.post.ShortFragment"
+        android:label="Record"
+        tools:layout="@layout/fragment_short">
+        <action
+            android:id="@+id/action_shortFragment_to_videoPreviewFragment"
+            app:destination="@id/videoPreviewFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/videoPreviewFragment"
+        android:name="com.genzopia.Instagame.ui.post.VideoPreviewFragment"
+        android:label="Preview"
+        tools:layout="@layout/fragment_video_preview">
+        <argument
+            android:name="videoUri"
+            app:argType="string" />
+        <argument
+            android:name="isRecordedVideo"
+            app:argType="boolean"
+            android:defaultValue="false" />
+    </fragment>
+
+</navigation> 
