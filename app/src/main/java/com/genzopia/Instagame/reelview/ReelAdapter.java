@@ -285,7 +285,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             progressLine.setScaleX(0f);
             progressLine.setPivotX(0f); // Set pivot to left side for left-to-right scaling
 
-            itemView.setTag(R.id.gameid_tag, reelItem.getGameId());
+            itemView.setTag(R.id.gameid_tag, reelItem.getGameid());
             itemView.setTag(R.id.developerid_tag, reelItem.getDeveloperId());
         }
 

@@ -1,29 +1,69 @@
 package com.genzopia.Instagame.reelview;
 
-import java.util.ArrayList;
-
-// ReelItem class (if you want to keep it here)
 public class ReelItem {
-    private final String videoId;
-    private final String title;
-    private final String likeCount;
-    private final String description;
-    private final String developerId;
-    private final String gameid;
+    private String videoId;
+    private String title;
+    private String likeCount;
+    private String description;
+    private String developerId;
+    private String gameid;
 
-    public ReelItem(ArrayList<String> data) {
-        this.videoId = data.get(0);
-        this.title = data.get(1);
-        this.likeCount = data.get(2);
-        this.description = data.get(3);
-        this.developerId = data.get(4);
-        this.gameid = data.get(5);
+    public ReelItem(String videoId, String title, String likeCount, String description, String developerId, String gameid) {
+        this.videoId = videoId;
+        this.title = title;
+        this.likeCount = likeCount;
+        this.description = description;
+        this.developerId = developerId;
+        this.gameid = gameid;
     }
 
-    public String getVideoId() { return videoId; }
-    public String getTitle() { return title; }
-    public String getLikeCount() { return likeCount; }
-    public String getDescription() { return description; }
-    public String getDeveloperId() { return developerId; }
-    public String getGameId() { return gameid; }
+    // Getters
+    public String getVideoId() {
+        return videoId;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getLikeCount() {
+        return likeCount;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public String getDeveloperId() {
+        return developerId;
+    }
+
+    public String getGameid() {
+        return gameid;
+    }
+
+    // Setters
+    public void setVideoId(String videoId) {
+        this.videoId = videoId;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public void setLikeCount(String likeCount) {
+        this.likeCount = likeCount;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public void setDeveloperId(String developerId) {
+        this.developerId = developerId;
+    }
+
+    public void setGameid(String gameid) {
+        this.gameid = gameid;
+    }
 }
