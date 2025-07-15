@@ -7,6 +7,7 @@ public class ReelItem {
     private String description;
     private String developerId;
     private String gameid;
+    private String videoUrl; // New field for signed URL
 
     public ReelItem(String videoId, String title, String likeCount, String description, String developerId, String gameid) {
         this.videoId = videoId;
@@ -15,6 +16,7 @@ public class ReelItem {
         this.description = description;
         this.developerId = developerId;
         this.gameid = gameid;
+        this.videoUrl = null;
     }
 
     // Getters
@@ -42,6 +44,10 @@ public class ReelItem {
         return gameid;
     }
 
+    public String getVideoUrl() {
+        return videoUrl;
+    }
+
     // Setters
     public void setVideoId(String videoId) {
         this.videoId = videoId;
@@ -65,5 +71,9 @@ public class ReelItem {
 
     public void setGameid(String gameid) {
         this.gameid = gameid;
+    }
+
+    public void setVideoUrl(String videoUrl) {
+        this.videoUrl = videoUrl;
     }
 }

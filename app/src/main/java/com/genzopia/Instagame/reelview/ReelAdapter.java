@@ -111,7 +111,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         
         // Set up the player for this video
         ReelItem item = reelItems.get(position);
-        sharedPlayer.setMediaItem(MediaItem.fromUri(item.getVideoId()));
+        String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
+        sharedPlayer.setMediaItem(MediaItem.fromUri(videoUri));
         sharedPlayer.prepare();
         sharedPlayer.setPlayWhenReady(true);
         
