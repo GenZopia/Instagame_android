@@ -86,22 +86,23 @@ public class VideosFragment extends Fragment {
     }
 
     private void uploadToCloudflare(Uri uri) {
-        String videoId = UUID.randomUUID().toString(); // or use timestamp
-        File file = FileUtils.getFileFromUri(requireContext(), uri);
-        if (file == null) {
-            Toast.makeText(requireContext(), "File conversion failed", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        FileUploader.uploadFileToWorker(file, "video", Map.of("video_id", videoId), (success, response) -> {
-            requireActivity().runOnUiThread(() -> {
-                if (success) {
-                    Toast.makeText(requireContext(), "Upload successful!", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(requireContext(), "Upload failed: " + response, Toast.LENGTH_LONG).show();
-                }
+        new Thread(() -> {
+            String videoId = UUID.randomUUID().toString(); // or use timestamp
+            File file = FileUtils.getFileFromUri(requireContext(), uri);
+            if (file == null) {
+                requireActivity().runOnUiThread(() -> Toast.makeText(requireContext(), "File conversion failed", Toast.LENGTH_SHORT).show());
+                return;
+            }
+            FileUploader.uploadFileToWorker(file, "video", Map.of("video_id", videoId), (success, response) -> {
+                requireActivity().runOnUiThread(() -> {
+                    if (success) {
+                        Toast.makeText(requireContext(), "Upload successful!", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(requireContext(), "Upload failed: " + response, Toast.LENGTH_LONG).show();
+                    }
+                });
             });
-        });
+        }).start();
     }
 }
 

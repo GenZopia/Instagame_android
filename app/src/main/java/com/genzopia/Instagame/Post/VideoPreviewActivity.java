@@ -177,67 +177,61 @@ public class VideoPreviewActivity extends AppCompatActivity {
     }
 
     private void saveToGallery() {
-        try {
-            // Create content values for the video
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Video.Media.DISPLAY_NAME, "InstaGame_" + System.currentTimeMillis() + ".mp4");
-            values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
-            values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/InstaGame");
+        new Thread(() -> {
+            try {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Video.Media.DISPLAY_NAME, "InstaGame_" + System.currentTimeMillis() + ".mp4");
+                values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+                values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/InstaGame");
 
-            // Insert the video into MediaStore
-            Uri contentUri = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
-            
-            if (contentUri != null) {
-                // Copy the video file to the new location
-                try (java.io.InputStream inputStream = getContentResolver().openInputStream(videoUri);
-                     java.io.OutputStream outputStream = getContentResolver().openOutputStream(contentUri)) {
-                    
-                    if (inputStream != null && outputStream != null) {
-                        byte[] buffer = new byte[8192];
-                        int bytesRead;
-                        while ((bytesRead = inputStream.read(buffer)) != -1) {
-                            outputStream.write(buffer, 0, bytesRead);
+                Uri contentUri = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+                if (contentUri != null) {
+                    try (java.io.InputStream inputStream = getContentResolver().openInputStream(videoUri);
+                         java.io.OutputStream outputStream = getContentResolver().openOutputStream(contentUri)) {
+                        if (inputStream != null && outputStream != null) {
+                            byte[] buffer = new byte[8192];
+                            int bytesRead;
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, bytesRead);
+                            }
+                            runOnUiThread(() -> Toast.makeText(this, "Video saved to gallery", Toast.LENGTH_SHORT).show());
                         }
-                        Toast.makeText(this, "Video saved to gallery", Toast.LENGTH_SHORT).show();
                     }
                 }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Failed to save video: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
-        } catch (Exception e) {
-            Toast.makeText(this, "Failed to save video: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+        }).start();
     }
 
     private void doUpload() {
-        // Convert Uri → File
-        File file = FileUtils.getFileFromUri(this, videoUri);
-        if (file == null) {
-            Toast.makeText(this, "Unable to read file", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Show loading state
-        uploadBtn.setEnabled(false);
-        uploadBtn.setText("Uploading...");
-
-        // Generate an ID for this video
-        String videoId = UUID.randomUUID().toString();
-
-        FileUploader.uploadFileToWorker(
-                file,
-                "video",
-                Map.of("video_id", videoId),
-                (success, response) -> runOnUiThread(() -> {
-                    uploadBtn.setEnabled(true);
-                    uploadBtn.setText("Upload");
-                    
-                    if (success) {
-                        Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
-                        finish();
-                    } else {
-                        Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
-                    }
-                })
-        );
+        new Thread(() -> {
+            File file = FileUtils.getFileFromUri(this, videoUri);
+            if (file == null) {
+                runOnUiThread(() -> Toast.makeText(this, "Unable to read file", Toast.LENGTH_SHORT).show());
+                return;
+            }
+            runOnUiThread(() -> {
+                uploadBtn.setEnabled(false);
+                uploadBtn.setText("Uploading...");
+            });
+            String videoId = UUID.randomUUID().toString();
+            FileUploader.uploadFileToWorker(
+                    file,
+                    "video",
+                    Map.of("video_id", videoId),
+                    (success, response) -> runOnUiThread(() -> {
+                        uploadBtn.setEnabled(true);
+                        uploadBtn.setText("Upload");
+                        if (success) {
+                            Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
+                            finish();
+                        } else {
+                            Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
+                        }
+                    })
+            );
+        }).start();
     }
 
     @Override

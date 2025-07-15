@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.glide)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
 
+    implementation("com.facebook.shimmer:shimmer:0.5.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)

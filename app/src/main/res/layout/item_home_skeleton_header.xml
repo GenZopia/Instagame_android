@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:shimmer_auto_start="true"
+    app:shimmer_duration="1500"
+    android:background="#181818">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#181818">
+
+        <!-- Stories row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <!-- 8 circular story placeholders with orange border -->
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:background="@drawable/skeleton_circle_orange"/>
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <!-- 8 circular story placeholders with orange border -->
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:layout_marginEnd="8dp" android:background="@drawable/skeleton_circle_orange"/>
+            <View android:layout_width="72dp" android:layout_height="72dp" android:background="@drawable/skeleton_circle_orange"/>
+        </LinearLayout>
+    </LinearLayout>
+</com.facebook.shimmer.ShimmerFrameLayout> 

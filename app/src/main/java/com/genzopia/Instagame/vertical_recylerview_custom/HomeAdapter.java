@@ -26,6 +26,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     private static final int TYPE_PROFILE = 0;
     private static final int TYPE_VIDEO = 1;
+    private static final int TYPE_SKELETON_HEADER = -2;
+    private static final int TYPE_SKELETON_FEED = -1;
     private static final String TAG = "HomeAdapter";
     public RecyclerView recyclerView;
 
@@ -34,6 +36,9 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final PlayerManager playerManager = PlayerManager.getInstance();
     private View.OnTouchListener globalTouchListener;
     private String currentlyPlayingVideoId = null;
+    private boolean isLoading = false;
+    private int skeletonCount = 5;
+    private int skeletonFeedCount = 5;
 
     public HomeAdapter(Context context, List<ImageItem> profileItems, List<VideoItem> videoItems) {
         this.context = context;
@@ -45,11 +50,22 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.globalTouchListener = listener;
     }
 
+    public void setLoading(boolean loading) {
+        isLoading = loading;
+        notifyDataSetChanged();
+    }
+
     @NonNull
     @Override
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         LayoutInflater inflater = LayoutInflater.from(context);
-        if (viewType == TYPE_PROFILE) {
+        if (viewType == TYPE_SKELETON_HEADER) {
+            View view = inflater.inflate(R.layout.item_home_skeleton_header, parent, false);
+            return new SkeletonHeaderViewHolder(view);
+        } else if (viewType == TYPE_SKELETON_FEED) {
+            View view = inflater.inflate(R.layout.item_home_skeleton_feed, parent, false);
+            return new SkeletonFeedViewHolder(view);
+        } else if (viewType == TYPE_PROFILE) {
             View view = inflater.inflate(R.layout.item_profile_container, parent, false);
             return new ProfileViewHolder(view);
         } else {
@@ -60,6 +76,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        if (isLoading) {
+            // No binding needed for skeletons
+            return;
+        }
         if (holder.getItemViewType() == TYPE_PROFILE) {
             ((ProfileViewHolder) holder).bind((List<ImageItem>) items.get(position));
         } else {
@@ -78,6 +98,13 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public int getItemViewType(int position) {
+        if (isLoading) {
+            if (position == 0) {
+                return TYPE_SKELETON_HEADER;
+            } else {
+                return TYPE_SKELETON_FEED;
+            }
+        }
         if (position == 0) {
             return TYPE_PROFILE;
         } else {
@@ -87,6 +114,9 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public int getItemCount() {
+        if (isLoading) {
+            return 1 + skeletonFeedCount; // 1 header + N feed skeletons
+        }
         return items.size();
     }
 
@@ -164,6 +194,17 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         void bind(List<ImageItem> profileItems) {
             StoryProfileAdapter adapter = new StoryProfileAdapter(profileItems);
             profileRecyclerView.setAdapter(adapter);
+        }
+    }
+
+    static class SkeletonHeaderViewHolder extends RecyclerView.ViewHolder {
+        SkeletonHeaderViewHolder(View itemView) {
+            super(itemView);
+        }
+    }
+    static class SkeletonFeedViewHolder extends RecyclerView.ViewHolder {
+        SkeletonFeedViewHolder(View itemView) {
+            super(itemView);
         }
     }
 }

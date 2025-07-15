@@ -255,26 +255,30 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             
             // Get the game id for the matched game
             String gameId = gameNameToId.get(matchedGame);
-            // Get file extension
-            File originalFile = FileUtils.getFileFromUri(this, videoUri);
-            String fileExtension = getFileExtension(originalFile != null ? originalFile.getName() : ".mp4");
-            // Start foreground service for upload
-            Intent serviceIntent = new Intent(this, VideoUploadForegroundService.class);
-            serviceIntent.setAction(VideoUploadForegroundService.ACTION_UPLOAD);
-            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_TITLE, title);
-            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_DESCRIPTION, description);
-            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_GAME_ID, gameId);
-            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_VIDEO_URI, videoUri.toString());
-            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_FILE_EXTENSION, fileExtension);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-            // Show progress bar
-            uploadProgressBar.setVisibility(View.VISIBLE);
-            uploadProgressBar.setIndeterminate(true);
-            btnConfirmUpload.setEnabled(false);
+            // Move file I/O to background thread
+            new Thread(() -> {
+                File originalFile = FileUtils.getFileFromUri(this, videoUri);
+                String fileExtension = getFileExtension(originalFile != null ? originalFile.getName() : ".mp4");
+                runOnUiThread(() -> {
+                    // Start foreground service for upload
+                    Intent serviceIntent = new Intent(this, VideoUploadForegroundService.class);
+                    serviceIntent.setAction(VideoUploadForegroundService.ACTION_UPLOAD);
+                    serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_TITLE, title);
+                    serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_DESCRIPTION, description);
+                    serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_GAME_ID, gameId);
+                    serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_VIDEO_URI, videoUri.toString());
+                    serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_FILE_EXTENSION, fileExtension);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent);
+                    } else {
+                        startService(serviceIntent);
+                    }
+                    // Show progress bar
+                    uploadProgressBar.setVisibility(View.VISIBLE);
+                    uploadProgressBar.setIndeterminate(true);
+                    btnConfirmUpload.setEnabled(false);
+                });
+            }).start();
         });
 
         // BroadcastReceiver for upload progress
