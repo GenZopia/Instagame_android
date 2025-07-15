@@ -112,6 +112,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Set up the player for this video
         ReelItem item = reelItems.get(position);
         String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
+        if (videoUri == null || videoUri.isEmpty() || videoUri.equals(item.getVideoId())) {
+            // Show placeholder or error message
+            holder.playerView.setVisibility(View.INVISIBLE);
+            holder.tvTitle.setText("Video unavailable");
+            // Optionally set a placeholder image or background here
+            currentPlayingViewHolder = holder;
+            currentPlayingPosition = position;
+            isPausedByHold = false;
+            return;
+        }
+        holder.playerView.setVisibility(View.VISIBLE);
         sharedPlayer.setMediaItem(MediaItem.fromUri(videoUri));
         sharedPlayer.prepare();
         sharedPlayer.setPlayWhenReady(true);

@@ -46,6 +46,8 @@ public class DashboardFragment extends Fragment {
     private List<ReelItem> reelItems = new ArrayList<>();
     private RecyclerView reelView;
     private ReelRepository reelRepository;
+    private boolean isLoadingMore = false;
+    private boolean hasMore = true;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -86,23 +88,21 @@ public class DashboardFragment extends Fragment {
         });
 
         reelRepository = new ReelRepository();
-        // Load real data from Firebase using repository
-        reelRepository.fetchReels(new ReelRepository.ReelDataCallback() {
+        loadMoreReels();
+
+        // Add scroll listener for lazy loading
+        reelView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
-            public void onReelsLoaded(List<ReelItem> reels) {
-                if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> {
-                    reelItems.clear();
-                    reelItems.addAll(reels);
-                    if (reelAdapter != null) {
-                        reelAdapter.notifyDataSetChanged();
+            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+                LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+                if (layoutManager != null && hasMore && !isLoadingMore) {
+                    int visibleItemCount = layoutManager.getChildCount();
+                    int totalItemCount = layoutManager.getItemCount();
+                    int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
+                    if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount - 2 && firstVisibleItemPosition >= 0) {
+                        loadMoreReels();
                     }
-                });
-            }
-            @Override
-            public void onError(String errorMessage) {
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), errorMessage, Toast.LENGTH_SHORT).show();
                 }
             }
         });
@@ -110,6 +110,31 @@ public class DashboardFragment extends Fragment {
         return root;
     }
 
+    private void loadMoreReels() {
+        isLoadingMore = true;
+        reelRepository.fetchReelsPage(new ReelRepository.ReelDataCallback() {
+            @Override
+            public void onReelsLoaded(List<ReelItem> reels) {
+                if (!isAdded() || getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    int oldSize = reelItems.size();
+                    reelItems.addAll(reels);
+                    if (reelAdapter != null) {
+                        reelAdapter.notifyItemRangeInserted(oldSize, reels.size());
+                    }
+                    isLoadingMore = false;
+                    hasMore = reelRepository.hasMore();
+                });
+            }
+            @Override
+            public void onError(String errorMessage) {
+                isLoadingMore = false;
+                if (getContext() != null && isAdded()) {
+                    Toast.makeText(getContext(), errorMessage, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
 
     @Override
     public void onPause() {

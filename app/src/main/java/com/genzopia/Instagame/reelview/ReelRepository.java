@@ -17,6 +17,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Queue;
+import java.util.LinkedList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -30,12 +33,29 @@ public class ReelRepository {
         void onError(String errorMessage);
     }
 
-    public void fetchReels(ReelDataCallback callback) {
+    private static final int PAGE_SIZE = 10;
+    private static final int MAX_CONCURRENT_REQUESTS = 3;
+    private String lastKey = null;
+    private boolean isLoading = false;
+    private boolean hasMore = true;
+    private Queue<Runnable> requestQueue = new LinkedList<>();
+    private AtomicInteger runningRequests = new AtomicInteger(0);
+
+    public void fetchReelsPage(ReelDataCallback callback) {
+        if (isLoading || !hasMore) return;
+        isLoading = true;
         DatabaseReference videosRef = FirebaseDatabase.getInstance().getReference("videos");
-        videosRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        com.google.firebase.database.Query query;
+        if (lastKey == null) {
+            query = videosRef.orderByKey().limitToFirst(PAGE_SIZE);
+        } else {
+            query = videosRef.orderByKey().startAfter(lastKey).limitToFirst(PAGE_SIZE);
+        }
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 List<ReelItem> loadedReels = new ArrayList<>();
+                String newLastKey = null;
                 for (DataSnapshot videoSnap : snapshot.getChildren()) {
                     String videoId = videoSnap.getKey();
                     String description = videoSnap.child("description").getValue(String.class);
@@ -45,72 +65,120 @@ public class ReelRepository {
                     String developerId = videoSnap.child("userId").getValue(String.class);
                     ReelItem item = new ReelItem(videoId, title, likeCount, description, developerId, gameId);
                     loadedReels.add(item);
+                    newLastKey = videoId;
                 }
-                fetchSignedUrlsAndGameInfo(loadedReels, callback);
+                if (loadedReels.size() < PAGE_SIZE) {
+                    hasMore = false;
+                }
+                lastKey = newLastKey;
+                fetchSignedUrlsAndGameInfoPaged(loadedReels, callback);
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                isLoading = false;
                 callback.onError("Failed to load videos");
             }
         });
     }
 
-    private void fetchSignedUrlsAndGameInfo(List<ReelItem> items, ReelDataCallback callback) {
+    private void fetchSignedUrlsAndGameInfoPaged(List<ReelItem> items, ReelDataCallback callback) {
+        if (items.isEmpty()) {
+            isLoading = false;
+            callback.onReelsLoaded(items);
+            return;
+        }
         OkHttpClient client = new OkHttpClient();
         ConcurrentHashMap<ReelItem, Boolean> loadedMap = new ConcurrentHashMap<>();
         for (ReelItem item : items) {
             loadedMap.put(item, false);
-            String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + item.getVideoId() + ".mp4";
-            Request videoRequest = new Request.Builder().url(videoUrl).build();
-            client.newCall(videoRequest).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    Log.e("ReelRepository", "Signed URL fetch failed: " + e.getMessage());
-                    markItemLoaded(item, items, loadedMap, callback);
-                }
-
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    try {
-                        String body = response.body().string();
-                        JSONObject obj = new JSONObject(body);
-                        if (obj.optBoolean("success")) {
-                            item.setVideoUrl(obj.optString("url"));
-                        }
-                    } catch (Exception e) {
-                        Log.e("ReelRepository", "Error parsing signed URL response", e);
+            Runnable requestTask = () -> {
+                String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + item.getVideoId() + ".mp4";
+                Request videoRequest = new Request.Builder().url(videoUrl).build();
+                client.newCall(videoRequest).enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                        Log.e("ReelRepository", "Signed URL fetch failed: " + e.getMessage());
+                        markItemLoadedPaged(item, items, loadedMap, callback);
+                        onRequestFinished();
                     }
-                    fetchGameName(item, items, loadedMap, callback);
-                }
-            });
+
+                    @Override
+                    public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                        try {
+                            String body = response.body().string();
+                            JSONObject obj = new JSONObject(body);
+                            if (obj.optBoolean("success")) {
+                                item.setVideoUrl(obj.optString("url"));
+                            }
+                        } catch (Exception e) {
+                            Log.e("ReelRepository", "Error parsing signed URL response", e);
+                        }
+                        fetchGameNamePaged(item, items, loadedMap, callback);
+                        onRequestFinished();
+                    }
+                });
+            };
+            enqueueRequest(requestTask);
+        }
+        // Start initial batch
+        for (int i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
+            dequeueRequest();
         }
     }
 
-    private void fetchGameName(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
+    private void fetchGameNamePaged(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
         DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(item.getGameid());
         gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 // Optionally fetch and set game name if needed
-                markItemLoaded(item, items, loadedMap, callback);
+                markItemLoadedPaged(item, items, loadedMap, callback);
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                markItemLoaded(item, items, loadedMap, callback);
+                markItemLoadedPaged(item, items, loadedMap, callback);
             }
         });
     }
 
-    private void markItemLoaded(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
+    private void markItemLoadedPaged(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
         loadedMap.put(item, true);
-        checkAllItemsLoaded(items, loadedMap, callback);
+        checkAllItemsLoadedPaged(items, loadedMap, callback);
     }
 
-    private void checkAllItemsLoaded(List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
+    private void checkAllItemsLoadedPaged(List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
         for (ReelItem item : items) {
             if (!loadedMap.get(item)) return;
         }
+        isLoading = false;
         callback.onReelsLoaded(items);
+    }
+
+    private void enqueueRequest(Runnable requestTask) {
+        requestQueue.add(requestTask);
+    }
+    private void dequeueRequest() {
+        if (runningRequests.get() >= MAX_CONCURRENT_REQUESTS) return;
+        Runnable task = requestQueue.poll();
+        if (task != null) {
+            runningRequests.incrementAndGet();
+            task.run();
+        }
+    }
+    private void onRequestFinished() {
+        runningRequests.decrementAndGet();
+        dequeueRequest();
+    }
+
+    public boolean hasMore() {
+        return hasMore;
+    }
+    public void resetPagination() {
+        lastKey = null;
+        hasMore = true;
+        isLoading = false;
+        requestQueue.clear();
+        runningRequests.set(0);
     }
 } 
