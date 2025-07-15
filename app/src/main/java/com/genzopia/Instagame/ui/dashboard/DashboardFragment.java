@@ -100,7 +100,7 @@ public class DashboardFragment extends Fragment {
                     String description = videoSnap.child("description").getValue(String.class);
                     String likeCount = videoSnap.child("like_count").getValue(String.class);
                     String gameId = videoSnap.child("game_id").getValue(String.class);
-                    String title = videoSnap.child("file_name").getValue(String.class);
+                    String title = videoSnap.child("video_title").getValue(String.class);
                     String developerId = videoSnap.child("userId").getValue(String.class);
                     ReelItem item = new ReelItem(videoId, title, likeCount, description, developerId, gameId);
                     loadedReels.add(item);
