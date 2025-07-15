@@ -23,6 +23,9 @@
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
+    <!-- Foreground service and notification permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".webgl_gameloading.MyApplication"
@@ -84,6 +87,11 @@
         <activity
             android:name=".Post.VideoUploadInfoActivity"
             android:screenOrientation="portrait" />
+        <!-- Foreground upload service -->
+        <service
+            android:name=".Post.VideoUploadForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

@@ -1,5 +1,6 @@
 package com.genzopia.Instagame.Post;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -38,6 +39,10 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import com.bumptech.glide.Glide;
 import com.google.firebase.auth.FirebaseAuth;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 
 public class VideoUploadInfoActivity extends AppCompatActivity {
     private VideoView videoView;
@@ -55,6 +60,8 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private TextView gameTagText;
     private ArrayAdapter<String> gameAdapter;
     private List<String> gameNames = new ArrayList<>();
+    // Add mapping for game name to game id
+    private java.util.Map<String, String> gameNameToId = new java.util.HashMap<>();
     
     // TextInputLayout references for error display
     private TextInputLayout titleInputLayout;
@@ -67,6 +74,8 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     
     // Video upload variables
     private String videoUniqueId;
+    private LinearProgressIndicator uploadProgressBar;
+    private BroadcastReceiver uploadProgressReceiver;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -89,6 +98,9 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         titleInputLayout = findViewById(R.id.titleInputLayout);
         gameDropdownLayout = findViewById(R.id.gameDropdownLayout);
         descInputLayout = findViewById(R.id.descInputLayout);
+        uploadProgressBar = findViewById(R.id.uploadProgressBar);
+        uploadProgressBar.setVisibility(View.GONE);
+        uploadProgressBar.setIndeterminate(true);
 
         editbutton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -134,15 +146,20 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         gameAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, gameNames);
         gameDropdown.setAdapter(gameAdapter);
 
-        // Fetch game names from Firebase
+        // Fetch game names and ids from Firebase
         DatabaseReference gamesRef = FirebaseDatabase.getInstance().getReference("games");
         gamesRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 gameNames.clear();
+                gameNameToId.clear();
                 for (DataSnapshot gameSnap : snapshot.getChildren()) {
                     String name = gameSnap.child("game_name").getValue(String.class);
-                    if (name != null) gameNames.add(name);
+                    String id = gameSnap.getKey();
+                    if (name != null && id != null) {
+                        gameNames.add(name);
+                        gameNameToId.put(name, id);
+                    }
                 }
                 gameAdapter.notifyDataSetChanged();
             }
@@ -236,9 +253,55 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                 return;
             }
             
-            // All validations passed, proceed with upload
-            doUploadWithInfo(title, description, "@" + matchedGame);
+            // Get the game id for the matched game
+            String gameId = gameNameToId.get(matchedGame);
+            // Get file extension
+            File originalFile = FileUtils.getFileFromUri(this, videoUri);
+            String fileExtension = getFileExtension(originalFile != null ? originalFile.getName() : ".mp4");
+            // Start foreground service for upload
+            Intent serviceIntent = new Intent(this, VideoUploadForegroundService.class);
+            serviceIntent.setAction(VideoUploadForegroundService.ACTION_UPLOAD);
+            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_TITLE, title);
+            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_DESCRIPTION, description);
+            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_GAME_ID, gameId);
+            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_VIDEO_URI, videoUri.toString());
+            serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_FILE_EXTENSION, fileExtension);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+            // Show progress bar
+            uploadProgressBar.setVisibility(View.VISIBLE);
+            uploadProgressBar.setIndeterminate(true);
+            btnConfirmUpload.setEnabled(false);
         });
+
+        // BroadcastReceiver for upload progress
+        uploadProgressReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.hasExtra(VideoUploadForegroundService.EXTRA_PROGRESS)) {
+                    int progress = intent.getIntExtra(VideoUploadForegroundService.EXTRA_PROGRESS, 0);
+                    uploadProgressBar.setVisibility(View.VISIBLE);
+                    uploadProgressBar.setIndeterminate(false);
+                    uploadProgressBar.setProgressCompat(progress, true);
+                }
+                if (intent.hasExtra(VideoUploadForegroundService.EXTRA_RESULT)) {
+                    String result = intent.getStringExtra(VideoUploadForegroundService.EXTRA_RESULT);
+                    uploadProgressBar.setVisibility(View.GONE);
+                    btnConfirmUpload.setEnabled(true);
+                    if ("success".equals(result)) {
+                        Toast.makeText(context, "Upload succeeded!", Toast.LENGTH_LONG).show();
+                        finish();
+                    } else if ("fail".equals(result)) {
+                        Toast.makeText(context, "Upload failed!", Toast.LENGTH_LONG).show();
+                    } else if ("cancelled".equals(result)) {
+                        Toast.makeText(context, "Upload cancelled.", Toast.LENGTH_LONG).show();
+                    }
+                }
+            }
+        };
     }
 
     private void fetchUserData() {
@@ -283,56 +346,6 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         userRef.addValueEventListener(userListener);
     }
 
-    private void doUploadWithInfo(String title, String description, String gameTag) {
-        File originalFile = FileUtils.getFileFromUri(this, videoUri);
-        if (originalFile == null) {
-            Toast.makeText(this, "Unable to read file", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        // Create renamed file with unique ID
-        String fileExtension = getFileExtension(originalFile.getName());
-        File renamedFile = new File(getCacheDir(), videoUniqueId + fileExtension);
-        
-        try {
-            // Copy the original file to the renamed file
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Files.copy(originalFile.toPath(), renamedFile.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (Exception e) {
-            Toast.makeText(this, "Error preparing file for upload", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        btnConfirmUpload.setEnabled(false);
-        btnConfirmUpload.setText("Uploading...");
-        
-        FileUploader.uploadFileToWorker(
-                renamedFile,
-                "video",
-                Map.of(
-                        "video_id", videoUniqueId,
-                        "title", title,
-                        "description", description,
-                        "game_tag", gameTag
-                ),
-                (success, response) -> runOnUiThread(() -> {
-                    btnConfirmUpload.setEnabled(true);
-                    btnConfirmUpload.setText("Upload");
-                    if (success) {
-                        Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
-                        // Clean up the renamed file
-                        renamedFile.delete();
-                        finish();
-                    } else {
-                        Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
-                        // Clean up the renamed file on failure too
-                        renamedFile.delete();
-                    }
-                })
-        );
-    }
     
     private String getFileExtension(String fileName) {
         int lastDotIndex = fileName.lastIndexOf('.');
@@ -340,6 +353,19 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             return fileName.substring(lastDotIndex);
         }
         return ".mp4"; // Default extension
+    }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerReceiver(uploadProgressReceiver, new IntentFilter(VideoUploadForegroundService.BROADCAST_PROGRESS));
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterReceiver(uploadProgressReceiver);
     }
 
     @Override

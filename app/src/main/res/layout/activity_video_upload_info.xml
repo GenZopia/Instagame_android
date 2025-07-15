@@ -5,6 +5,19 @@
     android:layout_height="match_parent"
     android:background="?android:colorBackground">
 
+    <!-- Upload Progress Bar -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/uploadProgressBar"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="0dp"
+        android:visibility="gone"
+        app:trackColor="@color/black"
+        app:indicatorColor="@color/instagram_orange"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Video Thumbnail with overlay -->
     <FrameLayout
         android:id="@+id/videoThumbContainer"
