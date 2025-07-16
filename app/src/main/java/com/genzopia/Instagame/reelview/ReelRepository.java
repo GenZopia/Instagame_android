@@ -89,7 +89,41 @@ public class ReelRepository {
         }
         OkHttpClient client = new OkHttpClient();
         ConcurrentHashMap<ReelItem, Boolean> loadedMap = new ConcurrentHashMap<>();
-        for (ReelItem item : items) {
+        // Prioritize the first video
+        ReelItem firstItem = items.get(0);
+        loadedMap.put(firstItem, false);
+        String firstVideoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + firstItem.getVideoId() + ".mp4";
+        Request firstVideoRequest = new Request.Builder().url(firstVideoUrl).build();
+        client.newCall(firstVideoRequest).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("ReelRepository", "Signed URL fetch failed: " + e.getMessage());
+                markItemLoadedPaged(firstItem, items, loadedMap, callback);
+                // After first, start the rest
+                fetchRestSignedUrls(items, loadedMap, client, callback, 1);
+            }
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                try {
+                    String body = response.body().string();
+                    JSONObject obj = new JSONObject(body);
+                    if (obj.optBoolean("success")) {
+                        firstItem.setVideoUrl(obj.optString("url"));
+                    }
+                } catch (Exception e) {
+                    Log.e("ReelRepository", "Error parsing signed URL response", e);
+                }
+                fetchGameNamePaged(firstItem, items, loadedMap, callback);
+                // After first, start the rest
+                fetchRestSignedUrls(items, loadedMap, client, callback, 1);
+            }
+        });
+    }
+
+    // Helper to queue the rest of the videos (from startIdx)
+    private void fetchRestSignedUrls(List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, OkHttpClient client, ReelDataCallback callback, int startIdx) {
+        for (int i = startIdx; i < items.size(); i++) {
+            ReelItem item = items.get(i);
             loadedMap.put(item, false);
             Runnable requestTask = () -> {
                 String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + item.getVideoId() + ".mp4";
@@ -101,7 +135,6 @@ public class ReelRepository {
                         markItemLoadedPaged(item, items, loadedMap, callback);
                         onRequestFinished();
                     }
-
                     @Override
                     public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                         try {
