@@ -35,6 +35,7 @@ public class VideoUploadForegroundService extends Service {
     public static final String EXTRA_GAME_ID = "game_id";
     public static final String EXTRA_VIDEO_URI = "video_uri";
     public static final String EXTRA_FILE_EXTENSION = "file_extension";
+    public static final String DEVID = "dev_id";
     public static final String EXTRA_RESULT = "result";
 
     private boolean isCancelled = false;
@@ -54,7 +55,8 @@ public class VideoUploadForegroundService extends Service {
             String gameId = intent.getStringExtra(EXTRA_GAME_ID);
             String videoUriString = intent.getStringExtra(EXTRA_VIDEO_URI);
             String fileExtension = intent.getStringExtra(EXTRA_FILE_EXTENSION);
-            uploadVideo(title, description, gameId, videoUriString, fileExtension);
+            String devid=intent.getStringExtra(DEVID);
+            uploadVideo(title, description, gameId, videoUriString, fileExtension,devid);
         } else if (intent != null && ACTION_CANCEL.equals(intent.getAction())) {
             isCancelled = true;
             stopForeground(true);
@@ -63,7 +65,7 @@ public class VideoUploadForegroundService extends Service {
         return START_NOT_STICKY;
     }
 
-    private void uploadVideo(String title, String description, String gameId, String videoUriString, String fileExtension) {
+    private void uploadVideo(String title, String description, String gameId, String videoUriString, String fileExtension,String devid) {
         new Thread(() -> {
             try {
                 String videoUniqueId = "video_" + UUID.randomUUID().toString().replace("-", "");
@@ -98,7 +100,7 @@ public class VideoUploadForegroundService extends Service {
                         "game_id", gameId
                 ), (success, response) -> {
                     if (success) {
-                        saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId);
+                        saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId,devid);
                         renamedFile.delete();
                         showNotification(100, true);
                         sendResult("success");
@@ -166,8 +168,9 @@ public class VideoUploadForegroundService extends Service {
         sendBroadcast(intent);
     }
 
-    private void saveVideoMetadataToFirebase(String title, String description, String gameId, File file, String fileExtension, String videoUniqueId) {
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+    private void saveVideoMetadataToFirebase(String title, String description, String gameId, File file, String fileExtension, String videoUniqueId,String devid) {
+
+
         String now = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault()).format(new Date());
         String videoId = videoUniqueId + fileExtension;
         DatabaseReference videosRef = FirebaseDatabase.getInstance().getReference("videos").child(videoUniqueId);
@@ -179,7 +182,7 @@ public class VideoUploadForegroundService extends Service {
         videoData.put("is_verified", false);
         videoData.put("like_count", "0");
         videoData.put("share_count", "0");
-        videoData.put("user_id", userId);
+        videoData.put("user_id", devid);
         videoData.put("video_id", videoId);
         videoData.put("video_title", title);
         videoData.put("view_count", "0");

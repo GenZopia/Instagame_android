@@ -51,6 +51,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private ChipGroup gameTagChipGroup;
     private MaterialButton btnConfirmUpload;
     private Uri videoUri;
+
     // User info views
     private CircleImageView userAvatar;
     private TextView userName;
@@ -62,6 +63,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     private List<String> gameNames = new ArrayList<>();
     // Add mapping for game name to game id
     private java.util.Map<String, String> gameNameToId = new java.util.HashMap<>();
+    private String devid="";
     
     // TextInputLayout references for error display
     private TextInputLayout titleInputLayout;
@@ -71,6 +73,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     // Firebase references
     private DatabaseReference userRef;
     private ValueEventListener userListener;
+
     
     // Video upload variables
     private String videoUniqueId;
@@ -155,6 +158,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                 gameNameToId.clear();
                 for (DataSnapshot gameSnap : snapshot.getChildren()) {
                     String name = gameSnap.child("game_name").getValue(String.class);
+                    devid=gameSnap.child("user_id").getValue(String.class);
                     String id = gameSnap.getKey();
                     if (name != null && id != null) {
                         gameNames.add(name);
@@ -255,6 +259,8 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             
             // Get the game id for the matched game
             String gameId = gameNameToId.get(matchedGame);
+            if(this.devid!=""){
+            String devid=this.devid;}
             // Move file I/O to background thread
             new Thread(() -> {
                 File originalFile = FileUtils.getFileFromUri(this, videoUri);
@@ -263,6 +269,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                     // Start foreground service for upload
                     Intent serviceIntent = new Intent(this, VideoUploadForegroundService.class);
                     serviceIntent.setAction(VideoUploadForegroundService.ACTION_UPLOAD);
+                    serviceIntent.putExtra(VideoUploadForegroundService.DEVID,devid);
                     serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_TITLE, title);
                     serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_DESCRIPTION, description);
                     serviceIntent.putExtra(VideoUploadForegroundService.EXTRA_GAME_ID, gameId);
