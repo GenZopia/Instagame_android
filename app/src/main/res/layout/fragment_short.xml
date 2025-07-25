@@ -5,6 +5,20 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
+    <Button
+        android:id="@+id/btn_request_camera_permission"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="32dp"
+        android:backgroundTint="@color/button_primary"
+        android:textColor="@color/white"
+        android:text="@string/grant_camera_permission"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"

@@ -16,6 +16,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Toast;
@@ -58,6 +59,8 @@ public class ShortsFragment extends Fragment {
     private ImageButton closeButton;
     private ImageButton torchButton;
     private ProgressBar recordProgressBar;
+    private Button btnRequestCameraPermission;
+    private static final int REQUEST_CAMERA_PERMISSION = 2001;
 
     private VideoCapture<Recorder> videoCapture;
     private Recording currentRecording;
@@ -100,6 +103,7 @@ public class ShortsFragment extends Fragment {
         closeButton = view.findViewById(R.id.closeButton);
         torchButton = view.findViewById(R.id.torchButton);
         recordProgressBar = view.findViewById(R.id.recordProgressBar);
+        btnRequestCameraPermission = view.findViewById(R.id.btn_request_camera_permission);
 
         // Initialize camera executor and progress handler
         cameraExecutor = ContextCompat.getMainExecutor(requireContext());
@@ -112,9 +116,9 @@ public class ShortsFragment extends Fragment {
         setupCloseButton();
         setupTorchButton();
 
-        // Check permissions and start camera
-        checkPermissionsAndStart();
+        btnRequestCameraPermission.setOnClickListener(v -> requestCameraPermission());
 
+        updateCameraPermissionUI();
         return view;
     }
 
@@ -338,6 +342,62 @@ public class ShortsFragment extends Fragment {
             intent.putExtra("video_uri", lastRecordedVideoUri.toString());
             intent.putExtra("is_recorded_video", true);
             startActivity(intent);
+        }
+    }
+
+    private void updateCameraPermissionUI() {
+        if (hasCameraPermission()) {
+            previewView.setVisibility(View.VISIBLE);
+            recordButton.setVisibility(View.VISIBLE);
+            switchCameraButton.setVisibility(View.VISIBLE);
+            closeButton.setVisibility(View.VISIBLE);
+            torchButton.setVisibility(View.VISIBLE);
+            recordProgressBar.setVisibility(View.VISIBLE);
+            btnRequestCameraPermission.setVisibility(View.GONE);
+            checkPermissionsAndStart();
+        } else {
+            previewView.setVisibility(View.GONE);
+            recordButton.setVisibility(View.GONE);
+            switchCameraButton.setVisibility(View.GONE);
+            closeButton.setVisibility(View.GONE);
+            torchButton.setVisibility(View.GONE);
+            recordProgressBar.setVisibility(View.GONE);
+            btnRequestCameraPermission.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private boolean hasCameraPermission() {
+        boolean cameraGranted = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        boolean audioGranted = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        return cameraGranted && audioGranted;
+    }
+
+    private void requestCameraPermission() {
+        List<String> permissions = new ArrayList<>();
+        permissions.add(Manifest.permission.CAMERA);
+        permissions.add(Manifest.permission.RECORD_AUDIO);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+        requestPermissions(permissions.toArray(new String[0]), REQUEST_CAMERA_PERMISSION);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            if (allGranted) {
+                updateCameraPermissionUI();
+            } else {
+                Toast.makeText(requireContext(), getString(R.string.permission_camera_rationale), Toast.LENGTH_SHORT).show();
+            }
         }
     }
 

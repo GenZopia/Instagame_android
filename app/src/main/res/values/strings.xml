@@ -3,4 +3,8 @@
     <string name="title_home">Home</string>
     <string name="title_dashboard">Dashboard</string>
     <string name="title_notifications">Notifications</string>
+    <string name="permission_storage_rationale">Storage permission is required to show your videos.</string>
+    <string name="permission_camera_rationale">Camera permission is required to record videos.</string>
+    <string name="grant_storage_permission">Grant Storage Permission</string>
+    <string name="grant_camera_permission">Grant Camera Permission</string>
 </resources>
