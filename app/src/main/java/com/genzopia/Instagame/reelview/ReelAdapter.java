@@ -3,6 +3,7 @@ package com.genzopia.Instagame.reelview;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -20,6 +21,11 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.PlaybackException;
 
 import java.util.List;
 
@@ -98,44 +104,45 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
     private void playVideoAtPosition(int position) {
         if (position < 0 || position >= reelItems.size()) return;
-        
-        // If already playing this position, do nothing
         if (currentPlayingPosition == position) return;
-        
-        // Pause current video and detach player
         pauseCurrentVideo();
-        
-        // Get the holder for this position
         ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
         if (holder == null) return;
-        
-        // Set up the player for this video
         ReelItem item = reelItems.get(position);
         String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
         if (videoUri == null || videoUri.isEmpty() || videoUri.equals(item.getVideoId())) {
-            // Show placeholder or error message
             holder.playerView.setVisibility(View.INVISIBLE);
             holder.tvTitle.setText("Video unavailable");
-            // Optionally set a placeholder image or background here
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             isPausedByHold = false;
             return;
         }
         holder.playerView.setVisibility(View.VISIBLE);
-        sharedPlayer.setMediaItem(MediaItem.fromUri(videoUri));
+        Log.e("test5557","videouri="+videoUri+"   laodingurl="+MediaItem.fromUri(videoUri));
+        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+        MediaItem mediaItem = MediaItem.fromUri(videoUri);
+        MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+        sharedPlayer.setMediaSource(hlsSource);
         sharedPlayer.prepare();
         sharedPlayer.setPlayWhenReady(true);
-        
-        // Attach player to the holder's PlayerView
+        sharedPlayer.addListener(new Player.Listener() {
+            boolean triedFallback = false;
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                if (!triedFallback) {
+                    triedFallback = true;
+                    MediaSource mp4Source = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+                    sharedPlayer.setMediaSource(mp4Source);
+                    sharedPlayer.prepare();
+                    sharedPlayer.setPlayWhenReady(true);
+                }
+            }
+        });
         holder.playerView.setPlayer(sharedPlayer);
-        
-        // Update current playing state
         currentPlayingViewHolder = holder;
         currentPlayingPosition = position;
         isPausedByHold = false;
-        
-        // Start progress updates
         holder.startProgressUpdates();
     }
 

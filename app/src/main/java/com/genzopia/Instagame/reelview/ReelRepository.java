@@ -92,7 +92,8 @@ public class ReelRepository {
         // Prioritize the first video
         ReelItem firstItem = items.get(0);
         loadedMap.put(firstItem, false);
-        String firstVideoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + firstItem.getVideoId() + ".mp4";
+        String firstVideoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + firstItem.getVideoId() ;
+        Log.e("test5555",firstVideoUrl);
         Request firstVideoRequest = new Request.Builder().url(firstVideoUrl).build();
         client.newCall(firstVideoRequest).enqueue(new Callback() {
             @Override
@@ -126,7 +127,8 @@ public class ReelRepository {
             ReelItem item = items.get(i);
             loadedMap.put(item, false);
             Runnable requestTask = () -> {
-                String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + item.getVideoId() + ".mp4";
+                String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + item.getVideoId() ;
+                Log.e("test5556",videoUrl);
                 Request videoRequest = new Request.Builder().url(videoUrl).build();
                 client.newCall(videoRequest).enqueue(new Callback() {
                     @Override

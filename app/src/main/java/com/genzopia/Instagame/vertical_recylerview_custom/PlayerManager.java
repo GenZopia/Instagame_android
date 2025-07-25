@@ -6,6 +6,11 @@ import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.PlaybackException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,9 +31,29 @@ public class PlayerManager {
         }
 
         SimpleExoPlayer player = new SimpleExoPlayer.Builder(context).build();
-        player.setMediaItem(MediaItem.fromUri(videoUrl));
+        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+        MediaItem mediaItem = MediaItem.fromUri(videoUrl);
+
+        // Try HLS first
+        MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+        player.setMediaSource(hlsSource);
         player.prepare();
         player.setRepeatMode(Player.REPEAT_MODE_ONE);
+
+        // Add fallback to MP4 if HLS fails
+        player.addListener(new Player.Listener() {
+            boolean triedFallback = false;
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                if (!triedFallback) {
+                    triedFallback = true;
+                    MediaSource mp4Source = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+                    player.setMediaSource(mp4Source);
+                    player.prepare();
+                    player.setPlayWhenReady(true);
+                }
+            }
+        });
 
         playerMap.put(videoId, player);
         return player;
