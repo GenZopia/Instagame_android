@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <!-- Folder body -->
+    <path
+        android:fillColor="#FF6B35"
+        android:pathData="M8,28h56a4,4 0 0 1 4,4v24a4,4 0 0 1 -4,4h-56a4,4 0 0 1 -4,-4v-24a4,4 0 0 1 4,-4z"/>
+    <!-- Folder tab (rectangle) -->
+    <path
+        android:fillColor="#FF8A65"
+        android:pathData="M8,20h24v12h-24z"/>
+    <!-- Gallery image (rectangle) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,40h32v16h-32z"/>
+</vector> 

@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -20,6 +21,8 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Toast;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -72,6 +75,9 @@ public class ShortsFragment extends Fragment {
     private Camera camera;
     private boolean isTorchOn = false;
 
+    private ViewGroup rootContainer;
+    private View permissionPromptView;
+
     private final ActivityResultLauncher<String[]> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(),
                     result -> {
@@ -95,7 +101,7 @@ public class ShortsFragment extends Fragment {
                            ViewGroup container,
                            Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_short, container, false);
-
+        rootContainer = (ViewGroup) view;
         // Initialize views
         previewView = view.findViewById(R.id.previewView);
         recordButton = view.findViewById(R.id.recordButton);
@@ -104,20 +110,15 @@ public class ShortsFragment extends Fragment {
         torchButton = view.findViewById(R.id.torchButton);
         recordProgressBar = view.findViewById(R.id.recordProgressBar);
         btnRequestCameraPermission = view.findViewById(R.id.btn_request_camera_permission);
-
         // Initialize camera executor and progress handler
         cameraExecutor = ContextCompat.getMainExecutor(requireContext());
         progressHandler = new Handler(Looper.getMainLooper());
         currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
-
         // Set up click listeners
         setupRecordButton();
         setupSwitchCameraButton();
         setupCloseButton();
         setupTorchButton();
-
-        btnRequestCameraPermission.setOnClickListener(v -> requestCameraPermission());
-
         updateCameraPermissionUI();
         return view;
     }
@@ -347,22 +348,45 @@ public class ShortsFragment extends Fragment {
 
     private void updateCameraPermissionUI() {
         if (hasCameraPermission()) {
-            previewView.setVisibility(View.VISIBLE);
-            recordButton.setVisibility(View.VISIBLE);
-            switchCameraButton.setVisibility(View.VISIBLE);
-            closeButton.setVisibility(View.VISIBLE);
-            torchButton.setVisibility(View.VISIBLE);
-            recordProgressBar.setVisibility(View.VISIBLE);
-            btnRequestCameraPermission.setVisibility(View.GONE);
+            showCameraUI();
             checkPermissionsAndStart();
         } else {
-            previewView.setVisibility(View.GONE);
-            recordButton.setVisibility(View.GONE);
-            switchCameraButton.setVisibility(View.GONE);
-            closeButton.setVisibility(View.GONE);
-            torchButton.setVisibility(View.GONE);
-            recordProgressBar.setVisibility(View.GONE);
-            btnRequestCameraPermission.setVisibility(View.VISIBLE);
+            showPermissionPrompt();
+        }
+    }
+
+    private void showCameraUI() {
+        previewView.setVisibility(View.VISIBLE);
+        recordButton.setVisibility(View.VISIBLE);
+        switchCameraButton.setVisibility(View.VISIBLE);
+        closeButton.setVisibility(View.VISIBLE);
+        torchButton.setVisibility(View.VISIBLE);
+        recordProgressBar.setVisibility(View.VISIBLE);
+        if (permissionPromptView != null) {
+            rootContainer.removeView(permissionPromptView);
+            permissionPromptView = null;
+        }
+    }
+
+    private void showPermissionPrompt() {
+        previewView.setVisibility(View.GONE);
+        recordButton.setVisibility(View.GONE);
+        switchCameraButton.setVisibility(View.GONE);
+        closeButton.setVisibility(View.GONE);
+        torchButton.setVisibility(View.GONE);
+        recordProgressBar.setVisibility(View.GONE);
+        if (permissionPromptView == null) {
+            LayoutInflater inflater = LayoutInflater.from(requireContext());
+            permissionPromptView = inflater.inflate(R.layout.permission_prompt, rootContainer, false);
+            ImageView icon = permissionPromptView.findViewById(R.id.iv_permission_icon);
+            TextView title = permissionPromptView.findViewById(R.id.tv_permission_title);
+            TextView desc = permissionPromptView.findViewById(R.id.tv_permission_desc);
+            Button btnSettings = permissionPromptView.findViewById(R.id.btn_open_settings);
+            icon.setImageResource(R.drawable.ic_permission_camera_mic);
+            title.setText(getString(R.string.permission_camera_title, getString(R.string.app_name)));
+            desc.setText(getString(R.string.permission_camera_desc));
+            btnSettings.setOnClickListener(v -> requestCameraPermission());
+            rootContainer.addView(permissionPromptView);
         }
     }
 

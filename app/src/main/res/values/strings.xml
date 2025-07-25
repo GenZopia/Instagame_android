@@ -7,4 +7,9 @@
     <string name="permission_camera_rationale">Camera permission is required to record videos.</string>
     <string name="grant_storage_permission">Grant Storage Permission</string>
     <string name="grant_camera_permission">Grant Camera Permission</string>
+    <string name="permission_camera_title">Allow %1$s to access your camera and microphone</string>
+    <string name="permission_camera_desc">This lets you record and share videos. You can change this anytime in your device settings.</string>
+    <string name="permission_storage_title">Allow %1$s to access your photos and videos</string>
+    <string name="permission_storage_desc">This lets you select and upload videos. You can change this anytime in your device settings.</string>
+    <string name="open_settings">Open Settings</string>
 </resources>

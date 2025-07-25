@@ -29,6 +29,9 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import androidx.core.content.ContextCompat;
+import android.provider.Settings;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 public class VideosFragment extends Fragment {
 
@@ -38,40 +41,34 @@ public class VideosFragment extends Fragment {
     private Uri selectedVideoUri = null;
     private Button btnRequestStoragePermission;
     private static final int REQUEST_VIDEO_PERMISSION = 1001;
+    private ViewGroup rootContainer;
+    private View permissionPromptView;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container,
                              Bundle savedInstanceState) {
         View root = inflater.inflate(R.layout.fragment_videos_upload, container, false);
-
+        rootContainer = (ViewGroup) root;
         recyclerView = root.findViewById(R.id.rv_videos);
         recyclerView.setLayoutManager(new GridLayoutManager(requireContext(), 3));
         btnRequestStoragePermission = root.findViewById(R.id.btn_request_storage_permission);
-
         adapter = new VideosAdapter_gallery(requireContext(), videoUris, uri -> {
-            // Launch preview activity on tap
             Intent i = new Intent(requireContext(), VideoPreviewActivity.class);
             i.putExtra("video_uri", uri.toString());
             startActivity(i);
         });
-
         recyclerView.setAdapter(adapter);
-
-        btnRequestStoragePermission.setOnClickListener(v -> requestVideoPermission());
-
         updatePermissionUI();
         return root;
     }
 
     private void updatePermissionUI() {
         if (hasVideoPermission()) {
-            recyclerView.setVisibility(View.VISIBLE);
-            btnRequestStoragePermission.setVisibility(View.GONE);
+            showVideoList();
             loadAllVideos();
         } else {
-            recyclerView.setVisibility(View.GONE);
-            btnRequestStoragePermission.setVisibility(View.VISIBLE);
+            showPermissionPrompt();
         }
     }
 
@@ -153,6 +150,31 @@ public class VideosFragment extends Fragment {
                 });
             });
         }).start();
+    }
+
+    private void showVideoList() {
+        recyclerView.setVisibility(View.VISIBLE);
+        if (permissionPromptView != null) {
+            rootContainer.removeView(permissionPromptView);
+            permissionPromptView = null;
+        }
+    }
+
+    private void showPermissionPrompt() {
+        recyclerView.setVisibility(View.GONE);
+        if (permissionPromptView == null) {
+            LayoutInflater inflater = LayoutInflater.from(requireContext());
+            permissionPromptView = inflater.inflate(R.layout.permission_prompt, rootContainer, false);
+            ImageView icon = permissionPromptView.findViewById(R.id.iv_permission_icon);
+            TextView title = permissionPromptView.findViewById(R.id.tv_permission_title);
+            TextView desc = permissionPromptView.findViewById(R.id.tv_permission_desc);
+            Button btnSettings = permissionPromptView.findViewById(R.id.btn_open_settings);
+            icon.setImageResource(R.drawable.ic_permission_storage);
+            title.setText(getString(R.string.permission_storage_title, getString(R.string.app_name)));
+            desc.setText(getString(R.string.permission_storage_desc));
+            btnSettings.setOnClickListener(v -> requestVideoPermission());
+            rootContainer.addView(permissionPromptView);
+        }
     }
 }
 
