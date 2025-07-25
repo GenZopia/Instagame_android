@@ -89,36 +89,8 @@ public class ReelRepository {
         }
         OkHttpClient client = new OkHttpClient();
         ConcurrentHashMap<ReelItem, Boolean> loadedMap = new ConcurrentHashMap<>();
-        // Prioritize the first video
-        ReelItem firstItem = items.get(0);
-        loadedMap.put(firstItem, false);
-        String firstVideoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + firstItem.getVideoId() ;
-        Log.e("test5555",firstVideoUrl);
-        Request firstVideoRequest = new Request.Builder().url(firstVideoUrl).build();
-        client.newCall(firstVideoRequest).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e("ReelRepository", "Signed URL fetch failed: " + e.getMessage());
-                markItemLoadedPaged(firstItem, items, loadedMap, callback);
-                // After first, start the rest
-                fetchRestSignedUrls(items, loadedMap, client, callback, 1);
-            }
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                try {
-                    String body = response.body().string();
-                    JSONObject obj = new JSONObject(body);
-                    if (obj.optBoolean("success")) {
-                        firstItem.setVideoUrl(obj.optString("url"));
-                    }
-                } catch (Exception e) {
-                    Log.e("ReelRepository", "Error parsing signed URL response", e);
-                }
-                fetchGameNamePaged(firstItem, items, loadedMap, callback);
-                // After first, start the rest
-                fetchRestSignedUrls(items, loadedMap, client, callback, 1);
-            }
-        });
+        // Fetch all video URLs in parallel, no special handling for the first video
+        fetchRestSignedUrls(items, loadedMap, client, callback, 0);
     }
 
     // Helper to queue the rest of the videos (from startIdx)

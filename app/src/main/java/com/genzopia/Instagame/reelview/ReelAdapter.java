@@ -343,13 +343,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
-                // Toggle play/pause on single tap
+                // Toggle mute/unmute on single tap
                 if (currentPlayingPosition == position) {
                     if (sharedPlayer != null) {
-                        if (sharedPlayer.isPlaying()) {
-                            sharedPlayer.setPlayWhenReady(false);
+                        float currentVolume = sharedPlayer.getVolume();
+                        if (currentVolume > 0f) {
+                            sharedPlayer.setVolume(0f); // Mute
                         } else {
-                            sharedPlayer.setPlayWhenReady(true);
+                            sharedPlayer.setVolume(1f); // Unmute
                         }
                     }
                 }

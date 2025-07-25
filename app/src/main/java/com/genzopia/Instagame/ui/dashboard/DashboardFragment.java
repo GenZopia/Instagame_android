@@ -121,6 +121,10 @@ public class DashboardFragment extends Fragment {
                     reelItems.addAll(reels);
                     if (reelAdapter != null) {
                         reelAdapter.notifyItemRangeInserted(oldSize, reels.size());
+                        // If this is the initial load, play the first video
+                        if (oldSize == 0 && reels.size() > 0) {
+                            reelView.post(() -> reelAdapter.ensureOnlyCurrentVideoPlays());
+                        }
                     }
                     isLoadingMore = false;
                     hasMore = reelRepository.hasMore();
