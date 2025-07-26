@@ -166,9 +166,20 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // Remove PlayerView from any old parent
             ViewGroup parent = (ViewGroup) playerView.getParent();
             if (parent != null) parent.removeView(playerView);
-            // Add PlayerView to the new container
-            videoHolder.videoContainer.removeAllViews();
+            
+            // Remove only the PlayerView and thumbnail, keep progress container
+            for (int i = videoHolder.videoContainer.getChildCount() - 1; i >= 0; i--) {
+                View child = videoHolder.videoContainer.getChildAt(i);
+                if (child instanceof com.google.android.exoplayer2.ui.PlayerView || 
+                    child.getId() == R.id.playerView || 
+                    child.getId() == R.id.thumbnail) {
+                    videoHolder.videoContainer.removeViewAt(i);
+                }
+            }
+            
+            // Add PlayerView to the container
             videoHolder.videoContainer.addView(playerView);
+            
             // Pass the global ExoPlayer to the ViewHolder
             videoHolder.setupSeekBarAndTouchControls(playerView, exoPlayer);
         }

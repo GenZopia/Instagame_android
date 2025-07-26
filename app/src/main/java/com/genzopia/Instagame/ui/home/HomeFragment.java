@@ -200,29 +200,14 @@ public class HomeFragment extends Fragment {
         if (item instanceof VideoItem) {
             VideoItem videoItem = (VideoItem) item;
             
-            // Save current video position before switching
-            if (currentPlayingPosition != RecyclerView.NO_POSITION && currentPlayingPosition < verticalAdapter.getItemCount()) {
-                Object currentItem = verticalAdapter.getItem(currentPlayingPosition);
-                if (currentItem instanceof VideoItem) {
-                    VideoItem currentVideo = (VideoItem) currentItem;
-                    long currentPosition = exoPlayer.getCurrentPosition();
-                    videoPositions.put(currentVideo.id, currentPosition);
-                }
-            }
-            
             // Only switch if new
             if (currentPlayingPosition != playIndex) {
-                // Load the video and resume from saved position or start from beginning
+                // Load the video and always start from beginning for now
                 exoPlayer.setMediaItem(MediaItem.fromUri(videoItem.videoUrl));
                 exoPlayer.prepare();
                 
-                // Resume from saved position or start from beginning
-                Long savedPosition = videoPositions.get(videoItem.id);
-                if (savedPosition != null && savedPosition > 0) {
-                    exoPlayer.seekTo(savedPosition);
-                } else {
-                    exoPlayer.seekTo(0); // First time watching, start from beginning
-                }
+                // Always start from beginning for simple control
+                exoPlayer.seekTo(0);
                 
                 exoPlayer.play(); // Start playing
                 verticalAdapter.attachPlayerViewTo(playIndex, playerView);
