@@ -28,13 +28,11 @@ import de.hdodenhof.circleimageview.CircleImageView;
 
 public class VideoViewHolder extends RecyclerView.ViewHolder {
     FrameLayout videoContainer;
-    ImageView thumbnail;
     PlayerView playerView;
     CircleImageView channelIcon;
     TextView title;
     TextView channelName;
     TextView viewsAndTime;
-    private final PlayerManager playerManager = PlayerManager.getInstance();
     private VideoItem currentItem;
 
     @SuppressLint("ClickableViewAccessibility")
@@ -42,7 +40,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         super(itemView);
 
         videoContainer = itemView.findViewById(R.id.videoContainer);
-        thumbnail      = itemView.findViewById(R.id.thumbnail);
         playerView     = itemView.findViewById(R.id.playerView);
         channelIcon    = itemView.findViewById(R.id.channelIcon);
         title          = itemView.findViewById(R.id.title);
@@ -70,14 +67,10 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void bind(VideoItem videoItem, Context context) {
         this.currentItem = videoItem;
-        // Always show thumbnail by default
-        thumbnail.setVisibility(View.VISIBLE);
-        // load assets
-        Glide.with(context)
-                .load(videoItem.thumbnailUrl)
-                .placeholder(R.drawable.btn_startcall_normal)
-                .into(thumbnail);
+        // PlayerView is always visible, just paused/playing
+        playerView.setVisibility(View.VISIBLE);
 
+        // load channel icon
         Glide.with(context)
                 .load(videoItem.channelIconUrl)
                 .placeholder(R.drawable.btn_endcall_normal)
@@ -94,8 +87,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             navView.setSelectedItemId(R.id.navigation_dashboard);
         };
 
-        // Attach the same click to thumbnail, playerView, title
-        thumbnail.setOnClickListener(toDashboard);
+        // Attach the same click to playerView, title
+        playerView.setOnClickListener(toDashboard);
         title.setOnClickListener(toDashboard);
 
         // ---- OPEN CHANNEL ACTIVITY ----
@@ -105,6 +98,5 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             context.startActivity(intent);
         });
     }
-
     // Removed playVideo, pauseVideo, and releasePlayer methods
 }

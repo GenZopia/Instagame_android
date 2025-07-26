@@ -161,7 +161,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // Add PlayerView to the new container
             videoHolder.videoContainer.removeAllViews();
             videoHolder.videoContainer.addView(playerView);
-            videoHolder.thumbnail.setVisibility(View.INVISIBLE);
+            // No need to hide thumbnail since we removed it
         }
     }
 

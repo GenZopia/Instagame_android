@@ -23,6 +23,8 @@ import android.os.Handler;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.ui.PlayerView;
+import java.util.HashMap;
+import java.util.Map;
 
 public class HomeFragment extends Fragment {
 
@@ -34,6 +36,7 @@ public class HomeFragment extends Fragment {
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
     private int currentPlayingPosition = RecyclerView.NO_POSITION;
+    private Map<String, Long> videoPositions = new HashMap<>(); // Store video positions
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -363,15 +366,37 @@ public class HomeFragment extends Fragment {
         int lastVisible = layoutManager.findLastVisibleItemPosition();
         int center = (firstVisible + lastVisible) / 2;
         int playIndex = Math.max(1, center); // skip profile at 0
+        
         // Get the video item for this position
         Object item = verticalAdapter.getItem(playIndex);
         if (item instanceof VideoItem) {
             VideoItem videoItem = (VideoItem) item;
+            
+            // Save current video position before switching
+            if (currentPlayingPosition != RecyclerView.NO_POSITION && currentPlayingPosition < verticalAdapter.getItemCount()) {
+                Object currentItem = verticalAdapter.getItem(currentPlayingPosition);
+                if (currentItem instanceof VideoItem) {
+                    VideoItem currentVideo = (VideoItem) currentItem;
+                    long currentPosition = exoPlayer.getCurrentPosition();
+                    videoPositions.put(currentVideo.id, currentPosition);
+                }
+            }
+            
             // Only switch if new
             if (currentPlayingPosition != playIndex) {
+                // Load the video and resume from saved position or start from beginning
                 exoPlayer.setMediaItem(MediaItem.fromUri(videoItem.videoUrl));
                 exoPlayer.prepare();
-                exoPlayer.play();
+                
+                // Resume from saved position or start from beginning
+                Long savedPosition = videoPositions.get(videoItem.id);
+                if (savedPosition != null && savedPosition > 0) {
+                    exoPlayer.seekTo(savedPosition);
+                } else {
+                    exoPlayer.seekTo(0); // First time watching, start from beginning
+                }
+                
+                exoPlayer.play(); // Start playing
                 verticalAdapter.attachPlayerViewTo(playIndex, playerView);
                 currentPlayingPosition = playIndex;
             }
