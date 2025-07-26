@@ -28,6 +28,7 @@ import java.util.Map;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.PlaybackException;
 
 
 public class HomeFragment extends Fragment {
@@ -99,24 +100,24 @@ public class HomeFragment extends Fragment {
             List<VideoItem> videoItems = new ArrayList<>();
             videoItems.add(new VideoItem(
                     "1",
-                    "Amazing Mountain Landscape",
+                    "Amazing Sunset",
                     "Nature Channel",
-                    "1.2M views",
-                    "3 days ago",
+                    "3.2M views",
+                    "1 week ago",
                     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
             ));
 
             videoItems.add(new VideoItem(
                     "2",
-                    "Sunset at the Beach",
-                    "Travel Adventures",
-                    "850K views",
-                    "1 week ago",
+                    "City Lights",
+                    "Urban Life",
+                    "1.8M views",
+                    "3 days ago",
                     "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
             ));
-            
+
             videoItems.add(new VideoItem(
                     "3",
                     "Mountain Adventures",
@@ -124,7 +125,7 @@ public class HomeFragment extends Fragment {
                     "2.1M views",
                     "5 days ago",
                     "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0",
-                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
             ));
 
             videoItems.add(new VideoItem(
@@ -134,18 +135,28 @@ public class HomeFragment extends Fragment {
                     "1.5M views",
                     "2 days ago",
                     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4 "
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
             ));
-            // Set real data
-            verticalAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
-            verticalAdapter.setExoPlayer(exoPlayer);
-            verticalRecyclerView.setAdapter(verticalAdapter);
-            verticalAdapter.setRecyclerView(verticalRecyclerView);
-            // Preload first 10 videos before hiding shimmer
+            
+            // Preload videos to show thumbnails at 1 second
+            preloadVideos(videoItems);
+            
+            // Wait a bit for preloaded players to be ready
             handler.postDelayed(() -> {
-                verticalAdapter.setLoading(false);
-                isLoading = false;
-            }, 1200); // Wait for preloading (tune as needed)
+                android.util.Log.d("HomeFragment", "Preloading completed, setting up adapter");
+                
+                // Set real data
+                verticalAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
+                verticalAdapter.setExoPlayer(exoPlayer);
+                verticalRecyclerView.setAdapter(verticalAdapter);
+                verticalAdapter.setRecyclerView(verticalRecyclerView);
+                
+                // Preload first 10 videos before hiding shimmer
+                handler.postDelayed(() -> {
+                    verticalAdapter.setLoading(false);
+                    isLoading = false;
+                }, 1200); // Wait for preloading (tune as needed)
+            }, 1000); // Wait 1 second for preloaded players to be ready
         }, 2000); // 2 seconds loading
 
         return root;
@@ -200,21 +211,126 @@ public class HomeFragment extends Fragment {
         if (item instanceof VideoItem) {
             VideoItem videoItem = (VideoItem) item;
             
+            // Debug logging
+            android.util.Log.d("HomeFragment", "Loading video: " + videoItem.id + " with URL: " + videoItem.videoUrl);
+            
+            // Save current video position before switching
+            if (currentPlayingPosition != RecyclerView.NO_POSITION && currentPlayingPosition < verticalAdapter.getItemCount()) {
+                Object currentItem = verticalAdapter.getItem(currentPlayingPosition);
+                if (currentItem instanceof VideoItem) {
+                    VideoItem currentVideo = (VideoItem) currentItem;
+                    long currentPosition = exoPlayer.getCurrentPosition();
+                    videoPositions.put(currentVideo.id, currentPosition);
+                    android.util.Log.d("HomeFragment", "Saved position for video " + currentVideo.id + ": " + currentPosition);
+                    
+                    // Refresh preloaded thumbnails to show updated positions
+                    refreshPreloadedThumbnails(verticalAdapter.getVideoItems());
+                    
+                    // Refresh all visible ViewHolder thumbnails
+                    verticalAdapter.refreshAllVisibleThumbnails();
+                }
+            }
+            
             // Only switch if new
             if (currentPlayingPosition != playIndex) {
-                // Load the video and always start from beginning for now
+                // Load the video and resume from saved position or start from beginning
                 exoPlayer.setMediaItem(MediaItem.fromUri(videoItem.videoUrl));
                 exoPlayer.prepare();
                 
-                // Always start from beginning for simple control
-                exoPlayer.seekTo(0);
+                // Resume from saved position or start from beginning
+                Long savedPosition = videoPositions.get(videoItem.id);
+                if (savedPosition != null && savedPosition > 0) {
+                    exoPlayer.seekTo(savedPosition);
+                    android.util.Log.d("HomeFragment", "Resuming video " + videoItem.id + " from position: " + savedPosition);
+                } else {
+                    exoPlayer.seekTo(0);
+                    android.util.Log.d("HomeFragment", "Starting video " + videoItem.id + " from beginning");
+                }
                 
                 exoPlayer.play(); // Start playing
                 verticalAdapter.attachPlayerViewTo(playIndex, playerView);
                 currentPlayingPosition = playIndex;
+                
+                android.util.Log.d("HomeFragment", "Started playing video: " + videoItem.id);
             }
         }
         // Preload logic can remain as before if desired
         verticalAdapter.preloadAround(playIndex);
+    }
+
+    private void preloadVideos(List<VideoItem> videoItems) {
+        if (videoItems == null || videoItems.isEmpty()) return;
+        
+        android.util.Log.d("HomeFragment", "Starting video preload for " + videoItems.size() + " videos");
+        
+        // Preload first 5 videos to show thumbnails
+        int preloadCount = Math.min(5, videoItems.size());
+        for (int i = 0; i < preloadCount; i++) {
+            VideoItem videoItem = videoItems.get(i);
+            
+            // Create a separate ExoPlayer for preloading
+            ExoPlayer preloadPlayer = new ExoPlayer.Builder(requireContext()).build();
+            preloadPlayer.setMediaItem(MediaItem.fromUri(videoItem.videoUrl));
+            preloadPlayer.prepare();
+            
+            // Seek to 1 second and pause to get the thumbnail frame
+            preloadPlayer.addListener(new Player.Listener() {
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        // Check if we have a saved position for this video
+                        Long savedPosition = videoPositions.get(videoItem.id);
+                        if (savedPosition != null && savedPosition > 0) {
+                            // Use saved position for thumbnail
+                            preloadPlayer.seekTo(savedPosition);
+                            android.util.Log.d("HomeFragment", "Preloaded video " + videoItem.id + " at saved position: " + savedPosition);
+                        } else {
+                            // Use 1 second as default
+                            preloadPlayer.seekTo(1000); // 1 second = 1000ms
+                            android.util.Log.d("HomeFragment", "Preloaded video " + videoItem.id + " at 1 second (default)");
+                        }
+                        preloadPlayer.setPlayWhenReady(false); // Pause immediately
+                        android.util.Log.d("HomeFragment", "Preloaded player ready for video " + videoItem.id);
+                    }
+                }
+                
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    android.util.Log.e("HomeFragment", "Preload player error for video " + videoItem.id + ": " + error.getMessage());
+                }
+            });
+            
+            // Store the preloaded player for later use
+            videoItem.preloadedPlayer = preloadPlayer;
+            android.util.Log.d("HomeFragment", "Created preloaded player for video " + videoItem.id);
+        }
+    }
+
+    private void refreshPreloadedThumbnails(List<VideoItem> videoItems) {
+        if (videoItems == null || videoItems.isEmpty()) return;
+        
+        android.util.Log.d("HomeFragment", "Refreshing preloaded thumbnails");
+        
+        // Refresh thumbnails for first 5 videos
+        int refreshCount = Math.min(5, videoItems.size());
+        for (int i = 0; i < refreshCount; i++) {
+            VideoItem videoItem = videoItems.get(i);
+            
+            if (videoItem.preloadedPlayer != null) {
+                // Check if we have a saved position for this video
+                Long savedPosition = videoPositions.get(videoItem.id);
+                if (savedPosition != null && savedPosition > 0) {
+                    // Update thumbnail to saved position
+                    videoItem.preloadedPlayer.seekTo(savedPosition);
+                    videoItem.preloadedPlayer.setPlayWhenReady(false); // Ensure it's paused
+                    android.util.Log.d("HomeFragment", "Updated thumbnail for video " + videoItem.id + " to position: " + savedPosition);
+                } else {
+                    // Use 1 second as default
+                    videoItem.preloadedPlayer.seekTo(1000);
+                    videoItem.preloadedPlayer.setPlayWhenReady(false); // Ensure it's paused
+                    android.util.Log.d("HomeFragment", "Updated thumbnail for video " + videoItem.id + " to 1 second (default)");
+                }
+            }
+        }
     }
 }

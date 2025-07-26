@@ -27,6 +27,8 @@ import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.PlaybackException;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -138,6 +140,27 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void setupSeekBarAndTouchControls(PlayerView playerView, ExoPlayer exoPlayer) {
         this.exoPlayer = exoPlayer;
+        
+        // Switch from thumbnail to main player for actual playback
+        playerView.setPlayer(exoPlayer);
+        android.util.Log.d("VideoViewHolder", "Switched to main player for video " + (currentItem != null ? currentItem.id : "unknown"));
+        
+        // Add player listener to track video loading
+        exoPlayer.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int playbackState) {
+                android.util.Log.d("VideoViewHolder", "Playback state changed: " + playbackState);
+                if (playbackState == Player.STATE_READY) {
+                    android.util.Log.d("VideoViewHolder", "Video is ready to play");
+                }
+            }
+            
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                android.util.Log.e("VideoViewHolder", "Player error: " + error.getMessage());
+            }
+        });
+        
         // Force progress line to always be visible
         progressLine.setVisibility(View.VISIBLE);
         progressContainer.setVisibility(View.VISIBLE);
@@ -328,35 +351,37 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void bind(VideoItem videoItem, Context context) {
         this.currentItem = videoItem;
-        // PlayerView is always visible, just paused/playing
-        playerView.setVisibility(View.VISIBLE);
-
-        // load channel icon
-        Glide.with(context)
-                .load(videoItem.channelIconUrl)
-                .placeholder(R.drawable.btn_endcall_normal)
-                .into(channelIcon);
-
-        title.setText(videoItem.title);
-        channelName.setText(videoItem.channelName);
-        viewsAndTime.setText(videoItem.views + " • " + videoItem.timeAgo);
-
-        // ---- CLICK TO NAVIGATE TO DASHBOARD ----
-        View.OnClickListener toDashboard = v -> {
-            TempStorage.videoId = videoItem.id;
-            BottomNavigationView navView = ((MainActivity) context).findViewById(R.id.nav_view);
-            navView.setSelectedItemId(R.id.navigation_dashboard);
-        };
-
-        // Attach the same click to title only (not playerView)
-        title.setOnClickListener(toDashboard);
-
-        // ---- OPEN CHANNEL ACTIVITY ----
-        channelIcon.setOnClickListener(v -> {
-            Intent intent = new Intent(context, ChannelActivity.class);
-            intent.putExtra("channel_name", videoItem.channelName);
-            context.startActivity(intent);
-        });
+        
+        // Set channel info
+        channelName.setText("Channel " + videoItem.id);
+        title.setText("Video " + videoItem.id + " - Amazing Content");
+        viewsAndTime.setText("1.2M views • 3 days ago");
+        
+        // Set channel icon (using a placeholder for now)
+        channelIcon.setImageResource(R.drawable.ic_launcher_foreground);
+        
+        // Show thumbnail using preloaded player
+        showThumbnail(videoItem);
+        
+        // Debug logging
+        android.util.Log.d("VideoViewHolder", "Bound video item: " + videoItem.id);
+        android.util.Log.d("VideoViewHolder", "PlayerView visibility: " + playerView.getVisibility());
+        android.util.Log.d("VideoViewHolder", "PlayerView width: " + playerView.getWidth() + ", height: " + playerView.getHeight());
+        android.util.Log.d("VideoViewHolder", "Preloaded player available: " + (videoItem.preloadedPlayer != null));
+    }
+    
+    private void showThumbnail(VideoItem videoItem) {
+        if (videoItem.preloadedPlayer != null) {
+            // Use preloaded player for thumbnail
+            playerView.setPlayer(videoItem.preloadedPlayer);
+            playerView.setVisibility(View.VISIBLE);
+            android.util.Log.d("VideoViewHolder", "Showing thumbnail for video " + videoItem.id);
+        } else {
+            // No preloaded player, show black or placeholder
+            playerView.setPlayer(null);
+            playerView.setVisibility(View.VISIBLE);
+            android.util.Log.d("VideoViewHolder", "No preloaded player for video " + videoItem.id);
+        }
     }
     // Removed playVideo, pauseVideo, and releasePlayer methods
 }

@@ -167,12 +167,11 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             ViewGroup parent = (ViewGroup) playerView.getParent();
             if (parent != null) parent.removeView(playerView);
             
-            // Remove only the PlayerView and thumbnail, keep progress container
+            // Remove only the PlayerView, keep progress container
             for (int i = videoHolder.videoContainer.getChildCount() - 1; i >= 0; i--) {
                 View child = videoHolder.videoContainer.getChildAt(i);
                 if (child instanceof com.google.android.exoplayer2.ui.PlayerView || 
-                    child.getId() == R.id.playerView || 
-                    child.getId() == R.id.thumbnail) {
+                    child.getId() == R.id.playerView) {
                     videoHolder.videoContainer.removeViewAt(i);
                 }
             }
@@ -194,6 +193,52 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             Object item = items.get(i);
             if (item instanceof VideoItem) {
                 // Optionally, implement preloading logic here if needed
+            }
+        }
+    }
+
+    public List<VideoItem> getVideoItems() {
+        List<VideoItem> videoItems = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof VideoItem) {
+                videoItems.add((VideoItem) item);
+            }
+        }
+        return videoItems;
+    }
+
+    public void refreshCurrentViewHolderThumbnail(int position) {
+        if (recyclerView == null) return;
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder instanceof VideoViewHolder) {
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            // Force rebind to show updated thumbnail
+            Object item = getItem(position);
+            if (item instanceof VideoItem) {
+                videoHolder.bind((VideoItem) item, recyclerView.getContext());
+                android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + position);
+            }
+        }
+    }
+
+    public void refreshAllVisibleThumbnails() {
+        if (recyclerView == null) return;
+        
+        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+        
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        
+        for (int i = firstVisible; i <= lastVisible; i++) {
+            RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder instanceof VideoViewHolder) {
+                VideoViewHolder videoHolder = (VideoViewHolder) holder;
+                Object item = getItem(i);
+                if (item instanceof VideoItem) {
+                    videoHolder.bind((VideoItem) item, recyclerView.getContext());
+                    android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + i);
+                }
             }
         }
     }
