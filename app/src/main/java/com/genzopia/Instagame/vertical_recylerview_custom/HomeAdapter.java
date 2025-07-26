@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import android.os.Handler;
+import com.google.android.exoplayer2.ui.PlayerView;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -91,7 +92,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
         if (holder instanceof VideoViewHolder) {
-            ((VideoViewHolder) holder).releasePlayer();
+            // No playerView to detach from view
         }
         super.onViewRecycled(holder);
     }
@@ -145,39 +146,34 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return -1;
     }
 
-    public void playVideo(String videoId) {
-        if (currentlyPlayingVideoId != null && currentlyPlayingVideoId.equals(videoId)) {
-            return;
-        }
+    public Object getItem(int position) {
+        return items.get(position);
+    }
 
-        String oldVideoId = currentlyPlayingVideoId;
-        currentlyPlayingVideoId = videoId;
-
-        // Pause old video
-        if (oldVideoId != null) {
-            playerManager.pauseVideo(oldVideoId);
-            int oldPosition = findVideoPositionById(oldVideoId);
-            if (oldPosition != -1) {
-                mainHandler.post(() -> notifyItemChanged(oldPosition));
-            }
-        }
-
-        // Play new video
-        playerManager.playVideo(videoId);
-        int newPosition = findVideoPositionById(videoId);
-        if (newPosition != -1) {
-            mainHandler.post(() -> notifyItemChanged(newPosition));
+    public void attachPlayerViewTo(int position, PlayerView playerView) {
+        if (recyclerView == null) return;
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder instanceof VideoViewHolder) {
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            // Remove PlayerView from any old parent
+            ViewGroup parent = (ViewGroup) playerView.getParent();
+            if (parent != null) parent.removeView(playerView);
+            // Add PlayerView to the new container
+            videoHolder.videoContainer.removeAllViews();
+            videoHolder.videoContainer.addView(playerView);
+            videoHolder.thumbnail.setVisibility(View.INVISIBLE);
         }
     }
 
-    public void pauseVideo(String videoId) {
-        if (currentlyPlayingVideoId != null && currentlyPlayingVideoId.equals(videoId)) {
-            currentlyPlayingVideoId = null;
-            playerManager.pauseVideo(videoId);
-
-            int position = findVideoPositionById(videoId);
-            if (position != -1) {
-                mainHandler.post(() -> notifyItemChanged(position));
+    public void preloadAround(int centerIndex) {
+        if (items == null || items.size() <= 1) return;
+        int start = Math.max(1, centerIndex - 5); // skip profile at 0
+        int end = Math.min(items.size() - 1, centerIndex + 5);
+        // Preload and pause all in window (no playerView logic)
+        for (int i = start; i <= end; i++) {
+            Object item = items.get(i);
+            if (item instanceof VideoItem) {
+                // Optionally, implement preloading logic here if needed
             }
         }
     }

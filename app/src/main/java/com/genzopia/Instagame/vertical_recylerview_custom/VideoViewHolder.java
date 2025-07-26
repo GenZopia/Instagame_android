@@ -56,12 +56,12 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     v.setAlpha(0.7f);
-                    playVideo();
+                    // playVideo(); // Removed
                     break;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     v.setAlpha(1.0f);
-                    pauseVideo();
+                    // pauseVideo(); // Removed
                     break;
             }
             return false; // allow click events to propagate
@@ -70,11 +70,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     public void bind(VideoItem videoItem, Context context) {
         this.currentItem = videoItem;
-
-        // reset UI
+        // Always show thumbnail by default
         thumbnail.setVisibility(View.VISIBLE);
-        playerView.setVisibility(View.INVISIBLE);
-
         // load assets
         Glide.with(context)
                 .load(videoItem.thumbnailUrl)
@@ -90,10 +87,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         channelName.setText(videoItem.channelName);
         viewsAndTime.setText(videoItem.views + " • " + videoItem.timeAgo);
 
-        // EXO PLAYER
-        ExoPlayer player = playerManager.getPlayer(context, videoItem.id, videoItem.videoUrl);
-        playerView.setPlayer(player);
-
         // ---- CLICK TO NAVIGATE TO DASHBOARD ----
         View.OnClickListener toDashboard = v -> {
             TempStorage.videoId = videoItem.id;
@@ -103,7 +96,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
         // Attach the same click to thumbnail, playerView, title
         thumbnail.setOnClickListener(toDashboard);
-        playerView.setOnClickListener(toDashboard);
         title.setOnClickListener(toDashboard);
 
         // ---- OPEN CHANNEL ACTIVITY ----
@@ -114,24 +106,5 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         });
     }
 
-    private void playVideo() {
-        if (currentItem == null) return;
-        playerManager.playVideo(currentItem.id);
-        thumbnail.setVisibility(View.INVISIBLE);
-        playerView.setVisibility(View.VISIBLE);
-    }
-
-    private void pauseVideo() {
-        if (currentItem == null) return;
-        playerManager.pauseVideo(currentItem.id);
-        thumbnail.setVisibility(View.VISIBLE);
-        playerView.setVisibility(View.INVISIBLE);
-    }
-
-    public void releasePlayer() {
-        if (currentItem == null) return;
-        playerManager.releasePlayer(currentItem.id);
-        playerView.setPlayer(null);
-        currentItem = null;
-    }
+    // Removed playVideo, pauseVideo, and releasePlayer methods
 }
