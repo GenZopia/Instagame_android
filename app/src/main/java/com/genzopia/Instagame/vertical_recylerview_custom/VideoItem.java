@@ -6,20 +6,17 @@ public class VideoItem {
     public String channelName;
     public String views;
     public String timeAgo;
-    public String thumbnailUrl;
     public String channelIconUrl;
     public String videoUrl;  // Add video URL
     public boolean isPlaying;
 
     public VideoItem(String id, String title, String channelName,
-                     String views, String timeAgo, String thumbnailUrl,
-                     String channelIconUrl, String videoUrl) {
+                     String views, String timeAgo, String channelIconUrl, String videoUrl) {
         this.id = id;
         this.title = title;
         this.channelName = channelName;
         this.views = views;
         this.timeAgo = timeAgo;
-        this.thumbnailUrl = thumbnailUrl;
         this.channelIconUrl = channelIconUrl;
         this.videoUrl = videoUrl;
     }

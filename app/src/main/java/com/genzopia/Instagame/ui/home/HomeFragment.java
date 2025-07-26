@@ -25,6 +25,10 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.HashMap;
 import java.util.Map;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import com.google.android.exoplayer2.Player;
+
 
 public class HomeFragment extends Fragment {
 
@@ -48,6 +52,9 @@ public class HomeFragment extends Fragment {
         playerView = new PlayerView(requireContext());
         playerView.setUseController(false);
         playerView.setPlayer(exoPlayer);
+        
+        // Enable looping
+        exoPlayer.setRepeatMode(Player.REPEAT_MODE_ONE);
 
         // Set up vertical RecyclerView
         RecyclerView verticalRecyclerView = binding.verticalRecyclerView;
@@ -72,6 +79,7 @@ public class HomeFragment extends Fragment {
 
         // Set up adapter with loading state
         verticalAdapter = new HomeAdapter(requireContext(), new ArrayList<>(), new ArrayList<>());
+        verticalAdapter.setExoPlayer(exoPlayer);
         verticalRecyclerView.setAdapter(verticalAdapter);
         verticalAdapter.setRecyclerView(verticalRecyclerView);
         verticalAdapter.setLoading(true);
@@ -79,25 +87,15 @@ public class HomeFragment extends Fragment {
 
         // Simulate loading delay, then set real data
         handler.postDelayed(() -> {
-            // Create profile items
+            // Create profile items (only 5 unique profiles)
             List<ImageItem> profileItems = new ArrayList<>();
             profileItems.add(new ImageItem("1", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80"));
             profileItems.add(new ImageItem("2", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"));
             profileItems.add(new ImageItem("3", "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0"));
             profileItems.add(new ImageItem("4", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80"));
             profileItems.add(new ImageItem("5", "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80"));
-            profileItems.add(new ImageItem("1", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80"));
-            profileItems.add(new ImageItem("2", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"));
-            profileItems.add(new ImageItem("3", "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0"));
-            profileItems.add(new ImageItem("4", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80"));
-            profileItems.add(new ImageItem("5", "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80"));
-            profileItems.add(new ImageItem("1", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80"));
-            profileItems.add(new ImageItem("2", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"));
-            profileItems.add(new ImageItem("3", "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0"));
-            profileItems.add(new ImageItem("4", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80"));
-            profileItems.add(new ImageItem("5", "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80"));
 
-            // Create video items
+            // Create video items (4 unique videos)
             List<VideoItem> videoItems = new ArrayList<>();
             videoItems.add(new VideoItem(
                     "1",
@@ -105,9 +103,8 @@ public class HomeFragment extends Fragment {
                     "Nature Channel",
                     "1.2M views",
                     "3 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
                     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
             ));
 
             videoItems.add(new VideoItem(
@@ -116,19 +113,18 @@ public class HomeFragment extends Fragment {
                     "Travel Adventures",
                     "850K views",
                     "1 week ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
                     "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
             ));
+            
             videoItems.add(new VideoItem(
                     "3",
                     "Mountain Adventures",
                     "Adventure Time",
                     "2.1M views",
                     "5 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+                    "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0",
+                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4"
             ));
 
             videoItems.add(new VideoItem(
@@ -138,137 +134,11 @@ public class HomeFragment extends Fragment {
                     "1.5M views",
                     "2 days ago",
                     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "1",
-                    "Amazing Mountain Landscape",
-                    "Nature Channel",
-                    "1.2M views",
-                    "3 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "2",
-                    "Sunset at the Beach",
-                    "Travel Adventures",
-                    "850K views",
-                    "1 week ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "3",
-                    "Mountain Adventures",
-                    "Adventure Time",
-                    "2.1M views",
-                    "5 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "4",
-                    "Ocean Waves",
-                    "Sea Life",
-                    "1.5M views",
-                    "2 days ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "1",
-                    "Amazing Mountain Landscape",
-                    "Nature Channel",
-                    "1.2M views",
-                    "3 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "2",
-                    "Sunset at the Beach",
-                    "Travel Adventures",
-                    "850K views",
-                    "1 week ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "3",
-                    "Mountain Adventures",
-                    "Adventure Time",
-                    "2.1M views",
-                    "5 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "4",
-                    "Ocean Waves",
-                    "Sea Life",
-                    "1.5M views",
-                    "2 days ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "1",
-                    "Amazing Mountain Landscape",
-                    "Nature Channel",
-                    "1.2M views",
-                    "3 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "2",
-                    "Sunset at the Beach",
-                    "Travel Adventures",
-                    "850K views",
-                    "1 week ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-            videoItems.add(new VideoItem(
-                    "3",
-                    "Mountain Adventures",
-                    "Adventure Time",
-                    "2.1M views",
-                    "5 days ago",
-                    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2340&q=80",
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            ));
-
-            videoItems.add(new VideoItem(
-                    "4",
-                    "Ocean Waves",
-                    "Sea Life",
-                    "1.5M views",
-                    "2 days ago",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+                    "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/video/video_4c27b8f7-499c-4e6d-9323-f0591afd58d1.mp4 "
             ));
             // Set real data
             verticalAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
+            verticalAdapter.setExoPlayer(exoPlayer);
             verticalRecyclerView.setAdapter(verticalAdapter);
             verticalAdapter.setRecyclerView(verticalRecyclerView);
             // Preload first 10 videos before hiding shimmer
@@ -277,48 +147,6 @@ public class HomeFragment extends Fragment {
                 isLoading = false;
             }, 1200); // Wait for preloading (tune as needed)
         }, 2000); // 2 seconds loading
-
-        // Update the global touch listener
-        verticalAdapter.setGlobalTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        // Prevent RecyclerView from intercepting touch events
-                        if (verticalAdapter.recyclerView != null) {
-                            verticalAdapter.recyclerView.requestDisallowInterceptTouchEvent(true);
-                        }
-
-                        currentTouchedVideoId = (String) v.getTag();
-                        // Remove this line, as playVideo no longer exists
-                        // verticalAdapter.playVideo(currentTouchedVideoId);
-                        return true;
-
-                    case MotionEvent.ACTION_MOVE:
-                        // Continue playing as long as finger is down
-                        if (currentTouchedVideoId != null) {
-                            // Remove this line, as playVideo no longer exists
-                            // verticalAdapter.playVideo(currentTouchedVideoId);
-                        }
-                        return true;
-
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        // Allow RecyclerView to intercept touch events again
-                        if (verticalAdapter.recyclerView != null) {
-                            verticalAdapter.recyclerView.requestDisallowInterceptTouchEvent(false);
-                        }
-
-                        if (currentTouchedVideoId != null) {
-                            // Remove this line, as pauseVideo no longer exists
-                            // verticalAdapter.pauseVideo(currentTouchedVideoId);
-                            currentTouchedVideoId = null;
-                        }
-                        return true;
-                }
-                return false;
-            }
-        });
 
         return root;
     }

@@ -6,6 +6,8 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
+import android.view.GestureDetector;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -22,6 +24,7 @@ import java.util.List;
 
 import android.os.Handler;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.ExoPlayer;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -40,6 +43,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private boolean isLoading = false;
     private int skeletonCount = 5;
     private int skeletonFeedCount = 5;
+    private ExoPlayer exoPlayer;
 
     public HomeAdapter(Context context, List<ImageItem> profileItems, List<VideoItem> videoItems) {
         this.context = context;
@@ -150,6 +154,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return items.get(position);
     }
 
+    public void setExoPlayer(ExoPlayer exoPlayer) {
+        this.exoPlayer = exoPlayer;
+    }
+
     public void attachPlayerViewTo(int position, PlayerView playerView) {
         if (recyclerView == null) return;
         RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
@@ -161,7 +169,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // Add PlayerView to the new container
             videoHolder.videoContainer.removeAllViews();
             videoHolder.videoContainer.addView(playerView);
-            // No need to hide thumbnail since we removed it
+            // Pass the global ExoPlayer to the ViewHolder
+            videoHolder.setupSeekBarAndTouchControls(playerView, exoPlayer);
         }
     }
 
