@@ -245,6 +245,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         
         // Share button components
         LinearLayout shareButton;
+        
+        // Follow button components
+        LinearLayout followButton;
+        TextView followText;
+        boolean isFollowing = false;
 
         @SuppressLint("ClickableViewAccessibility")
         public ReelViewHolder(@NonNull View itemView) {
@@ -263,6 +268,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Initialize share button components
             shareButton = itemView.findViewById(R.id.share_button);
             
+            // Initialize follow button components
+            followButton = itemView.findViewById(R.id.follow_button);
+            followText = itemView.findViewById(R.id.tv_follow_text);
+            
+            // Ensure follow button is visible by default
+            if (followButton != null) {
+                followButton.setVisibility(View.VISIBLE);
+            }
+            
 
 
             playerView.setUseController(false);
@@ -276,6 +290,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Set up share button click listener
             shareButton.setOnClickListener(v -> {
                 handleShareClick();
+            });
+            
+            // Set up follow button click listener
+            followButton.setOnClickListener(v -> {
+                handleFollowClick();
             });
 
             // Add touch listener for progress container (much larger touch area)
@@ -344,6 +363,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             
             // Check if current user has liked this video
             checkIfLiked(reelItem.getVideoId());
+            
+            // Check if current user is following this video's creator
+            checkIfFollowing(reelItem.getDeveloperId());
 
             currentVideoId = reelItem.getVideoId();
             
@@ -542,6 +564,177 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 public void onCancelled(@NonNull DatabaseError error) {
                     // On error, assume not liked
                     updateLikeUI(false, Integer.parseInt(reelItems.get(position).getLikeCount()));
+                }
+            });
+        }
+        
+        private void handleFollowClick() {
+            String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+            String developerId = reelItems.get(position).getDeveloperId();
+            
+            // Prevent following yourself
+            if (currentUserId.equals(developerId)) {
+                Toast.makeText(context, "You cannot follow yourself", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // Prevent multiple rapid clicks
+            if (followButton.isEnabled()) {
+                followButton.setEnabled(false);
+                
+                // Optimistic update - update UI immediately
+                boolean newFollowState = !isFollowing;
+                updateFollowUI(newFollowState);
+                
+                // Perform Firebase operations
+                if (newFollowState) {
+                    followUserOptimistic(currentUserId, developerId);
+                } else {
+                    unfollowUserOptimistic(currentUserId, developerId);
+                }
+            }
+        }
+        
+        private void followUserOptimistic(String currentUserId, String developerId) {
+            // Use Firebase transaction for atomic updates
+            DatabaseReference developerRef = FirebaseDatabase.getInstance()
+                    .getReference("users")
+                    .child(developerId);
+            
+            developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    String currentFollowerCount = mutableData.child("followers").getValue(String.class);
+                    int newFollowerCount = 1;
+                    if (currentFollowerCount != null) {
+                        newFollowerCount = Integer.parseInt(currentFollowerCount) + 1;
+                    }
+                    mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
+                    return com.google.firebase.database.Transaction.success(mutableData);
+                }
+                
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                    if (committed && error == null) {
+                        // Success - add to current user's following list
+                        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                                .getReference("users")
+                                .child(currentUserId)
+                                .child("following_list")
+                                .child(developerId);
+                        
+                        Log.d("FollowDebug", "Storing follow relationship: users/" + currentUserId + "/following_list/" + developerId + " = true");
+                        
+                        currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
+                            Log.d("FollowDebug", "Successfully stored follow relationship");
+                        }).addOnFailureListener(e -> {
+                            Log.d("FollowDebug", "Failed to store follow relationship: " + e.getMessage());
+                        });
+                        
+                        Toast.makeText(context, "Following", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // Rollback UI on failure
+                        Log.d("FollowDebug", "Transaction failed: " + (error != null ? error.getMessage() : "Unknown error"));
+                        updateFollowUI(false);
+                        Toast.makeText(context, "Failed to follow", Toast.LENGTH_SHORT).show();
+                    }
+                    followButton.setEnabled(true);
+                }
+            });
+        }
+        
+        private void unfollowUserOptimistic(String currentUserId, String developerId) {
+            // Use Firebase transaction for atomic updates
+            DatabaseReference developerRef = FirebaseDatabase.getInstance()
+                    .getReference("users")
+                    .child(developerId);
+            
+            developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    String currentFollowerCount = mutableData.child("followers").getValue(String.class);
+                    int newFollowerCount = 0;
+                    if (currentFollowerCount != null) {
+                        newFollowerCount = Math.max(0, Integer.parseInt(currentFollowerCount) - 1);
+                    }
+                    mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
+                    return com.google.firebase.database.Transaction.success(mutableData);
+                }
+                
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                    if (committed && error == null) {
+                        // Success - remove from current user's following list
+                        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                                .getReference("users")
+                                .child(currentUserId)
+                                .child("following_list")
+                                .child(developerId);
+                        
+                        Log.d("FollowDebug", "Removing follow relationship: users/" + currentUserId + "/following_list/" + developerId);
+                        
+                        currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
+                            Log.d("FollowDebug", "Successfully removed follow relationship");
+                        }).addOnFailureListener(e -> {
+                            Log.d("FollowDebug", "Failed to remove follow relationship: " + e.getMessage());
+                        });
+                        
+                        Toast.makeText(context, "Unfollowed", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // Rollback UI on failure
+                        Log.d("FollowDebug", "Unfollow transaction failed: " + (error != null ? error.getMessage() : "Unknown error"));
+                        updateFollowUI(true);
+                        Toast.makeText(context, "Failed to unfollow", Toast.LENGTH_SHORT).show();
+                    }
+                    followButton.setEnabled(true);
+                }
+            });
+        }
+        
+        private void updateFollowUI(boolean following) {
+            isFollowing = following;
+            
+            if (following) {
+                followText.setText("Following");
+                followText.setTextColor(android.graphics.Color.RED);
+            } else {
+                followText.setText("Follow");
+                followText.setTextColor(android.graphics.Color.WHITE);
+            }
+        }
+        
+        private void checkIfFollowing(String developerId) {
+            String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+            
+            // Prevent checking if trying to follow yourself
+            if (currentUserId.equals(developerId)) {
+                followButton.setVisibility(View.GONE); // Hide follow button for own videos
+                return;
+            }
+            
+            // Check if current user is following this developer
+            DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                    .getReference("users")
+                    .child(currentUserId)
+                    .child("following_list")
+                    .child(developerId); // Using developerId instead of videoId
+            
+            currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    boolean following = snapshot.exists();
+                    Log.d("FollowDebug", "Checking follow status: users/" + currentUserId + "/following_list/" + developerId + " exists: " + following);
+                    if (following) {
+                        Log.d("FollowDebug", "Follow value: " + snapshot.getValue());
+                    }
+                    updateFollowUI(following);
+                }
+                
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    // On error, assume not following
+                    Log.d("FollowDebug", "Error checking follow status: " + error.getMessage());
+                    updateFollowUI(false);
                 }
             });
         }
