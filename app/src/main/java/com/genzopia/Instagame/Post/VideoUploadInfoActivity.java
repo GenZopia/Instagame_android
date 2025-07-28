@@ -158,13 +158,14 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                 gameNameToId.clear();
                 for (DataSnapshot gameSnap : snapshot.getChildren()) {
                     String name = gameSnap.child("game_name").getValue(String.class);
-                    devid=gameSnap.child("user_id").getValue(String.class);
                     String id = gameSnap.getKey();
                     if (name != null && id != null) {
                         gameNames.add(name);
                         gameNameToId.put(name, id);
                     }
                 }
+                // Set the current user's ID as the developer ID
+                devid = FirebaseAuth.getInstance().getCurrentUser().getUid();
                 gameAdapter.notifyDataSetChanged();
             }
             @Override
