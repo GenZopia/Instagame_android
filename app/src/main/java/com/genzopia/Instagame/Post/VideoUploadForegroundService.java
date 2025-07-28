@@ -81,18 +81,7 @@ public class VideoUploadForegroundService extends Service {
                     java.nio.file.Files.copy(originalFile.toPath(), renamedFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
                 showNotification(0, false);
-                // Simulate progress (replace with real upload progress if possible)
-                for (int progress = 1; progress <= 100; progress += 5) {
-                    if (isCancelled) {
-                        renamedFile.delete();
-                        sendResult("cancelled");
-                        return;
-                    }
-                    showNotification(progress, false);
-                    sendProgress(progress);
-                    Thread.sleep(60); // Simulate upload
-                }
-                // Upload to Cloudflare
+                // Upload to Cloudflare with real progress
                 FileUploader.uploadFileToWorker(renamedFile, "video", Map.of(
                         "video_id", videoUniqueId,
                         "title", title,
@@ -111,6 +100,9 @@ public class VideoUploadForegroundService extends Service {
                     }
                     stopForeground(true);
                     stopSelf();
+                }, progress -> {
+                    showNotification(progress, false);
+                    sendProgress(progress);
                 });
             } catch (Exception e) {
                 sendResult("fail");
