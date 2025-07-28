@@ -10,12 +10,12 @@ public class ReelItem {
     private String videoUrl; // New field for signed URL
 
     public ReelItem(String videoId, String title, String likeCount, String description, String developerId, String gameid) {
-        this.videoId = videoId;
-        this.title = title;
-        this.likeCount = likeCount;
-        this.description = description;
-        this.developerId = developerId;
-        this.gameid = gameid;
+        this.videoId = videoId != null ? videoId : "";
+        this.title = title != null ? title : "Untitled Video";
+        this.likeCount = likeCount != null ? likeCount : "0";
+        this.description = description != null ? description : "";
+        this.developerId = developerId != null ? developerId : "";
+        this.gameid = gameid != null ? gameid : "";
         this.videoUrl = null;
     }
 

@@ -21,6 +21,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.webgl_gameloading.Game_mode;
+import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
+import com.genzopia.Instagame.utils.ViewCountManager;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
@@ -49,6 +51,10 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     private ReelViewHolder currentPlayingViewHolder = null;
     private int currentPlayingPosition = -1;
     private boolean isPausedByHold = false;
+    
+    // Follow state management
+    private java.util.Map<String, Boolean> followStates = new java.util.concurrent.ConcurrentHashMap<>();
+    private java.util.Map<String, java.util.List<ReelViewHolder>> developerViewHolders = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ReelAdapter(Context context, List<ReelItem> reelItems, RecyclerView recyclerView) {
         this.context = context;
@@ -86,6 +92,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         super.onViewRecycled(holder);
         if (currentPlayingViewHolder == holder) {
             pauseCurrentVideo();
+        }
+        
+        // Unregister this ViewHolder from follow state management
+        if (holder.position >= 0 && holder.position < reelItems.size()) {
+            String developerId = reelItems.get(holder.position).getDeveloperId();
+            unregisterViewHolderForDeveloper(developerId, holder);
         }
     }
 
@@ -149,6 +161,28 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                     sharedPlayer.setPlayWhenReady(true);
                 }
             }
+            
+            @Override
+            public void onPlaybackStateChanged(int playbackState) {
+                if (playbackState == Player.STATE_READY) {
+                    // Store video duration for view tracking
+                    if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                        ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
+                    }
+                }
+            }
+            
+            @Override
+            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                // Track view count when video reaches 60%
+                if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                    ViewCountManager.checkAndIncrementViewCount(
+                        item.getVideoId(),
+                        sharedPlayer.getCurrentPosition(),
+                        sharedPlayer.getDuration()
+                    );
+                }
+            }
         });
         holder.playerView.setPlayer(sharedPlayer);
         currentPlayingViewHolder = holder;
@@ -206,6 +240,86 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             sharedPlayer.release();
             sharedPlayer = null;
         }
+        
+        // Clear follow state cache
+        followStates.clear();
+        developerViewHolders.clear();
+    }
+    
+    // Follow state management methods
+    private void registerViewHolderForDeveloper(String developerId, ReelViewHolder holder) {
+        if (developerId == null) return;
+        
+        if (!developerViewHolders.containsKey(developerId)) {
+            developerViewHolders.put(developerId, new java.util.ArrayList<>());
+        }
+        
+        java.util.List<ReelViewHolder> holders = developerViewHolders.get(developerId);
+        if (holders != null && !holders.contains(holder)) {
+            holders.add(holder);
+            Log.d("FollowDebug", "Registered ViewHolder for developer: " + developerId + ", total holders: " + holders.size());
+        }
+    }
+    
+    private void unregisterViewHolderForDeveloper(String developerId, ReelViewHolder holder) {
+        if (developerId == null) return;
+        
+        java.util.List<ReelViewHolder> holders = developerViewHolders.get(developerId);
+        if (holders != null) {
+            holders.remove(holder);
+            Log.d("FollowDebug", "Unregistered ViewHolder for developer: " + developerId + ", remaining holders: " + holders.size());
+        }
+    }
+    
+    private void updateAllViewHoldersForDeveloper(String developerId, boolean isFollowing) {
+        followStates.put(developerId, isFollowing);
+        
+        java.util.List<ReelViewHolder> holders = developerViewHolders.get(developerId);
+        if (holders != null) {
+            Log.d("FollowDebug", "Updating " + holders.size() + " ViewHolders for developer: " + developerId + " to following: " + isFollowing);
+            for (ReelViewHolder holder : holders) {
+                if (holder != null && holder.followButton != null) {
+                    holder.updateFollowUI(isFollowing);
+                }
+            }
+        } else {
+            Log.d("FollowDebug", "No ViewHolders found for developer: " + developerId);
+        }
+    }
+    
+    private void checkFollowStateFromFirebase(String developerId, ReelViewHolder holder) {
+        String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+        
+        // Prevent checking if trying to follow yourself
+        if (currentUserId.equals(developerId)) {
+            holder.followButton.setVisibility(View.GONE); // Hide follow button for own videos
+            return;
+        }
+        
+        // Check if current user is following this developer
+        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(currentUserId)
+                .child("following_list")
+                .child(developerId);
+        
+        currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                boolean following = snapshot.exists();
+                Log.d("FollowDebug", "Firebase follow status for " + developerId + ": " + following);
+                
+                // Cache the result and update all ViewHolders for this developer
+                updateAllViewHoldersForDeveloper(developerId, following);
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                // On error, assume not following
+                Log.d("FollowDebug", "Error checking follow status: " + error.getMessage());
+                updateAllViewHoldersForDeveloper(developerId, false);
+            }
+        });
     }
 
     public void handleScrollStateChange(int newState) {
@@ -225,6 +339,55 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Only pause when the view is completely out of view
         }
     }
+    
+    // Method to refresh follow states for all ViewHolders
+    public void refreshFollowStates() {
+        followStates.clear();
+        // This will trigger re-checking of follow states when ViewHolders are bound
+        notifyDataSetChanged();
+    }
+    
+    // Method to pre-load follow states for all developers in the current list
+    public void preloadFollowStates() {
+        String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (currentUserId == null) return;
+        
+        // Get unique developer IDs from the current reel list
+        java.util.Set<String> developerIds = new java.util.HashSet<>();
+        for (ReelItem item : reelItems) {
+            if (item.getDeveloperId() != null && !item.getDeveloperId().equals(currentUserId)) {
+                developerIds.add(item.getDeveloperId());
+            }
+        }
+        
+        Log.d("FollowDebug", "Preloading follow states for " + developerIds.size() + " developers");
+        
+        // Check follow state for each developer
+        for (String developerId : developerIds) {
+            if (!followStates.containsKey(developerId)) {
+                DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                        .getReference("users")
+                        .child(currentUserId)
+                        .child("following_list")
+                        .child(developerId);
+                
+                currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        boolean following = snapshot.exists();
+                        Log.d("FollowDebug", "Preloaded follow state for " + developerId + ": " + following);
+                        followStates.put(developerId, following);
+                    }
+                    
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        Log.d("FollowDebug", "Error preloading follow state for " + developerId + ": " + error.getMessage());
+                        followStates.put(developerId, false);
+                    }
+                });
+            }
+        }
+    }
 
     public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
@@ -238,6 +401,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         private android.os.Handler progressHandler;
         private Runnable progressRunnable;
         private boolean isHolding = false;
+        
+        // Three-dot menu
+        ImageView threeDotMenu;
         
         // Like button components
         LinearLayout likeButton;
@@ -275,13 +441,20 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             followButton = itemView.findViewById(R.id.follow_button);
             followText = itemView.findViewById(R.id.tv_follow_text);
             
+            // Initialize three-dot menu
+            threeDotMenu = itemView.findViewById(R.id.threeDotMenu);
+            
+            // Set up three-dot menu click listener
+            threeDotMenu.setOnClickListener(v -> {
+                android.util.Log.d("ReelViewHolder", "Three-dot menu clicked for video: " + currentVideoId);
+                showVideoDetailsBottomSheet();
+            });
+            
             // Ensure follow button is visible by default
             if (followButton != null) {
                 followButton.setVisibility(View.VISIBLE);
             }
             
-
-
             playerView.setUseController(false);
             gestureDetector = new GestureDetector(context, new CustomGestureListener());
             
@@ -367,10 +540,33 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Check if current user has liked this video
             checkIfLiked(reelItem.getVideoId());
             
-            // Check if current user is following this video's creator
-            checkIfFollowing(reelItem.getDeveloperId());
+            // Register this ViewHolder for the developer and check follow state
+            String developerId = reelItem.getDeveloperId();
+            registerViewHolderForDeveloper(developerId, this);
+            
+            // Check follow state - if cached, use immediately; if not, show default and check Firebase
+            if (followStates.containsKey(developerId)) {
+                boolean cachedState = followStates.get(developerId);
+                Log.d("FollowDebug", "Using cached follow state for " + developerId + ": " + cachedState);
+                updateFollowUI(cachedState);
+            } else {
+                // Show default state and check Firebase in background
+                updateFollowUI(false);
+                checkFollowStateFromFirebase(developerId, this);
+            }
 
             currentVideoId = reelItem.getVideoId();
+            
+            // Reset view tracking for new video
+            if (currentVideoId != null) {
+                ViewCountManager.resetVideoViewTracking(currentVideoId);
+            }
+            
+            // Debug logging for three-dot menu
+            android.util.Log.d("ReelViewHolder", "Three-dot menu visibility: " + threeDotMenu.getVisibility());
+            android.util.Log.d("ReelViewHolder", "Three-dot menu clickable: " + threeDotMenu.isClickable());
+            android.util.Log.d("ReelViewHolder", "Three-dot menu focusable: " + threeDotMenu.isFocusable());
+            android.util.Log.d("ReelViewHolder", "Current video ID: " + currentVideoId);
             
             // Clear any previous player attachment
             playerView.setPlayer(null);
@@ -665,15 +861,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                         
                         currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
                             Log.d("FollowDebug", "Successfully stored follow relationship");
+                            // Update all ViewHolders for this developer
+                            updateAllViewHoldersForDeveloper(developerId, true);
                         }).addOnFailureListener(e -> {
                             Log.d("FollowDebug", "Failed to store follow relationship: " + e.getMessage());
+                            // Rollback UI on failure
+                            updateAllViewHoldersForDeveloper(developerId, false);
                         });
                         
                         Toast.makeText(context, "Following", Toast.LENGTH_SHORT).show();
                     } else {
                         // Rollback UI on failure
                         Log.d("FollowDebug", "Transaction failed: " + (error != null ? error.getMessage() : "Unknown error"));
-                        updateFollowUI(false);
+                        updateAllViewHoldersForDeveloper(developerId, false);
                         Toast.makeText(context, "Failed to follow", Toast.LENGTH_SHORT).show();
                     }
                     followButton.setEnabled(true);
@@ -713,15 +913,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                         
                         currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
                             Log.d("FollowDebug", "Successfully removed follow relationship");
+                            // Update all ViewHolders for this developer
+                            updateAllViewHoldersForDeveloper(developerId, false);
                         }).addOnFailureListener(e -> {
                             Log.d("FollowDebug", "Failed to remove follow relationship: " + e.getMessage());
+                            // Rollback UI on failure
+                            updateAllViewHoldersForDeveloper(developerId, true);
                         });
                         
                         Toast.makeText(context, "Unfollowed", Toast.LENGTH_SHORT).show();
                     } else {
                         // Rollback UI on failure
                         Log.d("FollowDebug", "Unfollow transaction failed: " + (error != null ? error.getMessage() : "Unknown error"));
-                        updateFollowUI(true);
+                        updateAllViewHoldersForDeveloper(developerId, true);
                         Toast.makeText(context, "Failed to unfollow", Toast.LENGTH_SHORT).show();
                     }
                     followButton.setEnabled(true);
@@ -739,42 +943,6 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 followText.setText("Follow");
                 followText.setTextColor(android.graphics.Color.WHITE);
             }
-        }
-        
-        private void checkIfFollowing(String developerId) {
-            String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
-            
-            // Prevent checking if trying to follow yourself
-            if (currentUserId.equals(developerId)) {
-                followButton.setVisibility(View.GONE); // Hide follow button for own videos
-                return;
-            }
-            
-            // Check if current user is following this developer
-            DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                    .getReference("users")
-                    .child(currentUserId)
-                    .child("following_list")
-                    .child(developerId); // Using developerId instead of videoId
-            
-            currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                @Override
-                public void onDataChange(@NonNull DataSnapshot snapshot) {
-                    boolean following = snapshot.exists();
-                    Log.d("FollowDebug", "Checking follow status: users/" + currentUserId + "/following_list/" + developerId + " exists: " + following);
-                    if (following) {
-                        Log.d("FollowDebug", "Follow value: " + snapshot.getValue());
-                    }
-                    updateFollowUI(following);
-                }
-                
-                @Override
-                public void onCancelled(@NonNull DatabaseError error) {
-                    // On error, assume not following
-                    Log.d("FollowDebug", "Error checking follow status: " + error.getMessage());
-                    updateFollowUI(false);
-                }
-            });
         }
         
         private void handleShareClick() {
@@ -843,6 +1011,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                     if (sharedPlayer != null && sharedPlayer.getDuration() > 0) {
                         float progress = (float) sharedPlayer.getCurrentPosition() / sharedPlayer.getDuration();
                         progressLine.setScaleX(progress);
+                        
+                        // Check for view count increment every 500ms
+                        if (currentVideoId != null && sharedPlayer.getCurrentPosition() % 500 < 100) {
+                            ViewCountManager.checkAndIncrementViewCount(
+                                currentVideoId,
+                                sharedPlayer.getCurrentPosition(),
+                                sharedPlayer.getDuration()
+                            );
+                        }
                     }
                     if (progressHandler != null) {
                         progressHandler.postDelayed(this, 100); // Update every 100ms
@@ -929,13 +1106,35 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
         // Method to handle touch up (release)
         public void onTouchUp() {
-            if (isHolding && isPausedByHold && currentPlayingPosition == position) {
-                if (sharedPlayer != null) {
+            if (isHolding) {
+                isHolding = false;
+                if (isPausedByHold && sharedPlayer != null) {
                     sharedPlayer.setPlayWhenReady(true);
                     isPausedByHold = false;
                 }
             }
-            isHolding = false;
+        }
+        
+        private void showVideoDetailsBottomSheet() {
+            if (currentVideoId == null) {
+                android.util.Log.w("ReelViewHolder", "Cannot show bottom sheet - no video ID");
+                return;
+            }
+            
+            VideoDetailsBottomSheet bottomSheet = VideoDetailsBottomSheet.newInstance(
+                currentVideoId,
+                tvTitle.getText().toString(),
+                tvDescription.getText().toString()
+            );
+            
+            // Get the activity context
+            Context context = itemView.getContext();
+            if (context instanceof androidx.fragment.app.FragmentActivity) {
+                androidx.fragment.app.FragmentActivity activity = (androidx.fragment.app.FragmentActivity) context;
+                bottomSheet.show(activity.getSupportFragmentManager(), "VideoDetailsBottomSheet");
+            } else {
+                android.util.Log.w("ReelViewHolder", "Context is not a FragmentActivity");
+            }
         }
     }
 }

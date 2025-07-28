@@ -29,6 +29,8 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.PlaybackException;
+import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
+import com.genzopia.Instagame.utils.ViewCountManager;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -41,6 +43,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     TextView viewsAndTime;
     private VideoItem currentItem;
     
+    // Three-dot menu
+    private ImageView threeDotMenu;
+    
     // Seek bar and touch controls
     private View progressLine;
     private View progressContainer;
@@ -50,6 +55,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private boolean isHolding = false;
     private boolean isPausedByHold = false;
     private ExoPlayer exoPlayer;
+    
+    // View count tracking
+    private boolean hasIncrementedView = false;
 
     @SuppressLint("ClickableViewAccessibility")
     public VideoViewHolder(@NonNull View itemView) {
@@ -61,10 +69,19 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         title          = itemView.findViewById(R.id.title);
         channelName    = itemView.findViewById(R.id.channelName);
         viewsAndTime   = itemView.findViewById(R.id.viewsAndTime);
+        threeDotMenu   = itemView.findViewById(R.id.threeDotMenu);
         
         // Initialize progress line and container
         progressLine = itemView.findViewById(R.id.progress_line);
         progressContainer = itemView.findViewById(R.id.progress_container);
+        
+        // Set up three-dot menu click listener
+        threeDotMenu.setOnClickListener(v -> {
+            android.util.Log.d("VideoViewHolder", "Three-dot menu clicked for video: " + (currentItem != null ? currentItem.id : "unknown"));
+            android.util.Log.d("VideoViewHolder", "Three-dot menu position: " + threeDotMenu.getX() + ", " + threeDotMenu.getY());
+            android.util.Log.d("VideoViewHolder", "Three-dot menu visibility: " + threeDotMenu.getVisibility());
+            showVideoDetailsBottomSheet();
+        });
         
         // Initialize gesture detector
         gestureDetector = new GestureDetector(itemView.getContext(), new CustomGestureListener());
@@ -94,6 +111,14 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             }
             
             return handled;
+        });
+        
+        // Set up three-dot menu click listener
+        threeDotMenu.setOnClickListener(v -> {
+            final VideoItem item = currentItem;
+            if (item != null) {
+                showVideoDetailsBottomSheet();
+            }
         });
     }
 
@@ -145,19 +170,38 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         playerView.setPlayer(exoPlayer);
         android.util.Log.d("VideoViewHolder", "Switched to main player for video " + (currentItem != null ? currentItem.id : "unknown"));
         
-        // Add player listener to track video loading
+        // Add player listener to track video loading and view count
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 android.util.Log.d("VideoViewHolder", "Playback state changed: " + playbackState);
                 if (playbackState == Player.STATE_READY) {
                     android.util.Log.d("VideoViewHolder", "Video is ready to play");
+                    
+                    // Store video duration for view tracking
+                    final VideoItem item = currentItem;
+                    if (item != null && exoPlayer.getDuration() > 0) {
+                        ViewCountManager.setVideoDuration(item.id, exoPlayer.getDuration());
+                    }
                 }
             }
             
             @Override
             public void onPlayerError(PlaybackException error) {
                 android.util.Log.e("VideoViewHolder", "Player error: " + error.getMessage());
+            }
+            
+            @Override
+            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                // Track view count when video reaches 60%
+                final VideoItem item = currentItem;
+                if (item != null && exoPlayer.getDuration() > 0) {
+                    ViewCountManager.checkAndIncrementViewCount(
+                        item.id, 
+                        exoPlayer.getCurrentPosition(), 
+                        exoPlayer.getDuration()
+                    );
+                }
             }
         });
         
@@ -237,6 +281,16 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     if (progressContainer.getVisibility() != View.VISIBLE) {
                         progressContainer.setVisibility(View.VISIBLE);
                         android.util.Log.d("VideoViewHolder", "Forced progress container to visible");
+                    }
+                    
+                    // Check for view count increment every 500ms
+                    final VideoItem item = currentItem;
+                    if (item != null && exoPlayer.getCurrentPosition() % 500 < 100) {
+                        ViewCountManager.checkAndIncrementViewCount(
+                            item.id,
+                            exoPlayer.getCurrentPosition(),
+                            exoPlayer.getDuration()
+                        );
                     }
                     
                     // Debug log every 2 seconds
@@ -352,6 +406,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     public void bind(VideoItem videoItem, Context context) {
         this.currentItem = videoItem;
         
+        // Reset view tracking for new video
+        resetViewTracking();
+        
         // Set channel info
         channelName.setText("Channel " + videoItem.id);
         title.setText("Video " + videoItem.id + " - Amazing Content");
@@ -362,6 +419,12 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         
         // Show thumbnail using preloaded player
         showThumbnail(videoItem);
+        
+        // Debug logging for three-dot menu
+        android.util.Log.d("VideoViewHolder", "Three-dot menu visibility: " + threeDotMenu.getVisibility());
+        android.util.Log.d("VideoViewHolder", "Three-dot menu clickable: " + threeDotMenu.isClickable());
+        android.util.Log.d("VideoViewHolder", "Three-dot menu focusable: " + threeDotMenu.isFocusable());
+        android.util.Log.d("VideoViewHolder", "Three-dot menu width: " + threeDotMenu.getWidth() + ", height: " + threeDotMenu.getHeight());
         
         // Debug logging
         android.util.Log.d("VideoViewHolder", "Bound video item: " + videoItem.id);
@@ -383,5 +446,31 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             android.util.Log.d("VideoViewHolder", "No preloaded player for video " + videoItem.id);
         }
     }
+    
+    private void showVideoDetailsBottomSheet() {
+        if (currentItem == null) return;
+        
+        VideoDetailsBottomSheet bottomSheet = VideoDetailsBottomSheet.newInstance(
+            currentItem.id,
+            currentItem.title,
+            currentItem.description
+        );
+        
+        // Get the activity context
+        Context context = itemView.getContext();
+        if (context instanceof androidx.fragment.app.FragmentActivity) {
+            androidx.fragment.app.FragmentActivity activity = (androidx.fragment.app.FragmentActivity) context;
+            bottomSheet.show(activity.getSupportFragmentManager(), "VideoDetailsBottomSheet");
+        }
+    }
+    
+    // Reset view tracking when video is bound
+    public void resetViewTracking() {
+        if (currentItem != null) {
+            ViewCountManager.resetVideoViewTracking(currentItem.id);
+            hasIncrementedView = false;
+        }
+    }
+    
     // Removed playVideo, pauseVideo, and releasePlayer methods
 }

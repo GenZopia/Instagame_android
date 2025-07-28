@@ -45,6 +45,24 @@
             android:visibility="visible"
             app:use_controller="false" />
 
+        <!-- Three-dot menu button -->
+        <ImageView
+            android:id="@+id/threeDotMenu"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/circle_background"
+            android:padding="8dp"
+            android:src="@drawable/ic_more_vert"
+            android:visibility="visible"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="10dp"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="More options" />
+
         <!-- Progress Container (at bottom, on top of everything) -->
         <FrameLayout
             android:id="@+id/progress_container"
@@ -54,8 +72,6 @@
             android:background="@android:color/transparent"
             android:clickable="true"
             android:focusable="true">
-
-
 
             <!-- Progress line -->
             <View

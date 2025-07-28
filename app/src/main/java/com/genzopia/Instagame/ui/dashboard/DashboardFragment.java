@@ -89,6 +89,11 @@ public class DashboardFragment extends Fragment {
 
         reelRepository = new ReelRepository();
         loadMoreReels();
+        
+        // Preload follow states for better performance
+        if (reelAdapter != null) {
+            reelAdapter.preloadFollowStates();
+        }
 
         // Add scroll listener for lazy loading
         reelView.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -121,6 +126,8 @@ public class DashboardFragment extends Fragment {
                     reelItems.addAll(reels);
                     if (reelAdapter != null) {
                         reelAdapter.notifyItemRangeInserted(oldSize, reels.size());
+                        // Preload follow states for new reels
+                        reelAdapter.preloadFollowStates();
                         // If this is the initial load, play the first video
                         if (oldSize == 0 && reels.size() > 0) {
                             reelView.post(() -> reelAdapter.ensureOnlyCurrentVideoPlays());

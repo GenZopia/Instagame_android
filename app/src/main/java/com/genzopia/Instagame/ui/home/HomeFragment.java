@@ -88,6 +88,11 @@ public class HomeFragment extends Fragment {
 
         // Simulate loading delay, then set real data
         handler.postDelayed(() -> {
+            if (!isAdded() || isDetached()) {
+                android.util.Log.w("HomeFragment", "Fragment not attached, skipping data setup");
+                return;
+            }
+            
             // Create profile items (only 5 unique profiles)
             List<ImageItem> profileItems = new ArrayList<>();
             profileItems.add(new ImageItem("1", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80"));
@@ -105,7 +110,8 @@ public class HomeFragment extends Fragment {
                     "3.2M views",
                     "1 week ago",
                     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=880&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                    "Experience the breathtaking beauty of nature's most spectacular moments. This video captures the essence of tranquility and wonder."
             ));
 
             videoItems.add(new VideoItem(
@@ -115,7 +121,8 @@ public class HomeFragment extends Fragment {
                     "1.8M views",
                     "3 days ago",
                     "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+                    "Discover the vibrant energy of city life through stunning urban photography and captivating visuals."
             ));
 
             videoItems.add(new VideoItem(
@@ -125,7 +132,8 @@ public class HomeFragment extends Fragment {
                     "2.1M views",
                     "5 days ago",
                     "https://images.unsplash.com/photo-1526779259212-939e64788e3c?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    "Join us on an epic journey through majestic mountain ranges and thrilling outdoor adventures."
             ));
 
             videoItems.add(new VideoItem(
@@ -135,7 +143,8 @@ public class HomeFragment extends Fragment {
                     "1.5M views",
                     "2 days ago",
                     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2346&q=80",
-                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+                    "Immerse yourself in the calming rhythm of ocean waves and the mysterious depths of marine life."
             ));
             
             // Preload videos to show thumbnails at 1 second
@@ -143,6 +152,11 @@ public class HomeFragment extends Fragment {
             
             // Wait a bit for preloaded players to be ready
             handler.postDelayed(() -> {
+                if (!isAdded() || isDetached()) {
+                    android.util.Log.w("HomeFragment", "Fragment not attached, skipping adapter setup");
+                    return;
+                }
+                
                 android.util.Log.d("HomeFragment", "Preloading completed, setting up adapter");
                 
                 // Set real data
@@ -153,8 +167,13 @@ public class HomeFragment extends Fragment {
                 
                 // Preload first 10 videos before hiding shimmer
                 handler.postDelayed(() -> {
-                    verticalAdapter.setLoading(false);
-                    isLoading = false;
+                    if (verticalAdapter != null && isAdded() && !isDetached()) {
+                        verticalAdapter.setLoading(false);
+                        isLoading = false;
+                        android.util.Log.d("HomeFragment", "Successfully set loading to false");
+                    } else {
+                        android.util.Log.w("HomeFragment", "Cannot set loading to false - adapter is null or fragment is not attached");
+                    }
                 }, 1200); // Wait for preloading (tune as needed)
             }, 1000); // Wait 1 second for preloaded players to be ready
         }, 2000); // 2 seconds loading
@@ -184,6 +203,10 @@ public class HomeFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        // Cancel any pending handler tasks
+        if (handler != null) {
+            handler.removeCallbacksAndMessages(null);
+        }
         if (exoPlayer != null) {
             exoPlayer.release();
             exoPlayer = null;
@@ -197,14 +220,30 @@ public class HomeFragment extends Fragment {
     }
 
     private void handleAutoPlayAndPreload() {
-        if (verticalAdapter == null || binding == null) return;
+        if (verticalAdapter == null || binding == null || exoPlayer == null) {
+            android.util.Log.w("HomeFragment", "Cannot handle auto play - adapter, binding, or player is null");
+            return;
+        }
+        
         RecyclerView recyclerView = binding.verticalRecyclerView;
+        if (recyclerView == null) {
+            android.util.Log.w("HomeFragment", "RecyclerView is null");
+            return;
+        }
+        
         LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
         if (layoutManager == null) return;
+        
         int firstVisible = layoutManager.findFirstVisibleItemPosition();
         int lastVisible = layoutManager.findLastVisibleItemPosition();
         int center = (firstVisible + lastVisible) / 2;
         int playIndex = Math.max(1, center); // skip profile at 0
+        
+        // Check if playIndex is valid
+        if (playIndex >= verticalAdapter.getItemCount()) {
+            android.util.Log.w("HomeFragment", "Play index " + playIndex + " is out of bounds");
+            return;
+        }
         
         // Get the video item for this position
         Object item = verticalAdapter.getItem(playIndex);
@@ -224,10 +263,10 @@ public class HomeFragment extends Fragment {
                     android.util.Log.d("HomeFragment", "Saved position for video " + currentVideo.id + ": " + currentPosition);
                     
                     // Refresh preloaded thumbnails to show updated positions
-                    refreshPreloadedThumbnails(verticalAdapter.getVideoItems());
-                    
-                    // Refresh all visible ViewHolder thumbnails
-                    verticalAdapter.refreshAllVisibleThumbnails();
+                    if (verticalAdapter != null) {
+                        refreshPreloadedThumbnails(verticalAdapter.getVideoItems());
+                        verticalAdapter.refreshAllVisibleThumbnails();
+                    }
                 }
             }
             
@@ -248,14 +287,18 @@ public class HomeFragment extends Fragment {
                 }
                 
                 exoPlayer.play(); // Start playing
-                verticalAdapter.attachPlayerViewTo(playIndex, playerView);
+                if (verticalAdapter != null && playerView != null) {
+                    verticalAdapter.attachPlayerViewTo(playIndex, playerView);
+                }
                 currentPlayingPosition = playIndex;
                 
                 android.util.Log.d("HomeFragment", "Started playing video: " + videoItem.id);
             }
         }
         // Preload logic can remain as before if desired
-        verticalAdapter.preloadAround(playIndex);
+        if (verticalAdapter != null) {
+            verticalAdapter.preloadAround(playIndex);
+        }
     }
 
     private void preloadVideos(List<VideoItem> videoItems) {
@@ -266,7 +309,7 @@ public class HomeFragment extends Fragment {
         // Preload first 5 videos to show thumbnails
         int preloadCount = Math.min(5, videoItems.size());
         for (int i = 0; i < preloadCount; i++) {
-            VideoItem videoItem = videoItems.get(i);
+            final VideoItem videoItem = videoItems.get(i);
             
             // Create a separate ExoPlayer for preloading
             ExoPlayer preloadPlayer = new ExoPlayer.Builder(requireContext()).build();

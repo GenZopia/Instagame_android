@@ -25,6 +25,7 @@ import java.util.List;
 import android.os.Handler;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.ExoPlayer;
+import com.genzopia.Instagame.vertical_recylerview_custom.PlayerManager;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -151,6 +152,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     public Object getItem(int position) {
+        if (position < 0 || position >= items.size()) {
+            android.util.Log.w(TAG, "getItem: Invalid position " + position + ", items size: " + items.size());
+            return null;
+        }
         return items.get(position);
     }
 
@@ -190,9 +195,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         int end = Math.min(items.size() - 1, centerIndex + 5);
         // Preload and pause all in window (no playerView logic)
         for (int i = start; i <= end; i++) {
-            Object item = items.get(i);
+            Object item = getItem(i);
             if (item instanceof VideoItem) {
                 // Optionally, implement preloading logic here if needed
+                android.util.Log.d(TAG, "Preloading video at position: " + i);
             }
         }
     }
@@ -217,6 +223,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             if (item instanceof VideoItem) {
                 videoHolder.bind((VideoItem) item, recyclerView.getContext());
                 android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + position);
+            } else {
+                android.util.Log.w("HomeAdapter", "Item at position " + position + " is not a VideoItem or is null");
             }
         }
     }
@@ -238,6 +246,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 if (item instanceof VideoItem) {
                     videoHolder.bind((VideoItem) item, recyclerView.getContext());
                     android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + i);
+                } else {
+                    android.util.Log.w("HomeAdapter", "Item at position " + i + " is not a VideoItem or is null");
                 }
             }
         }

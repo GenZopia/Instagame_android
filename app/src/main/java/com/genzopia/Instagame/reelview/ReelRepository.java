@@ -64,6 +64,20 @@ public class ReelRepository {
                     String title = videoSnap.child("video_title").getValue(String.class);
                     String developerId = videoSnap.child("user_id").getValue(String.class);
                     
+                    // Handle null values with defaults
+                    if (videoId == null) {
+                        Log.w("ReelRepository", "Skipping video with null videoId");
+                        continue; // Skip items without video ID
+                    }
+                    if (title == null) title = "Untitled Video";
+                    if (likeCount == null) likeCount = "0";
+                    if (description == null) description = "";
+                    if (developerId == null) developerId = "";
+                    if (gameId == null) {
+                        Log.w("ReelRepository", "Video " + videoId + " has null gameId, using empty string");
+                        gameId = ""; // Use empty string instead of null
+                    }
+                    
                     ReelItem item = new ReelItem(videoId, title, likeCount, description, developerId, gameId);
                     loadedReels.add(item);
                     newLastKey = videoId;
@@ -135,19 +149,34 @@ public class ReelRepository {
     }
 
     private void fetchGameNamePaged(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
-        DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(item.getGameid());
-        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                // Optionally fetch and set game name if needed
-                markItemLoadedPaged(item, items, loadedMap, callback);
-            }
+        String gameId = item.getGameid();
+        
+        // Skip game name fetch if gameId is null or empty
+        if (gameId == null || gameId.isEmpty()) {
+            Log.d("ReelRepository", "Skipping game name fetch for video " + item.getVideoId() + " - no gameId");
+            markItemLoadedPaged(item, items, loadedMap, callback);
+            return;
+        }
+        
+        try {
+            DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
+            gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    // Optionally fetch and set game name if needed
+                    markItemLoadedPaged(item, items, loadedMap, callback);
+                }
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                markItemLoadedPaged(item, items, loadedMap, callback);
-            }
-        });
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Log.w("ReelRepository", "Failed to fetch game data for gameId: " + gameId + ", error: " + error.getMessage());
+                    markItemLoadedPaged(item, items, loadedMap, callback);
+                }
+            });
+        } catch (Exception e) {
+            Log.e("ReelRepository", "Error accessing Firebase for gameId: " + gameId, e);
+            markItemLoadedPaged(item, items, loadedMap, callback);
+        }
     }
 
     private void markItemLoadedPaged(ReelItem item, List<ReelItem> items, ConcurrentHashMap<ReelItem, Boolean> loadedMap, ReelDataCallback callback) {
