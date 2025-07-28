@@ -34,7 +34,7 @@ public class SplashActivity extends AppCompatActivity {
                 startActivity(intent);
                 finish(); // Close SplashActivity so it's not shown when back button is pressed
             }
-        }, 30000); // 3000 milliseconds = 3 seconds
+        }, 3000); // 3000 milliseconds = 3 seconds
     }
 
 }
