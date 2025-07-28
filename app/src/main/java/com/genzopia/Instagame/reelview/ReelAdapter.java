@@ -229,6 +229,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
         TextView tvTitle, tvLikes;
+        TextView tvDescription, tvGameName;
         CircleImageView profile_image;
         View progressLine;
         GestureDetector gestureDetector;
@@ -257,6 +258,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             playerView = itemView.findViewById(R.id.player_view);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
+            tvDescription = itemView.findViewById(R.id.tv_description);
+            tvGameName = itemView.findViewById(R.id.tv_game_name);
             profile_image = itemView.findViewById(R.id.profile_image);
             progressLine = itemView.findViewById(R.id.progress_line);
             View progressContainer = itemView.findViewById(R.id.progress_container);
@@ -379,6 +382,41 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             itemView.setTag(R.id.gameid_tag, reelItem.getGameid());
 
             itemView.setTag(R.id.developerid_tag, reelItem.getDeveloperId());
+            // --- Firebase fetch for game description and name ---
+            String gameId = reelItem.getGameid();
+            if (gameId != null && !gameId.isEmpty()) {
+                DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
+                gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        if (snapshot.exists()) {
+                            String description = snapshot.child("description").getValue(String.class);
+                            String gameName = snapshot.child("game_name").getValue(String.class);
+                            if (description != null && !description.isEmpty()) {
+                                tvDescription.setText(description);
+                            } else {
+                                tvDescription.setText(reelItem.getDescription());
+                            }
+                            if (gameName != null && !gameName.isEmpty()) {
+                                tvGameName.setText("@"+gameName);
+                            } else {
+                                tvGameName.setText("");
+                            }
+                        } else {
+                            tvDescription.setText(reelItem.getDescription());
+                            tvGameName.setText("");
+                        }
+                    }
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        tvDescription.setText(reelItem.getDescription());
+                        tvGameName.setText("");
+                    }
+                });
+            } else {
+                tvDescription.setText(reelItem.getDescription());
+                tvGameName.setText("");
+            }
         }
         
         private void loadProfileImage(String userId) {
