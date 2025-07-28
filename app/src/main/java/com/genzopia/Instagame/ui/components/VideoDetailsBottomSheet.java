@@ -34,6 +34,7 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
     private String videoId;
     private String videoTitle;
     private String videoDescription;
+    private String fetchedVideoTitle; // Store the video title fetched from Firebase
 
     private TextView videoTitleText;
     private TextView viewCountText;
@@ -89,8 +90,8 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
         reportButton = view.findViewById(R.id.reportButton);
         closeButton = view.findViewById(R.id.closeButton);
 
-        // Set initial data
-        videoTitleText.setText(videoTitle != null ? videoTitle : "Untitled Video");
+        // Set initial data - title will be set from Firebase
+        videoTitleText.setText("Loading...");
         videoDescriptionText.setText(videoDescription != null ? videoDescription : "No description available");
     }
 
@@ -158,12 +159,31 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
                 // Update video title and description if available
                 String title = dataSnapshot.child("video_title").getValue(String.class);
                 if (title != null && !title.isEmpty()) {
-                    videoTitleText.setText(title);
+                    fetchedVideoTitle = title; // Store the fetched title
                 }
 
                 String description = dataSnapshot.child("description").getValue(String.class);
                 if (description != null && !description.isEmpty()) {
                     videoDescriptionText.setText(description);
+                }
+                
+                // Load game name from game_id
+                String gameId = dataSnapshot.child("game_id").getValue(String.class);
+                if (gameId != null && !gameId.isEmpty()) {
+                    loadGameName(gameId);
+                } else {
+                    // If no game_id, try to get from gameid field (for backward compatibility)
+                    gameId = dataSnapshot.child("gameid").getValue(String.class);
+                    if (gameId != null && !gameId.isEmpty()) {
+                        loadGameName(gameId);
+                    } else {
+                        // No game associated - show video title as fallback
+                        if (fetchedVideoTitle != null && !fetchedVideoTitle.isEmpty()) {
+                            videoTitleText.setText(fetchedVideoTitle);
+                        } else {
+                            videoTitleText.setText("Untitled Video");
+                        }
+                    }
                 }
             }
 
@@ -173,6 +193,56 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
             }
         };
         videoRef.addValueEventListener(videoListener);
+    }
+    
+    private void loadGameName(String gameId) {
+        DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
+        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String gameName = snapshot.child("game_name").getValue(String.class);
+                    if (gameName != null && !gameName.isEmpty()) {
+                        // Get video title from the existing video data
+                        String videoTitle = fetchedVideoTitle != null ? fetchedVideoTitle : "Untitled Video";
+                        
+                        // Create SpannableString with video title and colored @game_name
+                        String fullText = videoTitle + " @" + gameName;
+                        android.text.SpannableString spannableString = new android.text.SpannableString(fullText);
+                        
+                        // Find the position of @game_name
+                        int gameNameStart = fullText.indexOf("@" + gameName);
+                        if (gameNameStart != -1) {
+                            // Apply theme color to @game_name
+                            int themeColor = getResources().getColor(R.color.button_primary, null);
+                            spannableString.setSpan(
+                                new android.text.style.ForegroundColorSpan(themeColor),
+                                gameNameStart,
+                                gameNameStart + ("@" + gameName).length(),
+                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            );
+                        }
+                        
+                        videoTitleText.setText(spannableString);
+                    } else {
+                        // Fallback to video title if game name not found
+                        String title = fetchedVideoTitle != null ? fetchedVideoTitle : "Untitled Video";
+                        videoTitleText.setText(title);
+                    }
+                } else {
+                    // Fallback to video title if game not found
+                    String title = fetchedVideoTitle != null ? fetchedVideoTitle : "Untitled Video";
+                    videoTitleText.setText(title);
+                }
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                // Fallback to video title on error
+                String title = fetchedVideoTitle != null ? fetchedVideoTitle : "Untitled Video";
+                videoTitleText.setText(title);
+            }
+        });
     }
 
     private String formatCount(long count) {

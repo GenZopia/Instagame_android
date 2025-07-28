@@ -392,7 +392,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
         TextView tvTitle, tvLikes;
-        TextView tvDescription, tvGameName;
+        TextView tvGameName;
         CircleImageView profile_image;
         View progressLine;
         GestureDetector gestureDetector;
@@ -424,7 +424,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             playerView = itemView.findViewById(R.id.player_view);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
-            tvDescription = itemView.findViewById(R.id.tv_description);
+
             tvGameName = itemView.findViewById(R.id.tv_game_name);
             profile_image = itemView.findViewById(R.id.profile_image);
             progressLine = itemView.findViewById(R.id.progress_line);
@@ -586,31 +586,24 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
                         if (snapshot.exists()) {
-                            String description = snapshot.child("description").getValue(String.class);
                             String gameName = snapshot.child("game_name").getValue(String.class);
-                            if (description != null && !description.isEmpty()) {
-                                tvDescription.setText(description);
-                            } else {
-                                tvDescription.setText(reelItem.getDescription());
-                            }
                             if (gameName != null && !gameName.isEmpty()) {
                                 tvGameName.setText("@"+gameName);
                             } else {
                                 tvGameName.setText("");
                             }
                         } else {
-                            tvDescription.setText(reelItem.getDescription());
+
                             tvGameName.setText("");
                         }
                     }
                     @Override
                     public void onCancelled(@NonNull DatabaseError error) {
-                        tvDescription.setText(reelItem.getDescription());
+
                         tvGameName.setText("");
                     }
                 });
             } else {
-                tvDescription.setText(reelItem.getDescription());
                 tvGameName.setText("");
             }
         }
@@ -1121,10 +1114,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 return;
             }
             
+            // Get the actual description from the ReelItem instead of TextView
+            String actualDescription = "";
+            if (position >= 0 && position < reelItems.size()) {
+                actualDescription = reelItems.get(position).getDescription();
+                android.util.Log.d("VideoDetailsBottomSheet", "Passing description: " + actualDescription);
+            }
+            
             VideoDetailsBottomSheet bottomSheet = VideoDetailsBottomSheet.newInstance(
                 currentVideoId,
-                tvTitle.getText().toString(),
-                tvDescription.getText().toString()
+                "", // Title will be fetched from Firebase
+                actualDescription
             );
             
             // Get the activity context
