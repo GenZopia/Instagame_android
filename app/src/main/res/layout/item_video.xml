@@ -32,25 +32,42 @@
     <FrameLayout
         android:id="@+id/videoContainer"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="550dp"
         android:layout_marginTop="4dp"
         app:layout_constraintDimensionRatio="9:16"
         app:layout_constraintTop_toBottomOf="@id/channelIcon">
 
-        <!-- Thumbnail (visible when not playing) -->
-        <ImageView
-            android:id="@+id/thumbnail"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="centerCrop" />
-
-        <!-- Player View (visible when playing) -->
+        <!-- Player View (visible initially to show first frame) -->
         <com.google.android.exoplayer2.ui.PlayerView
             android:id="@+id/playerView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="invisible"
+            android:layout_height="550dp"
+            android:visibility="visible"
             app:use_controller="false" />
+
+        <!-- Progress Container (at bottom, on top of everything) -->
+        <FrameLayout
+            android:id="@+id/progress_container"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_gravity="bottom"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true">
+
+
+
+            <!-- Progress line -->
+            <View
+                android:id="@+id/progress_line"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_gravity="bottom"
+                android:background="#FFFFFF"
+                android:scaleX="0"
+                android:visibility="visible" />
+
+        </FrameLayout>
 
     </FrameLayout>
 

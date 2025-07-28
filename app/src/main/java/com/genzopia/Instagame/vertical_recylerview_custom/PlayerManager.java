@@ -78,6 +78,13 @@ public class PlayerManager {
         }
     }
 
+    public void preloadAndPause(Context context, String videoId, String videoUrl) {
+        ExoPlayer player = getPlayer(context, videoId, videoUrl);
+        if (player != null) {
+            player.setPlayWhenReady(false);
+        }
+    }
+
     public void releasePlayer(String videoId) {
         ExoPlayer player = playerMap.get(videoId);
         if (player != null) {

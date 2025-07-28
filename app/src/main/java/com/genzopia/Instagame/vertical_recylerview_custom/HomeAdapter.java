@@ -6,6 +6,8 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
+import android.view.GestureDetector;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -21,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import android.os.Handler;
+import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.ExoPlayer;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -39,6 +43,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private boolean isLoading = false;
     private int skeletonCount = 5;
     private int skeletonFeedCount = 5;
+    private ExoPlayer exoPlayer;
 
     public HomeAdapter(Context context, List<ImageItem> profileItems, List<VideoItem> videoItems) {
         this.context = context;
@@ -91,7 +96,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
         if (holder instanceof VideoViewHolder) {
-            ((VideoViewHolder) holder).releasePlayer();
+            // No playerView to detach from view
         }
         super.onViewRecycled(holder);
     }
@@ -145,39 +150,95 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return -1;
     }
 
-    public void playVideo(String videoId) {
-        if (currentlyPlayingVideoId != null && currentlyPlayingVideoId.equals(videoId)) {
-            return;
-        }
+    public Object getItem(int position) {
+        return items.get(position);
+    }
 
-        String oldVideoId = currentlyPlayingVideoId;
-        currentlyPlayingVideoId = videoId;
+    public void setExoPlayer(ExoPlayer exoPlayer) {
+        this.exoPlayer = exoPlayer;
+    }
 
-        // Pause old video
-        if (oldVideoId != null) {
-            playerManager.pauseVideo(oldVideoId);
-            int oldPosition = findVideoPositionById(oldVideoId);
-            if (oldPosition != -1) {
-                mainHandler.post(() -> notifyItemChanged(oldPosition));
+    public void attachPlayerViewTo(int position, PlayerView playerView) {
+        if (recyclerView == null) return;
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder instanceof VideoViewHolder) {
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            // Remove PlayerView from any old parent
+            ViewGroup parent = (ViewGroup) playerView.getParent();
+            if (parent != null) parent.removeView(playerView);
+            
+            // Remove only the PlayerView, keep progress container
+            for (int i = videoHolder.videoContainer.getChildCount() - 1; i >= 0; i--) {
+                View child = videoHolder.videoContainer.getChildAt(i);
+                if (child instanceof com.google.android.exoplayer2.ui.PlayerView || 
+                    child.getId() == R.id.playerView) {
+                    videoHolder.videoContainer.removeViewAt(i);
+                }
             }
-        }
-
-        // Play new video
-        playerManager.playVideo(videoId);
-        int newPosition = findVideoPositionById(videoId);
-        if (newPosition != -1) {
-            mainHandler.post(() -> notifyItemChanged(newPosition));
+            
+            // Add PlayerView to the container
+            videoHolder.videoContainer.addView(playerView);
+            
+            // Pass the global ExoPlayer to the ViewHolder
+            videoHolder.setupSeekBarAndTouchControls(playerView, exoPlayer);
         }
     }
 
-    public void pauseVideo(String videoId) {
-        if (currentlyPlayingVideoId != null && currentlyPlayingVideoId.equals(videoId)) {
-            currentlyPlayingVideoId = null;
-            playerManager.pauseVideo(videoId);
+    public void preloadAround(int centerIndex) {
+        if (items == null || items.size() <= 1) return;
+        int start = Math.max(1, centerIndex - 5); // skip profile at 0
+        int end = Math.min(items.size() - 1, centerIndex + 5);
+        // Preload and pause all in window (no playerView logic)
+        for (int i = start; i <= end; i++) {
+            Object item = items.get(i);
+            if (item instanceof VideoItem) {
+                // Optionally, implement preloading logic here if needed
+            }
+        }
+    }
 
-            int position = findVideoPositionById(videoId);
-            if (position != -1) {
-                mainHandler.post(() -> notifyItemChanged(position));
+    public List<VideoItem> getVideoItems() {
+        List<VideoItem> videoItems = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof VideoItem) {
+                videoItems.add((VideoItem) item);
+            }
+        }
+        return videoItems;
+    }
+
+    public void refreshCurrentViewHolderThumbnail(int position) {
+        if (recyclerView == null) return;
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (holder instanceof VideoViewHolder) {
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            // Force rebind to show updated thumbnail
+            Object item = getItem(position);
+            if (item instanceof VideoItem) {
+                videoHolder.bind((VideoItem) item, recyclerView.getContext());
+                android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + position);
+            }
+        }
+    }
+
+    public void refreshAllVisibleThumbnails() {
+        if (recyclerView == null) return;
+        
+        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+        
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        
+        for (int i = firstVisible; i <= lastVisible; i++) {
+            RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder instanceof VideoViewHolder) {
+                VideoViewHolder videoHolder = (VideoViewHolder) holder;
+                Object item = getItem(i);
+                if (item instanceof VideoItem) {
+                    videoHolder.bind((VideoItem) item, recyclerView.getContext());
+                    android.util.Log.d("HomeAdapter", "Refreshed thumbnail for position: " + i);
+                }
             }
         }
     }

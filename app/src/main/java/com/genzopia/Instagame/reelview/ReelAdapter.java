@@ -1,5 +1,6 @@
 package com.genzopia.Instagame.reelview;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -11,10 +12,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.LinearLayout;
+import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.webgl_gameloading.Game_mode;
 import com.google.android.exoplayer2.MediaItem;
@@ -26,8 +30,15 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.PlaybackException;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.List;
+
+import de.hdodenhof.circleimageview.CircleImageView;
 
 public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder> {
 
@@ -218,6 +229,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
         TextView tvTitle, tvLikes;
+        CircleImageView profile_image;
         View progressLine;
         GestureDetector gestureDetector;
         String currentVideoId;
@@ -225,17 +237,46 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         private android.os.Handler progressHandler;
         private Runnable progressRunnable;
         private boolean isHolding = false;
+        
+        // Like button components
+        LinearLayout likeButton;
+        ImageView likeIcon;
+        boolean isLiked = false;
+        
+        // Share button components
+        LinearLayout shareButton;
 
+        @SuppressLint("ClickableViewAccessibility")
         public ReelViewHolder(@NonNull View itemView) {
             super(itemView);
             playerView = itemView.findViewById(R.id.player_view);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
+            profile_image = itemView.findViewById(R.id.profile_image);
             progressLine = itemView.findViewById(R.id.progress_line);
             View progressContainer = itemView.findViewById(R.id.progress_container);
+            
+            // Initialize like button components
+            likeButton = itemView.findViewById(R.id.like_button);
+            likeIcon = itemView.findViewById(R.id.like_icon);
+            
+            // Initialize share button components
+            shareButton = itemView.findViewById(R.id.share_button);
+            
+
 
             playerView.setUseController(false);
             gestureDetector = new GestureDetector(context, new CustomGestureListener());
+            
+            // Set up like button click listener
+            likeButton.setOnClickListener(v -> {
+                handleLikeClick();
+            });
+            
+            // Set up share button click listener
+            shareButton.setOnClickListener(v -> {
+                handleShareClick();
+            });
 
             // Add touch listener for progress container (much larger touch area)
             progressContainer.setOnTouchListener((v, event) -> {
@@ -294,6 +335,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             position = pos;
             tvTitle.setText(reelItem.getTitle());
             tvLikes.setText(reelItem.getLikeCount() + " likes");
+            
+            // Set default image
+            profile_image.setImageResource(R.drawable.demo_user);
+            
+            // Load profile image from Firebase using userId
+            loadProfileImage(reelItem.getDeveloperId());
+            
+            // Check if current user has liked this video
+            checkIfLiked(reelItem.getVideoId());
 
             currentVideoId = reelItem.getVideoId();
             
@@ -305,7 +355,252 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             progressLine.setPivotX(0f); // Set pivot to left side for left-to-right scaling
 
             itemView.setTag(R.id.gameid_tag, reelItem.getGameid());
+
             itemView.setTag(R.id.developerid_tag, reelItem.getDeveloperId());
+        }
+        
+        private void loadProfileImage(String userId) {
+            if (userId == null || userId.isEmpty()) {
+                // Set default image if userId is null or empty
+                profile_image.setImageResource(R.drawable.demo_user);
+                return;
+            }
+            
+            // Reference to the user's data in Firebase
+            DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(userId);
+            
+            userRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    if (snapshot.exists()) {
+                        String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                        
+                        if (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) {
+                            // Load the profile image using Glide
+                            Glide.with(context)
+                                    .load(profilePhotoUrl)
+                                    .placeholder(R.drawable.demo_user)
+                                    .error(R.drawable.demo_user)
+                                    .into(profile_image);
+                        } else {
+                            // Set default image if profile_photo_url is null or empty
+                            profile_image.setImageResource(R.drawable.demo_user);
+                        }
+                    } else {
+                        // Set default image if user doesn't exist
+                        profile_image.setImageResource(R.drawable.demo_user);
+                    }
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Log.e("ReelAdapter", "Error loading profile image: " + error.getMessage());
+                    // Set default image on error
+                    profile_image.setImageResource(R.drawable.demo_user);
+                }
+            });
+        }
+        
+        private void handleLikeClick() {
+            String videoId = reelItems.get(position).getVideoId();
+            String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+            
+            // Prevent multiple rapid clicks
+            if (likeButton.isEnabled()) {
+                likeButton.setEnabled(false);
+                
+                // Optimistic update - update UI immediately
+                boolean newLikeState = !isLiked;
+                int currentCount = Integer.parseInt(reelItems.get(position).getLikeCount());
+                int newCount = newLikeState ? currentCount + 1 : Math.max(0, currentCount - 1);
+                
+                updateLikeUI(newLikeState, newCount);
+                
+                // Perform Firebase operations
+                if (newLikeState) {
+                    likeVideoOptimistic(videoId, currentUserId, currentCount);
+                } else {
+                    unlikeVideoOptimistic(videoId, currentUserId, currentCount);
+                }
+            }
+        }
+        
+        private void likeVideoOptimistic(String videoId, String userId, int currentCount) {
+            // Use Firebase transaction for atomic updates
+            DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                    .getReference("videos")
+                    .child(videoId);
+            
+            videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    String currentLikeCount = mutableData.child("like_count").getValue(String.class);
+                    int newLikeCount = 1;
+                    if (currentLikeCount != null) {
+                        newLikeCount = Integer.parseInt(currentLikeCount) + 1;
+                    }
+                    mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
+                    return com.google.firebase.database.Transaction.success(mutableData);
+                }
+                
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                    if (committed && error == null) {
+                        // Success - update user's liked videos
+                        DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                                .getReference("users")
+                                .child(userId)
+                                .child("liked_videos")
+                                .child(videoId);
+                        userLikedVideosRef.setValue(true);
+                        
+                        // Update the ReelItem data
+                        reelItems.get(position).setLikeCount(String.valueOf(currentCount + 1));
+                    } else {
+                        // Rollback UI on failure
+                        updateLikeUI(false, currentCount);
+                    }
+                    likeButton.setEnabled(true);
+                }
+            });
+        }
+        
+        private void unlikeVideoOptimistic(String videoId, String userId, int currentCount) {
+            // Use Firebase transaction for atomic updates
+            DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                    .getReference("videos")
+                    .child(videoId);
+            
+            videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    String currentLikeCount = mutableData.child("like_count").getValue(String.class);
+                    int newLikeCount = 0;
+                    if (currentLikeCount != null) {
+                        newLikeCount = Math.max(0, Integer.parseInt(currentLikeCount) - 1);
+                    }
+                    mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
+                    return com.google.firebase.database.Transaction.success(mutableData);
+                }
+                
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                    if (committed && error == null) {
+                        // Success - remove from user's liked videos
+                        DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                                .getReference("users")
+                                .child(userId)
+                                .child("liked_videos")
+                                .child(videoId);
+                        userLikedVideosRef.removeValue();
+                        
+                        // Update the ReelItem data
+                        reelItems.get(position).setLikeCount(String.valueOf(Math.max(0, currentCount - 1)));
+                    } else {
+                        // Rollback UI on failure
+                        updateLikeUI(true, currentCount);
+                    }
+                    likeButton.setEnabled(true);
+                }
+            });
+        }
+        
+        private void updateLikeUI(boolean liked, int likeCount) {
+            isLiked = liked;
+            
+            // Update like icon color
+            if (liked) {
+                likeIcon.setImageResource(R.drawable.ic_heart_filled);
+                likeIcon.setColorFilter(android.graphics.Color.RED);
+            } else {
+                likeIcon.setImageResource(R.drawable.ic_heart);
+                likeIcon.setColorFilter(android.graphics.Color.WHITE);
+            }
+            
+            // Update like count text
+            tvLikes.setText(likeCount + " likes");
+        }
+        
+        private void checkIfLiked(String videoId) {
+            String currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+            
+            // Use a more efficient approach - check if the user has liked this video
+            DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                    .getReference("users")
+                    .child(currentUserId)
+                    .child("liked_videos")
+                    .child(videoId);
+            
+            userLikedVideosRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    boolean liked = snapshot.exists();
+                    updateLikeUI(liked, Integer.parseInt(reelItems.get(position).getLikeCount()));
+                }
+                
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    // On error, assume not liked
+                    updateLikeUI(false, Integer.parseInt(reelItems.get(position).getLikeCount()));
+                }
+            });
+        }
+        
+        private void handleShareClick() {
+            String videoId = reelItems.get(position).getVideoId();
+            String videoTitle = reelItems.get(position).getTitle();
+            
+            // Increment share count in Firebase
+            incrementShareCount(videoId);
+            
+            // Create share intent
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("text/plain");
+            
+            // Create share text with video ID
+            String shareText = "Check out this amazing video: " + videoTitle + "\n\nVideo ID: " + videoId + "\n\nShared from Instagame";
+            
+            shareIntent.putExtra(Intent.EXTRA_TEXT, shareText);
+            shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Amazing video from Instagame");
+            
+            // Start activity chooser
+            try {
+                context.startActivity(Intent.createChooser(shareIntent, "Share via"));
+            } catch (Exception e) {
+                // Handle case where no sharing app is available
+                Toast.makeText(context, "No sharing app available", Toast.LENGTH_SHORT).show();
+            }
+        }
+        
+        private void incrementShareCount(String videoId) {
+            // Use Firebase transaction for atomic update
+            DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                    .getReference("videos")
+                    .child(videoId);
+            
+            videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    String currentShareCount = mutableData.child("share_count").getValue(String.class);
+                    int newShareCount = 1;
+                    if (currentShareCount != null) {
+                        newShareCount = Integer.parseInt(currentShareCount) + 1;
+                    }
+                    mutableData.child("share_count").setValue(String.valueOf(newShareCount));
+                    return com.google.firebase.database.Transaction.success(mutableData);
+                }
+                
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                    if (committed && error == null) {
+                        // Success - share count updated
+                        // You could also update the UI here if needed
+                    } else {
+                        // Handle error silently for share count
+                        // Share functionality still works even if count update fails
+                    }
+                }
+            });
         }
 
         void startProgressUpdates() {
