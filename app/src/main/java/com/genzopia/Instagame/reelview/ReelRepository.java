@@ -160,19 +160,19 @@ public class ReelRepository {
         
         try {
             DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
-            gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                @Override
-                public void onDataChange(@NonNull DataSnapshot snapshot) {
-                    // Optionally fetch and set game name if needed
-                    markItemLoadedPaged(item, items, loadedMap, callback);
-                }
+        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Optionally fetch and set game name if needed
+                markItemLoadedPaged(item, items, loadedMap, callback);
+            }
 
-                @Override
-                public void onCancelled(@NonNull DatabaseError error) {
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
                     Log.w("ReelRepository", "Failed to fetch game data for gameId: " + gameId + ", error: " + error.getMessage());
-                    markItemLoadedPaged(item, items, loadedMap, callback);
-                }
-            });
+                markItemLoadedPaged(item, items, loadedMap, callback);
+            }
+        });
         } catch (Exception e) {
             Log.e("ReelRepository", "Error accessing Firebase for gameId: " + gameId, e);
             markItemLoadedPaged(item, items, loadedMap, callback);

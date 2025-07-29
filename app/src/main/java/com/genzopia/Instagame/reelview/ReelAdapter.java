@@ -472,6 +472,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             followButton.setOnClickListener(v -> {
                 handleFollowClick();
             });
+            
+            // Set up profile image click listener
+            profile_image.setOnClickListener(v -> {
+                String developerId = reelItems.get(position).getDeveloperId();
+                if (developerId != null && !developerId.isEmpty()) {
+                    // Navigate to ChannelActivity with developer ID
+                    Intent intent = new Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity.class);
+                    intent.putExtra("developer_id", developerId);
+                    context.startActivity(intent);
+                }
+            });
 
             // Add touch listener for progress container (much larger touch area)
             progressContainer.setOnTouchListener((v, event) -> {

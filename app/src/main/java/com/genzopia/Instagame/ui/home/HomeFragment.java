@@ -89,7 +89,6 @@ public class HomeFragment extends Fragment {
         // Simulate loading delay, then set real data
         handler.postDelayed(() -> {
             if (!isAdded() || isDetached()) {
-                android.util.Log.w("HomeFragment", "Fragment not attached, skipping data setup");
                 return;
             }
             
@@ -153,11 +152,8 @@ public class HomeFragment extends Fragment {
             // Wait a bit for preloaded players to be ready
             handler.postDelayed(() -> {
                 if (!isAdded() || isDetached()) {
-                    android.util.Log.w("HomeFragment", "Fragment not attached, skipping adapter setup");
                     return;
                 }
-                
-                android.util.Log.d("HomeFragment", "Preloading completed, setting up adapter");
                 
                 // Set real data
                 verticalAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
@@ -170,9 +166,6 @@ public class HomeFragment extends Fragment {
                     if (verticalAdapter != null && isAdded() && !isDetached()) {
                         verticalAdapter.setLoading(false);
                         isLoading = false;
-                        android.util.Log.d("HomeFragment", "Successfully set loading to false");
-                    } else {
-                        android.util.Log.w("HomeFragment", "Cannot set loading to false - adapter is null or fragment is not attached");
                     }
                 }, 1200); // Wait for preloading (tune as needed)
             }, 1000); // Wait 1 second for preloaded players to be ready
@@ -221,13 +214,11 @@ public class HomeFragment extends Fragment {
 
     private void handleAutoPlayAndPreload() {
         if (verticalAdapter == null || binding == null || exoPlayer == null) {
-            android.util.Log.w("HomeFragment", "Cannot handle auto play - adapter, binding, or player is null");
             return;
         }
         
         RecyclerView recyclerView = binding.verticalRecyclerView;
         if (recyclerView == null) {
-            android.util.Log.w("HomeFragment", "RecyclerView is null");
             return;
         }
         
@@ -241,7 +232,6 @@ public class HomeFragment extends Fragment {
         
         // Check if playIndex is valid
         if (playIndex >= verticalAdapter.getItemCount()) {
-            android.util.Log.w("HomeFragment", "Play index " + playIndex + " is out of bounds");
             return;
         }
         
@@ -250,9 +240,6 @@ public class HomeFragment extends Fragment {
         if (item instanceof VideoItem) {
             VideoItem videoItem = (VideoItem) item;
             
-            // Debug logging
-            android.util.Log.d("HomeFragment", "Loading video: " + videoItem.id + " with URL: " + videoItem.videoUrl);
-            
             // Save current video position before switching
             if (currentPlayingPosition != RecyclerView.NO_POSITION && currentPlayingPosition < verticalAdapter.getItemCount()) {
                 Object currentItem = verticalAdapter.getItem(currentPlayingPosition);
@@ -260,7 +247,6 @@ public class HomeFragment extends Fragment {
                     VideoItem currentVideo = (VideoItem) currentItem;
                     long currentPosition = exoPlayer.getCurrentPosition();
                     videoPositions.put(currentVideo.id, currentPosition);
-                    android.util.Log.d("HomeFragment", "Saved position for video " + currentVideo.id + ": " + currentPosition);
                     
                     // Refresh preloaded thumbnails to show updated positions
                     if (verticalAdapter != null) {
@@ -280,10 +266,8 @@ public class HomeFragment extends Fragment {
                 Long savedPosition = videoPositions.get(videoItem.id);
                 if (savedPosition != null && savedPosition > 0) {
                     exoPlayer.seekTo(savedPosition);
-                    android.util.Log.d("HomeFragment", "Resuming video " + videoItem.id + " from position: " + savedPosition);
                 } else {
                     exoPlayer.seekTo(0);
-                    android.util.Log.d("HomeFragment", "Starting video " + videoItem.id + " from beginning");
                 }
                 
                 exoPlayer.play(); // Start playing
@@ -291,8 +275,6 @@ public class HomeFragment extends Fragment {
                     verticalAdapter.attachPlayerViewTo(playIndex, playerView);
                 }
                 currentPlayingPosition = playIndex;
-                
-                android.util.Log.d("HomeFragment", "Started playing video: " + videoItem.id);
             }
         }
         // Preload logic can remain as before if desired
@@ -303,8 +285,6 @@ public class HomeFragment extends Fragment {
 
     private void preloadVideos(List<VideoItem> videoItems) {
         if (videoItems == null || videoItems.isEmpty()) return;
-        
-        android.util.Log.d("HomeFragment", "Starting video preload for " + videoItems.size() + " videos");
         
         // Preload first 5 videos to show thumbnails
         int preloadCount = Math.min(5, videoItems.size());
@@ -326,33 +306,27 @@ public class HomeFragment extends Fragment {
                         if (savedPosition != null && savedPosition > 0) {
                             // Use saved position for thumbnail
                             preloadPlayer.seekTo(savedPosition);
-                            android.util.Log.d("HomeFragment", "Preloaded video " + videoItem.id + " at saved position: " + savedPosition);
                         } else {
                             // Use 1 second as default
                             preloadPlayer.seekTo(1000); // 1 second = 1000ms
-                            android.util.Log.d("HomeFragment", "Preloaded video " + videoItem.id + " at 1 second (default)");
                         }
                         preloadPlayer.setPlayWhenReady(false); // Pause immediately
-                        android.util.Log.d("HomeFragment", "Preloaded player ready for video " + videoItem.id);
                     }
                 }
                 
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    android.util.Log.e("HomeFragment", "Preload player error for video " + videoItem.id + ": " + error.getMessage());
+                    // Log.e("HomeFragment", "Preload player error for video " + videoItem.id + ": " + error.getMessage());
                 }
             });
             
             // Store the preloaded player for later use
             videoItem.preloadedPlayer = preloadPlayer;
-            android.util.Log.d("HomeFragment", "Created preloaded player for video " + videoItem.id);
         }
     }
 
     private void refreshPreloadedThumbnails(List<VideoItem> videoItems) {
         if (videoItems == null || videoItems.isEmpty()) return;
-        
-        android.util.Log.d("HomeFragment", "Refreshing preloaded thumbnails");
         
         // Refresh thumbnails for first 5 videos
         int refreshCount = Math.min(5, videoItems.size());
@@ -366,12 +340,10 @@ public class HomeFragment extends Fragment {
                     // Update thumbnail to saved position
                     videoItem.preloadedPlayer.seekTo(savedPosition);
                     videoItem.preloadedPlayer.setPlayWhenReady(false); // Ensure it's paused
-                    android.util.Log.d("HomeFragment", "Updated thumbnail for video " + videoItem.id + " to position: " + savedPosition);
                 } else {
                     // Use 1 second as default
                     videoItem.preloadedPlayer.seekTo(1000);
                     videoItem.preloadedPlayer.setPlayWhenReady(false); // Ensure it's paused
-                    android.util.Log.d("HomeFragment", "Updated thumbnail for video " + videoItem.id + " to 1 second (default)");
                 }
             }
         }

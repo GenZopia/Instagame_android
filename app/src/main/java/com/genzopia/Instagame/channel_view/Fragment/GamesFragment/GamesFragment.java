@@ -13,6 +13,11 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,13 +27,12 @@ public class GamesFragment extends Fragment {
     private RecyclerView rvGames;
     private GameAdapter adapter;
     private List<GameItem> gameList;
+    private String developerId;
 
     @Override
     public View onCreateView(LayoutInflater inflater,
                              ViewGroup container,
                              Bundle savedInstanceState) {
-        // Inflate the fragment layout that contains your RecyclerView:
-        // e.g. <RecyclerView android:id="@+id/rvGames" … />
         return inflater.inflate(R.layout.fragment_games, container, false);
     }
 
@@ -39,32 +43,114 @@ public class GamesFragment extends Fragment {
 
         // 1) Find RecyclerView
         rvGames = view.findViewById(R.id.rvGames);
-        Log.e("test111","done");
+        Log.d("GamesFragment", "Fragment created");
 
         // 2) Prepare data
         gameList = new ArrayList<>();
-        gameList.add(new GameItem(
-                "Accessibility permission",
-                "Google Play Console",
-                "When you upload to the Play Console you need to request the ACCESSIBILITY_SERVICE permission if your app uses any accessibility APIs...",
-                "https://mir-s3-cdn-cf.behance.net/project_modules/1400/50627a175474311.64b4b17cb24b3.jpg", // Use a real placeholder image
-                "https://mir-s3-cdn-cf.behance.net/project_modules/1400/50627a175474311.64b4b17cb24b3.jpg"
-        ));
-        gameList.add(new GameItem(
-                "Accessibility permission",
-                "Google Play Console",
-                "When you upload to the Play Console you need to request the ACCESSIBILITY_SERVICE permission if your app uses any accessibility APIs...",
-                "https://res.cloudinary.com/upwork-cloud/image/upload/c_scale,w_1000/v1709867164/catalog/1412115037622841344/afjq0smgngmlb97qxafe.webp", // Use a real placeholder image
-                "https://play.google.com/store/apps/details?id=com.example.game1"
-        ));
-        // …add as many as you like
-
+        
         // 3) Create adapter
         adapter = new GameAdapter(requireContext(), gameList);
 
         // 4) Set LayoutManager and Adapter
         rvGames.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvGames.setAdapter(adapter);
-        Log.e("test112","done");
+        
+        // 5) Load games if developer ID is set
+        if (developerId != null) {
+            loadGamesFromFirebase();
+        }
+    }
+    
+    public void setDeveloperId(String developerId) {
+        this.developerId = developerId;
+        if (isAdded() && rvGames != null) {
+            loadGamesFromFirebase();
+        }
+    }
+    
+    private void loadGamesFromFirebase() {
+        if (developerId == null) {
+            Log.e("GamesFragment", "Developer ID is null");
+            return;
+        }
+        
+        Log.d("GamesFragment", "Loading games for developer: " + developerId);
+        
+        // First, get the developer's games list
+        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId).child("games");
+        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                gameList.clear();
+                
+                Log.d("GamesFragment", "Games snapshot exists: " + snapshot.exists());
+                Log.d("GamesFragment", "Games snapshot children count: " + snapshot.getChildrenCount());
+                
+                if (snapshot.exists()) {
+                    // Iterate through the developer's games
+                    for (DataSnapshot gameSnapshot : snapshot.getChildren()) {
+                        String gameId = gameSnapshot.getKey();
+                        Log.d("GamesFragment", "Found game ID: " + gameId);
+                        if (gameId != null) {
+                            // Fetch game details from games collection
+                            loadGameDetails(gameId);
+                        }
+                    }
+                } else {
+                    Log.d("GamesFragment", "No games found for developer: " + developerId);
+                    adapter.notifyDataSetChanged();
+                }
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e("GamesFragment", "Error loading developer games: " + error.getMessage());
+            }
+        });
+    }
+    
+    private void loadGameDetails(String gameId) {
+        Log.d("GamesFragment", "Loading game details for game ID: " + gameId);
+        
+        DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
+        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Log.d("GamesFragment", "Game details snapshot exists: " + snapshot.exists());
+                
+                if (snapshot.exists()) {
+                    String gameName = snapshot.child("game_name").getValue(String.class);
+                    String description = snapshot.child("description").getValue(String.class);
+                    String imageUrl = snapshot.child("image_url").getValue(String.class);
+                    String playStoreUrl = snapshot.child("play_store_url").getValue(String.class);
+                    
+                    Log.d("GamesFragment", "Game name: " + gameName);
+                    Log.d("GamesFragment", "Game description: " + description);
+                    Log.d("GamesFragment", "Game image URL: " + imageUrl);
+                    Log.d("GamesFragment", "Game Play Store URL: " + playStoreUrl);
+                    
+                    // Create GameItem with fetched data
+                    GameItem gameItem = new GameItem(
+                        gameName != null ? gameName : "Unknown Game",
+                        "Developer Game",
+                        description != null ? description : "No description available",
+                        imageUrl != null ? imageUrl : "",
+                        playStoreUrl != null ? playStoreUrl : ""
+                    );
+                    
+                    gameList.add(gameItem);
+                    adapter.notifyDataSetChanged();
+                    
+                    Log.d("GamesFragment", "Added game: " + gameName + " (Total games in list: " + gameList.size() + ")");
+                } else {
+                    Log.e("GamesFragment", "Game details not found for game ID: " + gameId);
+                }
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e("GamesFragment", "Error loading game details: " + error.getMessage());
+            }
+        });
     }
 }
