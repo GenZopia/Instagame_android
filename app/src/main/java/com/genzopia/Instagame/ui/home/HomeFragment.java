@@ -164,8 +164,8 @@ public class HomeFragment extends Fragment {
                 // Preload first 10 videos before hiding shimmer
                 handler.postDelayed(() -> {
                     if (verticalAdapter != null && isAdded() && !isDetached()) {
-                        verticalAdapter.setLoading(false);
-                        isLoading = false;
+                    verticalAdapter.setLoading(false);
+                    isLoading = false;
                     }
                 }, 1200); // Wait for preloading (tune as needed)
             }, 1000); // Wait 1 second for preloaded players to be ready
@@ -250,8 +250,8 @@ public class HomeFragment extends Fragment {
                     
                     // Refresh preloaded thumbnails to show updated positions
                     if (verticalAdapter != null) {
-                        refreshPreloadedThumbnails(verticalAdapter.getVideoItems());
-                        verticalAdapter.refreshAllVisibleThumbnails();
+                    refreshPreloadedThumbnails(verticalAdapter.getVideoItems());
+                    verticalAdapter.refreshAllVisibleThumbnails();
                     }
                 }
             }
@@ -272,14 +272,14 @@ public class HomeFragment extends Fragment {
                 
                 exoPlayer.play(); // Start playing
                 if (verticalAdapter != null && playerView != null) {
-                    verticalAdapter.attachPlayerViewTo(playIndex, playerView);
+                verticalAdapter.attachPlayerViewTo(playIndex, playerView);
                 }
                 currentPlayingPosition = playIndex;
             }
         }
         // Preload logic can remain as before if desired
         if (verticalAdapter != null) {
-            verticalAdapter.preloadAround(playIndex);
+        verticalAdapter.preloadAround(playIndex);
         }
     }
 

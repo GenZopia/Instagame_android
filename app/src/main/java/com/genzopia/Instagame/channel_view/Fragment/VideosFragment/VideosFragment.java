@@ -40,7 +40,7 @@ public class VideosFragment extends Fragment {
 
         // Initialize video list
         videoList = new ArrayList<>();
-        
+
         adapter = new VideoAdapter(getContext(), videoList);
         recyclerView.setAdapter(adapter);
         

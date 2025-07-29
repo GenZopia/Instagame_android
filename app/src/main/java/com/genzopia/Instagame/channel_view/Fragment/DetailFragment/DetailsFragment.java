@@ -43,7 +43,7 @@ public class DetailsFragment extends Fragment {
 
         // Initialize link list
         linkList = new ArrayList<>();
-        
+
         adapter = new LinkAdapter(linkList);
         recyclerView.setAdapter(adapter);
         

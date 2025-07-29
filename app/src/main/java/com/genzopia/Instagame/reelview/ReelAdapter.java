@@ -454,7 +454,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             if (followButton != null) {
                 followButton.setVisibility(View.VISIBLE);
             }
-            
+
             playerView.setUseController(false);
             gestureDetector = new GestureDetector(context, new CustomGestureListener());
             
@@ -1067,16 +1067,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 String gameid = (String) itemView.getTag(R.id.gameid_tag);
-                String developerId = (String) itemView.getTag(R.id.developerid_tag);
                 
                 // Pause current video before launching activity
                 pauseCurrentVideo();
                 
-                // Launch Game_mode activity with intent extras
-                Intent intent = new Intent(context, Game_mode.class);
-                intent.putExtra("developer_id", developerId);
-                intent.putExtra("game_id", gameid);
-                context.startActivity(intent);
+                // Launch Game_mode activity with only game_id
+                if (gameid != null && !gameid.isEmpty()) {
+                    Intent intent = new Intent(context, Game_mode.class);
+                    intent.putExtra("game_id", gameid);
+                    context.startActivity(intent);
+                } else {
+                    Log.e("ReelAdapter", "Game ID is null or empty");
+                    Toast.makeText(context, "Game information not found", Toast.LENGTH_SHORT).show();
+                }
                 
                 return true;
             }

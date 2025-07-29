@@ -161,10 +161,9 @@ public class VideoUploadForegroundService extends Service {
     }
 
     private void saveVideoMetadataToFirebase(String title, String description, String gameId, File file, String fileExtension, String videoUniqueId,String devid) {
-
-
         String now = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault()).format(new Date());
-        String videoId = videoUniqueId + fileExtension;
+        
+        // 1. Save detailed video information in the videos node
         DatabaseReference videosRef = FirebaseDatabase.getInstance().getReference("videos").child(videoUniqueId);
         Map<String, Object> videoData = new HashMap<>();
         videoData.put("created_at", now);
@@ -175,9 +174,22 @@ public class VideoUploadForegroundService extends Service {
         videoData.put("like_count", "0");
         videoData.put("share_count", "0");
         videoData.put("user_id", devid);
-        videoData.put("video_id", videoId);
+        videoData.put("video_id", videoUniqueId);  // Store clean video ID without extension
         videoData.put("video_title", title);
         videoData.put("view_count", "0");
-        videosRef.setValue(videoData);
+        
+        // Save to videos node
+        videosRef.setValue(videoData).addOnSuccessListener(aVoid -> {
+            // 2. Save video association in user's videos node (video_id = true)
+            DatabaseReference userVideosRef = FirebaseDatabase.getInstance().getReference("users").child(devid).child("videos").child(videoUniqueId);
+            userVideosRef.setValue(true).addOnSuccessListener(aVoid2 -> {
+                // Both saves completed successfully
+                System.out.println("Video saved successfully in both locations: " + videoUniqueId);
+            }).addOnFailureListener(e -> {
+                System.err.println("Failed to save video association to user: " + e.getMessage());
+            });
+        }).addOnFailureListener(e -> {
+            System.err.println("Failed to save video metadata: " + e.getMessage());
+        });
     }
 } 

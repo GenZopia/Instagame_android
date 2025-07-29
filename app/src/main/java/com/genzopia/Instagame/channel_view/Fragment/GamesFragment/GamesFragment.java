@@ -47,7 +47,7 @@ public class GamesFragment extends Fragment {
 
         // 2) Prepare data
         gameList = new ArrayList<>();
-        
+
         // 3) Create adapter
         adapter = new GameAdapter(requireContext(), gameList);
 

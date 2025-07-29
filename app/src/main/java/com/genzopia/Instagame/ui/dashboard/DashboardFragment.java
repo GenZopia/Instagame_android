@@ -89,7 +89,7 @@ public class DashboardFragment extends Fragment {
 
         reelRepository = new ReelRepository();
         loadMoreReels();
-        
+
         // Preload follow states for better performance
         if (reelAdapter != null) {
             reelAdapter.preloadFollowStates();

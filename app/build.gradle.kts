@@ -100,4 +100,5 @@ dependencies {
     implementation("androidx.work:work-runtime:2.9.0")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.airbnb.android:lottie:6.4.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 }
