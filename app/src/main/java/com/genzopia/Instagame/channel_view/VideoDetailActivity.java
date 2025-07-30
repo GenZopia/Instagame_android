@@ -32,6 +32,7 @@ import java.util.Map;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.content.Context;
+import android.util.Log;
 
 public class VideoDetailActivity extends AppCompatActivity {
     
@@ -67,6 +68,7 @@ public class VideoDetailActivity extends AppCompatActivity {
     private DatabaseReference gamesRef;
     private ValueEventListener videoListener;
     private ValueEventListener gamesListener;
+    private androidx.appcompat.app.AlertDialog dialog; // Store dialog reference
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,6 +130,9 @@ public class VideoDetailActivity extends AppCompatActivity {
                     }
                 }
                 
+                // Sort games alphabetically for better UX
+                java.util.Collections.sort(gameNames);
+                
                 gameAdapter = new ArrayAdapter<>(VideoDetailActivity.this, 
                     android.R.layout.simple_dropdown_item_1line, gameNames);
                 gameDropdown.setAdapter(gameAdapter);
@@ -139,6 +144,100 @@ public class VideoDetailActivity extends AppCompatActivity {
             }
         };
         gamesRef.addValueEventListener(gamesListener);
+        
+        // Set click listener to show search dialog
+        gameDropdown.setOnClickListener(v -> showGameSearchDialog());
+        gameDropdown.setFocusable(false); // Prevent keyboard from showing
+    }
+    
+    private void showGameSearchDialog() {
+        // Create custom dialog with search functionality
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(this);
+        builder.setTitle("Select Game");
+        
+        // Create dialog layout
+        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_game_search, null);
+        builder.setView(dialogView);
+        
+        // Get views from dialog layout
+        android.widget.EditText searchEditText = dialogView.findViewById(R.id.searchEditText);
+        android.widget.ListView gameListView = dialogView.findViewById(R.id.gameListView);
+        TextView noGamesText = dialogView.findViewById(R.id.noGamesText);
+        
+        // Create adapter for the list
+        ArrayAdapter<String> searchAdapter = new ArrayAdapter<>(this, 
+            android.R.layout.simple_list_item_1, gameNames);
+        gameListView.setAdapter(searchAdapter);
+        
+        // Setup search functionality
+        searchEditText.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                String query = s.toString().toLowerCase().trim();
+                java.util.List<String> filteredGames = new java.util.ArrayList<>();
+                
+                for (String gameName : gameNames) {
+                    if (gameName.toLowerCase().contains(query)) {
+                        filteredGames.add(gameName);
+                    }
+                }
+                
+                // Update adapter with filtered results
+                ArrayAdapter<String> filteredAdapter = new ArrayAdapter<>(VideoDetailActivity.this,
+                    android.R.layout.simple_list_item_1, filteredGames);
+                gameListView.setAdapter(filteredAdapter);
+                
+                // Show/hide no results text
+                if (filteredGames.isEmpty() && !query.isEmpty()) {
+                    noGamesText.setVisibility(android.view.View.VISIBLE);
+                    gameListView.setVisibility(android.view.View.GONE);
+                } else {
+                    noGamesText.setVisibility(android.view.View.GONE);
+                    gameListView.setVisibility(android.view.View.VISIBLE);
+                }
+            }
+        });
+        
+        // Setup list item click
+        gameListView.setOnItemClickListener((parent, view, position, id) -> {
+            String selectedGame = (String) parent.getItemAtPosition(position);
+            gameDropdown.setText(selectedGame);
+            
+            // Add game chip
+            gameTagChipGroup.removeAllViews();
+            Chip gameChip = new Chip(this);
+            gameChip.setText(selectedGame);
+            gameChip.setChipBackgroundColorResource(R.color.button_primary);
+            gameChip.setTextColor(ContextCompat.getColor(this, android.R.color.white));
+            gameTagChipGroup.addView(gameChip);
+            
+            // Dismiss dialog
+            if (dialog != null) {
+                dialog.dismiss();
+            }
+        });
+        
+        // Create and show dialog
+        androidx.appcompat.app.AlertDialog dialog = builder.create();
+        this.dialog = dialog; // Store reference for dismissal
+        
+        // Focus on search box when dialog opens
+        dialog.setOnShowListener(dialogInterface -> {
+            searchEditText.requestFocus();
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) 
+                getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(searchEditText, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+        
+        dialog.show();
     }
     
     private void loadVideoData() {
@@ -227,11 +326,69 @@ public class VideoDetailActivity extends AppCompatActivity {
     private void setupVideoPlayer() {
         // Get signed video URL from worker
         String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + videoId;
+        Log.d("VideoDetailActivity", "Requesting signed URL: " + videoUrl);
         
-        MediaItem mediaItem = MediaItem.fromUri(videoUrl);
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.setPlayWhenReady(true);
+        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+        okhttp3.Request request = new okhttp3.Request.Builder().url(videoUrl).build();
+        
+        client.newCall(request).enqueue(new okhttp3.Callback() {
+            @Override
+            public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
+                Log.e("VideoDetailActivity", "Failed to get signed URL: " + e.getMessage());
+                runOnUiThread(() -> {
+                    Toast.makeText(VideoDetailActivity.this, "Failed to load video", Toast.LENGTH_SHORT).show();
+                });
+            }
+            
+            @Override
+            public void onResponse(@NonNull okhttp3.Call call, @NonNull okhttp3.Response response) throws java.io.IOException {
+                try {
+                    String body = response.body().string();
+                    org.json.JSONObject obj = new org.json.JSONObject(body);
+                    
+                    if (obj.optBoolean("success")) {
+                        String signedUrl = obj.optString("url");
+                        Log.d("VideoDetailActivity", "Got signed URL: " + signedUrl);
+                        
+                        runOnUiThread(() -> {
+                            // Setup video player with signed URL
+                            MediaItem mediaItem = MediaItem.fromUri(signedUrl);
+                            player.setMediaItem(mediaItem);
+                            player.prepare();
+                            player.setPlayWhenReady(true);
+                            
+                            // Add error listener
+                            player.addListener(new com.google.android.exoplayer2.Player.Listener() {
+                                @Override
+                                public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+                                    Log.e("VideoDetailActivity", "Player error: " + error.getMessage());
+                                    runOnUiThread(() -> {
+                                        Toast.makeText(VideoDetailActivity.this, "Error playing video", Toast.LENGTH_SHORT).show();
+                                    });
+                                }
+                                
+                                @Override
+                                public void onPlaybackStateChanged(int playbackState) {
+                                    if (playbackState == com.google.android.exoplayer2.Player.STATE_READY) {
+                                        Log.d("VideoDetailActivity", "Video ready to play");
+                                    }
+                                }
+                            });
+                        });
+                    } else {
+                        Log.e("VideoDetailActivity", "Worker returned error: " + obj.optString("error", "Unknown error"));
+                        runOnUiThread(() -> {
+                            Toast.makeText(VideoDetailActivity.this, "Failed to get video URL", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                } catch (Exception e) {
+                    Log.e("VideoDetailActivity", "Error parsing worker response: " + e.getMessage());
+                    runOnUiThread(() -> {
+                        Toast.makeText(VideoDetailActivity.this, "Error loading video", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }
+        });
     }
     
     private void updateUIForOwnership() {
@@ -333,6 +490,9 @@ public class VideoDetailActivity extends AppCompatActivity {
         }
         if (gamesListener != null && gamesRef != null) {
             gamesRef.removeEventListener(gamesListener);
+        }
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
         }
     }
 } 

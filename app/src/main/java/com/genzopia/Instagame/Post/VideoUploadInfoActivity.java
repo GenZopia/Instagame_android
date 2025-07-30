@@ -73,7 +73,7 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     // Firebase references
     private DatabaseReference userRef;
     private ValueEventListener userListener;
-
+    private androidx.appcompat.app.AlertDialog dialog; // Store dialog reference
     
     // Video upload variables
     private String videoUniqueId;
@@ -164,6 +164,9 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
                         gameNameToId.put(name, id);
                     }
                 }
+                // Sort games alphabetically for better UX
+                java.util.Collections.sort(gameNames);
+                
                 // Set the current user's ID as the developer ID
                 devid = FirebaseAuth.getInstance().getCurrentUser().getUid();
                 gameAdapter.notifyDataSetChanged();
@@ -172,43 +175,9 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             public void onCancelled(@NonNull DatabaseError error) {}
         });
 
-        gameDropdown.setOnItemClickListener((parent, view, position, id) -> {
-            String selected = gameAdapter.getItem(position);
-            gameTagText.setText("@" + selected);
-            gameDropdownLayout.setError(null); // Clear error when valid selection is made
-        });
-
-        // Add text change listener for game dropdown validation
-        gameDropdown.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                String input = s.toString().trim();
-                if (!input.isEmpty()) {
-                    boolean hasMatch = false;
-                    for (String gameName : gameNames) {
-                        if (gameName.equalsIgnoreCase(input)) {
-                            hasMatch = true;
-                            break;
-                        }
-                    }
-                    if (!hasMatch) {
-                        gameDropdownLayout.setError("No game match");
-                    } else {
-                        gameDropdownLayout.setError(null);
-                        gameTagText.setText("@" + input);
-                    }
-                } else {
-                    gameDropdownLayout.setError(null);
-                    gameTagText.setText("");
-                }
-            }
-        });
+        // Set click listener to show search dialog
+        gameDropdown.setOnClickListener(v -> showGameSearchDialog());
+        gameDropdown.setFocusable(false); // Prevent keyboard from showing
 
         btnConfirmUpload.setOnClickListener(v -> {
             // Clear previous errors
@@ -315,6 +284,90 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
             }
         };
     }
+    
+    private void showGameSearchDialog() {
+        // Create custom dialog with search functionality
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(this);
+        builder.setTitle("Select Game");
+        
+        // Create dialog layout
+        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_game_search, null);
+        builder.setView(dialogView);
+        
+        // Get views from dialog layout
+        android.widget.EditText searchEditText = dialogView.findViewById(R.id.searchEditText);
+        android.widget.ListView gameListView = dialogView.findViewById(R.id.gameListView);
+        TextView noGamesText = dialogView.findViewById(R.id.noGamesText);
+        
+        // Create adapter for the list
+        ArrayAdapter<String> searchAdapter = new ArrayAdapter<>(this, 
+            android.R.layout.simple_list_item_1, gameNames);
+        gameListView.setAdapter(searchAdapter);
+        
+        // Setup search functionality
+        searchEditText.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                String query = s.toString().toLowerCase().trim();
+                java.util.List<String> filteredGames = new java.util.ArrayList<>();
+                
+                for (String gameName : gameNames) {
+                    if (gameName.toLowerCase().contains(query)) {
+                        filteredGames.add(gameName);
+                    }
+                }
+                
+                // Update adapter with filtered results
+                ArrayAdapter<String> filteredAdapter = new ArrayAdapter<>(VideoUploadInfoActivity.this,
+                    android.R.layout.simple_list_item_1, filteredGames);
+                gameListView.setAdapter(filteredAdapter);
+                
+                // Show/hide no results text
+                if (filteredGames.isEmpty() && !query.isEmpty()) {
+                    noGamesText.setVisibility(android.view.View.VISIBLE);
+                    gameListView.setVisibility(android.view.View.GONE);
+                } else {
+                    noGamesText.setVisibility(android.view.View.GONE);
+                    gameListView.setVisibility(android.view.View.VISIBLE);
+                }
+            }
+        });
+        
+        // Setup list item click
+        gameListView.setOnItemClickListener((parent, view, position, id) -> {
+            String selectedGame = (String) parent.getItemAtPosition(position);
+            gameDropdown.setText(selectedGame);
+            gameTagText.setText("@" + selectedGame);
+            gameDropdownLayout.setError(null); // Clear error when valid selection is made
+            
+            // Dismiss dialog
+            if (dialog != null) {
+                dialog.dismiss();
+            }
+        });
+        
+        // Create and show dialog
+        androidx.appcompat.app.AlertDialog dialog = builder.create();
+        this.dialog = dialog; // Store reference for dismissal
+        
+        // Focus on search box when dialog opens
+        dialog.setOnShowListener(dialogInterface -> {
+            searchEditText.requestFocus();
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) 
+                getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(searchEditText, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+        
+        dialog.show();
+    }
 
     private void fetchUserData() {
         // Get current user ID from Firebase Auth
@@ -383,8 +436,14 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (userRef != null && userListener != null) {
+        if (userListener != null && userRef != null) {
             userRef.removeEventListener(userListener);
+        }
+        if (uploadProgressReceiver != null) {
+            unregisterReceiver(uploadProgressReceiver);
+        }
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
         }
     }
 } 

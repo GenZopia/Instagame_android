@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Search Bar -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:hint="Search games...">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/searchEditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1"
+            android:imeOptions="actionSearch" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- No Results Text -->
+    <TextView
+        android:id="@+id/noGamesText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No games found"
+        android:textAlignment="center"
+        android:textColor="?android:attr/textColorSecondary"
+        android:padding="32dp"
+        android:visibility="gone" />
+
+    <!-- Games List -->
+    <ListView
+        android:id="@+id/gameListView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="400dp"
+        android:divider="?android:attr/listDivider"
+        android:dividerHeight="1dp"
+        android:scrollbars="vertical" />
+
+</LinearLayout> 
