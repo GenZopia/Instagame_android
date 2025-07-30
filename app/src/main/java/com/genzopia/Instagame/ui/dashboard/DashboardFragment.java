@@ -91,26 +91,10 @@ public class DashboardFragment extends Fragment {
         loadMoreReels();
 
         // Preload follow states for better performance
-        if (reelAdapter != null) {
-            reelAdapter.preloadFollowStates();
-        }
+        reelAdapter.preloadFollowStates();
 
-        // Add scroll listener for lazy loading
-        reelView.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override
-            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
-                super.onScrolled(recyclerView, dx, dy);
-                LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
-                if (layoutManager != null && hasMore && !isLoadingMore) {
-                    int visibleItemCount = layoutManager.getChildCount();
-                    int totalItemCount = layoutManager.getItemCount();
-                    int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
-                    if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount - 2 && firstVisibleItemPosition >= 0) {
-                        loadMoreReels();
-                    }
-                }
-            }
-        });
+        // Check if there's a specific video to play
+        checkForSpecificVideoToPlay();
 
         return root;
     }
@@ -145,6 +129,155 @@ public class DashboardFragment extends Fragment {
                 }
             }
         });
+    }
+
+    private void checkForSpecificVideoToPlay() {
+        try {
+            com.genzopia.Instagame.utils.VideoNavigationManager manager = 
+                com.genzopia.Instagame.utils.VideoNavigationManager.getInstance();
+            
+            if (manager.shouldPlayInReelView()) {
+                String videoIdToPlay = manager.getPendingVideoId();
+                
+                if (videoIdToPlay != null) {
+                    // Create a new reel item for this specific video and add it to the top
+                    createAndAddVideoToTop(videoIdToPlay);
+                }
+            }
+        } catch (Exception e) {
+            Log.e("DashboardFragment", "Error checking for specific video: " + e.getMessage());
+        }
+    }
+    
+    private void createAndAddVideoToTop(String videoId) {
+        try {
+            // Create a new ReelItem for this specific video with required 6 parameters
+            ReelItem newReelItem = new ReelItem(
+                videoId,           // videoId
+                "Loading...",      // title
+                "0",               // likeCount
+                "",                // description
+                "",                // developerId
+                ""                 // gameid
+            );
+            
+            // Add this item to the top of the list
+            reelItems.add(0, newReelItem);
+            
+            // Notify adapter of the change
+            if (reelAdapter != null) {
+                reelAdapter.notifyItemInserted(0);
+                
+                // Scroll to the top to show the new video
+                reelView.post(() -> {
+                    reelView.scrollToPosition(0);
+                    
+                    // Explicitly trigger video playback at position 0
+                    reelAdapter.playVideoAtPosition(0);
+                });
+            }
+            
+            // Load the video data from Firebase
+            loadVideoDataFromFirebase(videoId, newReelItem);
+            
+            Toast.makeText(requireContext(), "Loading video: " + videoId, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e("DashboardFragment", "Error creating reel item: " + e.getMessage());
+        }
+    }
+    
+    private void loadVideoDataFromFirebase(String videoId, ReelItem reelItem) {
+        DatabaseReference videoRef = FirebaseDatabase.getInstance().getReference("videos").child(videoId);
+        videoRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    // Update the reel item with data from Firebase
+                    String gameId = snapshot.child("game_id").getValue(String.class);
+                    String userId = snapshot.child("user_id").getValue(String.class);
+                    String description = snapshot.child("description").getValue(String.class);
+                    String videoTitle = snapshot.child("video_title").getValue(String.class);
+                    String likeCount = snapshot.child("like_count").getValue(String.class);
+                    
+                    if (gameId != null) reelItem.setGameid(gameId);
+                    if (userId != null) reelItem.setDeveloperId(userId);
+                    if (description != null) reelItem.setDescription(description);
+                    if (videoTitle != null) reelItem.setTitle(videoTitle);
+                    if (likeCount != null) reelItem.setLikeCount(likeCount);
+                    
+                    // Load signed video URL from worker
+                    loadSignedVideoUrl(videoId, reelItem);
+                    
+                    // Notify adapter to refresh the item
+                    if (reelAdapter != null) {
+                        reelAdapter.notifyItemChanged(0);
+                    }
+                }
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e("DashboardFragment", "Error loading video data: " + error.getMessage());
+            }
+        });
+    }
+    
+    private void loadSignedVideoUrl(String videoId, ReelItem reelItem) {
+        try {
+            String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + videoId;
+            Log.d("DashboardFragment", "Loading signed URL: " + videoUrl);
+            
+            okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+            okhttp3.Request request = new okhttp3.Request.Builder().url(videoUrl).build();
+            
+            client.newCall(request).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
+                    Log.e("DashboardFragment", "Failed to get signed URL: " + e.getMessage());
+                    requireActivity().runOnUiThread(() -> {
+                        Toast.makeText(requireContext(), "Failed to load video", Toast.LENGTH_SHORT).show();
+                    });
+                }
+                
+                @Override
+                public void onResponse(@NonNull okhttp3.Call call, @NonNull okhttp3.Response response) throws java.io.IOException {
+                    try {
+                        String body = response.body().string();
+                        org.json.JSONObject obj = new org.json.JSONObject(body);
+                        
+                        if (obj.optBoolean("success")) {
+                            String signedUrl = obj.optString("url");
+                            reelItem.setVideoUrl(signedUrl);
+                            Log.d("DashboardFragment", "Got signed URL: " + signedUrl);
+                            
+                            requireActivity().runOnUiThread(() -> {
+                                // Notify adapter to refresh the item with the video URL
+                                if (reelAdapter != null) {
+                                    reelAdapter.notifyItemChanged(0);
+                                    
+                                    // Trigger video playback after a short delay to ensure the view is ready
+                                    new android.os.Handler().postDelayed(() -> {
+                                        reelAdapter.playVideoAtPosition(0);
+                                    }, 500);
+                                }
+                            });
+                        } else {
+                            Log.e("DashboardFragment", "Worker returned error: " + obj.optString("error", "Unknown error"));
+                            requireActivity().runOnUiThread(() -> {
+                                Toast.makeText(requireContext(), "Failed to get video URL", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    } catch (Exception e) {
+                        Log.e("DashboardFragment", "Error parsing worker response: " + e.getMessage());
+                        requireActivity().runOnUiThread(() -> {
+                            Toast.makeText(requireContext(), "Error loading video", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("DashboardFragment", "Error setting up video URL request: " + e.getMessage());
+        }
     }
 
     @Override

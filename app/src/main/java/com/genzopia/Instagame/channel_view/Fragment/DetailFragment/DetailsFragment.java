@@ -81,7 +81,6 @@ public class DetailsFragment extends Fragment {
                     String fullName = snapshot.child("full_name").getValue(String.class);
                     String followers = snapshot.child("followers").getValue(String.class);
                     String dateOfBirth = snapshot.child("date_of_birth").getValue(String.class);
-                    String appOnlineStatus = snapshot.child("app_online_status").getValue(String.class);
                     
                     // Add basic info
                     if (fullName != null && !fullName.isEmpty()) {
@@ -102,10 +101,6 @@ public class DetailsFragment extends Fragment {
                     
                     if (dateOfBirth != null && !dateOfBirth.isEmpty()) {
                         linkList.add(new LinkItem("Date of Birth", dateOfBirth));
-                    }
-                    
-                    if (appOnlineStatus != null) {
-                        linkList.add(new LinkItem("Online Status", appOnlineStatus.equals("true") ? "Online" : "Offline"));
                     }
                     
                     // Count videos and games

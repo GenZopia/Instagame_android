@@ -208,16 +208,16 @@ public class Game_mode extends AppCompatActivity {
         }
 
         try {
-            GeckoRuntime runtime = MyApplication.getGeckoRuntime(getBaseContext());
+        GeckoRuntime runtime = MyApplication.getGeckoRuntime(getBaseContext());
 
-            GeckoSessionSettings settings = new GeckoSessionSettings.Builder()
-                    .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
-                    .build();
+        GeckoSessionSettings settings = new GeckoSessionSettings.Builder()
+                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+                .build();
 
-            geckoSession = new GeckoSession(settings);
-            geckoSession.open(runtime);
+        geckoSession = new GeckoSession(settings);
+        geckoSession.open(runtime);
 
-            binding.geckoView.setSession(geckoSession);
+        binding.geckoView.setSession(geckoSession);
             
             // Load the signed game URL
             Log.d("Game_mode", "Loading signed game URL in GeckoView: " + gameUrl);

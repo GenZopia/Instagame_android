@@ -30,6 +30,12 @@ public class ChannelActivity extends AppCompatActivity {
     private TextView channelName;
     private TextView subscriberCount;
     private ImageView bannerImage;
+    
+    // Fragment management
+    private GamesFragment gamesFragment;
+    private VideosFragment videosFragment;
+    private DetailsFragment detailsFragment;
+    private Fragment currentFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,25 +65,51 @@ public class ChannelActivity extends AppCompatActivity {
         // Load developer data
         loadDeveloperData();
 
-        // Set initial fragment with developer ID
-        loadFragment(new GamesFragment());
+        // Initialize fragments
+        initializeFragments();
+
+        // Set initial fragment
+        loadFragment(gamesFragment);
         setActiveTab(tabGames);
 
         // Tab click listeners
         tabGames.setOnClickListener(v -> {
-            loadFragment(new GamesFragment());
+            loadFragment(gamesFragment);
             setActiveTab(tabGames);
         });
 
         tabVideos.setOnClickListener(v -> {
-            loadFragment(new VideosFragment());
+            loadFragment(videosFragment);
             setActiveTab(tabVideos);
         });
 
         tabDetails.setOnClickListener(v -> {
-            loadFragment(new DetailsFragment());
+            loadFragment(detailsFragment);
             setActiveTab(tabDetails);
         });
+    }
+    
+    private void initializeFragments() {
+        // Create fragments only once
+        gamesFragment = new GamesFragment();
+        videosFragment = new VideosFragment();
+        detailsFragment = new DetailsFragment();
+        
+        // Set developer ID for all fragments
+        gamesFragment.setDeveloperId(developerId);
+        videosFragment.setDeveloperId(developerId);
+        detailsFragment.setDeveloperId(developerId);
+        
+        // Add all fragments to container but hide them initially
+        getSupportFragmentManager().beginTransaction()
+                .add(R.id.fragmentContainer, gamesFragment)
+                .add(R.id.fragmentContainer, videosFragment)
+                .add(R.id.fragmentContainer, detailsFragment)
+                .hide(videosFragment)
+                .hide(detailsFragment)
+                .commit();
+        
+        currentFragment = gamesFragment;
     }
     
     private void loadDeveloperData() {
@@ -181,18 +213,20 @@ public class ChannelActivity extends AppCompatActivity {
     }
     
     private void loadFragment(Fragment fragment) {
-        // Pass developer ID to fragment if it supports it
-        if (fragment instanceof GamesFragment) {
-            ((GamesFragment) fragment).setDeveloperId(developerId);
-        } else if (fragment instanceof VideosFragment) {
-            ((VideosFragment) fragment).setDeveloperId(developerId);
-        } else if (fragment instanceof DetailsFragment) {
-            ((DetailsFragment) fragment).setDeveloperId(developerId);
+        // Hide the current fragment
+        if (currentFragment != null && currentFragment != fragment) {
+            getSupportFragmentManager().beginTransaction()
+                    .hide(currentFragment)
+                    .show(fragment)
+                    .commit();
+        } else if (currentFragment == null) {
+            // First time loading
+            getSupportFragmentManager().beginTransaction()
+                    .show(fragment)
+                    .commit();
         }
         
-        getSupportFragmentManager().beginTransaction()
-                .replace(R.id.fragmentContainer, fragment)
-                .commit();
+        currentFragment = fragment;
     }
     
     private void setActiveTab(TextView activeTab) {

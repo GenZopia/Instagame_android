@@ -125,7 +125,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Don't auto-play here, let the scroll listener handle it
     }
 
-    private void playVideoAtPosition(int position) {
+    public void playVideoAtPosition(int position) {
         if (position < 0 || position >= reelItems.size()) return;
         if (currentPlayingPosition == position) return;
         pauseCurrentVideo();
@@ -1073,9 +1073,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 
                 // Launch Game_mode activity with only game_id
                 if (gameid != null && !gameid.isEmpty()) {
-                    Intent intent = new Intent(context, Game_mode.class);
-                    intent.putExtra("game_id", gameid);
-                    context.startActivity(intent);
+                Intent intent = new Intent(context, Game_mode.class);
+                intent.putExtra("game_id", gameid);
+                context.startActivity(intent);
                 } else {
                     Log.e("ReelAdapter", "Game ID is null or empty");
                     Toast.makeText(context, "Game information not found", Toast.LENGTH_SHORT).show();

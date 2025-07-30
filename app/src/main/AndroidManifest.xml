@@ -87,6 +87,10 @@
         <activity
             android:name=".Post.VideoUploadInfoActivity"
             android:screenOrientation="portrait" />
+        <activity
+            android:name=".channel_view.VideoDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <!-- Foreground upload service -->
         <service
             android:name=".Post.VideoUploadForegroundService"

@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -28,6 +29,7 @@ public class VideosFragment extends Fragment {
     private VideoAdapter adapter;
     private List<VideoItem_channel> videoList;
     private String developerId;
+    private String currentUserId;
 
     @Nullable
     @Override
@@ -43,6 +45,9 @@ public class VideosFragment extends Fragment {
 
         adapter = new VideoAdapter(getContext(), videoList);
         recyclerView.setAdapter(adapter);
+        
+        // Get current user ID
+        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         
         // Load videos if developer ID is set
         if (developerId != null) {
@@ -66,6 +71,8 @@ public class VideosFragment extends Fragment {
         }
         
         Log.d("VideosFragment", "Loading videos for developer: " + developerId);
+        Log.d("VideosFragment", "Current user ID: " + currentUserId);
+        Log.d("VideosFragment", "Is viewing own channel: " + (currentUserId.equals(developerId)));
         
         // Get the developer's videos
         DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId).child("videos");
@@ -112,23 +119,54 @@ public class VideosFragment extends Fragment {
                 if (snapshot.exists()) {
                     String title = snapshot.child("video_title").getValue(String.class);
                     String viewCount = snapshot.child("view_count").getValue(String.class);
-                    String thumbnailUrl = snapshot.child("thumbnail_url").getValue(String.class);
+                    
+                    // Handle is_verified field - it might be stored as String or Boolean
+                    Boolean isVerified = null;
+                    try {
+                        Object isVerifiedObj = snapshot.child("is_verified").getValue();
+                        if (isVerifiedObj instanceof Boolean) {
+                            isVerified = (Boolean) isVerifiedObj;
+                        } else if (isVerifiedObj instanceof String) {
+                            isVerified = Boolean.parseBoolean((String) isVerifiedObj);
+                        } else if (isVerifiedObj instanceof Long) {
+                            isVerified = ((Long) isVerifiedObj) == 1L;
+                        } else if (isVerifiedObj instanceof Integer) {
+                            isVerified = ((Integer) isVerifiedObj) == 1;
+                        }
+                        // If isVerifiedObj is null, isVerified will remain null (which is fine)
+                    } catch (Exception e) {
+                        Log.e("VideosFragment", "Error parsing is_verified field: " + e.getMessage());
+                        isVerified = null; // Default to null (unverified)
+                    }
+                    
+                    String videoUserId = snapshot.child("user_id").getValue(String.class);
                     
                     Log.d("VideosFragment", "Video title: " + title);
                     Log.d("VideosFragment", "Video view count: " + viewCount);
-                    Log.d("VideosFragment", "Video thumbnail URL: " + thumbnailUrl);
+                    Log.d("VideosFragment", "Video is verified: " + isVerified);
+                    Log.d("VideosFragment", "Video user ID: " + videoUserId);
                     
-                    // Create VideoItem with fetched data
-                    VideoItem_channel videoItem = new VideoItem_channel(
-                        videoId,
-                        thumbnailUrl != null ? thumbnailUrl : "",
-                        viewCount != null ? viewCount + " views" : "0 views"
-                    );
+                    // Check if user can view this video
+                    boolean canViewVideo = shouldShowVideo(isVerified, videoUserId);
                     
-                    videoList.add(videoItem);
-                    adapter.notifyDataSetChanged();
-                    
-                    Log.d("VideosFragment", "Added video: " + title + " (Total videos in list: " + videoList.size() + ")");
+                    if (canViewVideo) {
+                        // Create VideoItem with all details for professional display
+                        VideoItem_channel videoItem = new VideoItem_channel(
+                            videoId,
+                            "", // Empty thumbnail URL - will be generated from video
+                            viewCount != null ? viewCount + " views" : "0 views",
+                            title != null ? title : "Untitled Video",
+                            isVerified,
+                            currentUserId.equals(developerId) // Check if viewing own channel
+                        );
+                        
+                        videoList.add(videoItem);
+                        adapter.notifyDataSetChanged();
+                        
+                        Log.d("VideosFragment", "Added video: " + title + " (Total videos in list: " + videoList.size() + ")");
+                    } else {
+                        Log.d("VideosFragment", "Skipping video: " + title + " - not verified or not owned by user");
+                    }
                 } else {
                     Log.e("VideosFragment", "Video details not found for video ID: " + videoId);
                 }
@@ -139,5 +177,33 @@ public class VideosFragment extends Fragment {
                 Log.e("VideosFragment", "Error loading video details: " + error.getMessage());
             }
         });
+    }
+    
+    private boolean shouldShowVideo(Boolean isVerified, String videoUserId) {
+        // If viewing own channel (current user = developer), show all videos
+        if (currentUserId.equals(developerId)) {
+            Log.d("VideosFragment", "User viewing own channel - showing all videos");
+            return true;
+        }
+        
+        // If viewing someone else's channel, only show verified videos
+        // Handle null isVerified as unverified (false)
+        boolean isVideoVerified = (isVerified != null && isVerified);
+        
+        if (isVideoVerified) {
+            Log.d("VideosFragment", "User viewing other's channel - showing verified video");
+            return true;
+        } else {
+            Log.d("VideosFragment", "User viewing other's channel - hiding unverified video");
+            return false;
+        }
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (adapter != null) {
+            adapter.releaseResources();
+        }
     }
 }

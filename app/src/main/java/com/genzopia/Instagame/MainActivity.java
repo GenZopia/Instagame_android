@@ -1,5 +1,6 @@
 package com.genzopia.Instagame;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -48,6 +49,61 @@ public class MainActivity extends AppCompatActivity {
             Log.d(TAG, "BottomNavigationView setup completed");
         } else {
             Log.e(TAG, "BottomNavigationView not found!");
+        }
+        
+        // Check if we need to navigate to dashboard
+        checkForDashboardNavigation();
+    }
+    
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        checkForDashboardNavigation();
+    }
+    
+    private void checkForDashboardNavigation() {
+        Intent intent = getIntent();
+        if (intent != null) {
+            boolean shouldNavigateToDashboard = intent.getBooleanExtra("navigate_to_dashboard", false);
+            String videoIdToPlay = intent.getStringExtra("play_video_id");
+            
+            if (shouldNavigateToDashboard) {
+                // Clear the flags
+                intent.removeExtra("navigate_to_dashboard");
+                intent.removeExtra("play_video_id");
+                
+                // Set the video to play in VideoNavigationManager
+                if (videoIdToPlay != null) {
+                    com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
+                        .setPendingVideoId(videoIdToPlay);
+                    com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
+                        .setShouldPlayInReelView(true);
+                }
+                
+                // Navigate to dashboard after a short delay to ensure activity is ready
+                new android.os.Handler().postDelayed(() -> {
+                    navigateToDashboard();
+                }, 1000);
+            }
+        }
+    }
+
+    /**
+     * Navigate to dashboard fragment
+     */
+    public void navigateToDashboard() {
+        try {
+            NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_main);
+            navController.navigate(R.id.navigation_dashboard);
+            
+            // Update bottom navigation selection
+            BottomNavigationView navView = findViewById(R.id.nav_view);
+            if (navView != null) {
+                navView.setSelectedItemId(R.id.navigation_dashboard);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error navigating to dashboard: " + e.getMessage());
         }
     }
 
