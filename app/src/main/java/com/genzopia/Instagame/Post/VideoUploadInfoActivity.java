@@ -420,17 +420,36 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         return ".mp4"; // Default extension
     }
 
+    private boolean isReceiverRegistered = false;
+
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     @Override
     protected void onResume() {
         super.onResume();
-        registerReceiver(uploadProgressReceiver, new IntentFilter(VideoUploadForegroundService.BROADCAST_PROGRESS));
+        // Only register if receiver is initialized and not already registered
+        if (uploadProgressReceiver != null && !isReceiverRegistered) {
+            try {
+                registerReceiver(uploadProgressReceiver, new IntentFilter(VideoUploadForegroundService.BROADCAST_PROGRESS));
+                isReceiverRegistered = true;
+            } catch (Exception e) {
+                // Handle any registration errors
+                isReceiverRegistered = false;
+            }
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterReceiver(uploadProgressReceiver);
+        if (uploadProgressReceiver != null && isReceiverRegistered) {
+            try {
+                unregisterReceiver(uploadProgressReceiver);
+                isReceiverRegistered = false;
+            } catch (IllegalArgumentException e) {
+                // Receiver was not registered, ignore the exception
+                isReceiverRegistered = false;
+            }
+        }
     }
 
     @Override
@@ -439,8 +458,14 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
         if (userListener != null && userRef != null) {
             userRef.removeEventListener(userListener);
         }
-        if (uploadProgressReceiver != null) {
-            unregisterReceiver(uploadProgressReceiver);
+        if (uploadProgressReceiver != null && isReceiverRegistered) {
+            try {
+                unregisterReceiver(uploadProgressReceiver);
+                isReceiverRegistered = false;
+            } catch (IllegalArgumentException e) {
+                // Receiver was not registered, ignore the exception
+                isReceiverRegistered = false;
+            }
         }
         if (dialog != null && dialog.isShowing()) {
             dialog.dismiss();
