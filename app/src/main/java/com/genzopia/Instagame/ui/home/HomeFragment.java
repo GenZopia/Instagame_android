@@ -70,6 +70,28 @@ public class HomeFragment extends Fragment {
         // Initialize adapter with empty lists
         homeAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
         homeRecyclerView.setAdapter(homeAdapter);
+        
+        // Set the recyclerView reference in the adapter
+        homeAdapter.setRecyclerView(homeRecyclerView);
+        
+        // Add scroll listener for auto-play
+        homeRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    // Find the most visible video and play it
+                    playMostVisibleVideo();
+                }
+            }
+        });
+
+        // Set loading state initially
+        homeAdapter.setLoading(true);
+        homeAdapter.notifyDataSetChanged();
+        
+        Log.d("HomeFragment", "Fragment created, loading state set to true");
 
         // Load user's following list first, then load videos
         loadUserFollowingList();
@@ -79,6 +101,8 @@ public class HomeFragment extends Fragment {
 
     private void loadUserFollowingList() {
         String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        Log.d("HomeFragment", "Loading following list for user: " + currentUserId);
+        
         DatabaseReference userFollowingRef = FirebaseDatabase.getInstance()
                 .getReference("users")
                 .child(currentUserId)
@@ -87,12 +111,25 @@ public class HomeFragment extends Fragment {
         userFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Log.d("HomeFragment", "Firebase response - exists: " + snapshot.exists() + ", children count: " + snapshot.getChildrenCount());
+                
                 followingList.clear();
                 for (DataSnapshot followingSnap : snapshot.getChildren()) {
                     String developerId = followingSnap.getKey();
+                    Log.d("HomeFragment", "Found following: " + developerId);
                     if (developerId != null) {
                         followingList.add(developerId);
                     }
+                }
+                
+                Log.d("HomeFragment", "Found " + followingList.size() + " following users");
+                
+                if (followingList.isEmpty()) {
+                    // No following users, show empty state
+                    Log.d("HomeFragment", "No following users found, showing empty state");
+                    homeAdapter.setLoading(false);
+                    homeAdapter.notifyDataSetChanged();
+                    return;
                 }
                 
                 // Load profile items for following list
@@ -104,76 +141,89 @@ public class HomeFragment extends Fragment {
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("HomeFragment", "Error loading following list: " + error.getMessage());
-                Toast.makeText(requireContext(), "Failed to load following list", Toast.LENGTH_SHORT).show();
+                Log.e("HomeFragment", "Failed to load following list: " + error.getMessage());
+                // Show empty state on error
+                homeAdapter.setLoading(false);
+                homeAdapter.notifyDataSetChanged();
             }
         });
     }
 
     private void loadProfileItems() {
+        Log.d("HomeFragment", "loadProfileItems called - followingList size: " + followingList.size());
+        
         if (followingList.isEmpty()) {
             // Show empty state
+            Log.d("HomeFragment", "Following list is empty, showing empty state");
             profileItems.clear();
+            homeAdapter.setLoading(false);
             homeAdapter.notifyDataSetChanged();
-            return;
-        }
-
+                    return;
+                }
+                
         // Clear existing profile items to prevent duplicates
         profileItems.clear();
-        
-        // Use a Set to track loaded profiles to prevent duplicates
         java.util.Set<String> loadedProfiles = new java.util.HashSet<>();
         
-        Log.d("HomeFragment", "Loading profiles for " + followingList.size() + " following users");
+        Log.d("HomeFragment", "Loading profile items for " + followingList.size() + " following users");
         
-        // Load profile information for each following user (only once per user)
         for (String developerId : followingList) {
-            // Skip if already loaded
             if (loadedProfiles.contains(developerId)) {
-                Log.d("HomeFragment", "Skipping duplicate profile for: " + developerId);
+                Log.d("HomeFragment", "Skipping duplicate profile: " + developerId);
                 continue;
             }
             
-            loadedProfiles.add(developerId);
-            Log.d("HomeFragment", "Loading profile for: " + developerId);
-            
-            DatabaseReference userRef = FirebaseDatabase.getInstance()
-                    .getReference("users")
-                    .child(developerId);
-
-            userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                @Override
-                public void onDataChange(@NonNull DataSnapshot snapshot) {
-                    if (snapshot.exists()) {
-                        String username = snapshot.child("username").getValue(String.class);
-                        String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
-                        
-                        // Create unique profile item
-                        ImageItem profileItem = new ImageItem(developerId, profilePhotoUrl != null ? profilePhotoUrl : "");
-                        profileItems.add(profileItem);
-                        
-                        Log.d("HomeFragment", "Added profile for: " + developerId + " (username: " + username + ")");
-                        
-                        // Update adapter when all profiles are loaded
-                        if (profileItems.size() == loadedProfiles.size()) {
-                            Log.d("HomeFragment", "All profiles loaded: " + profileItems.size() + " profiles");
-                            homeAdapter.notifyDataSetChanged();
-                        }
-                    }
-                }
-
-                @Override
-                public void onCancelled(@NonNull DatabaseError error) {
-                    Log.e("HomeFragment", "Error loading profile: " + error.getMessage());
-                }
-            });
+            Log.d("HomeFragment", "Loading profile for developer: " + developerId);
+            loadDeveloperInfo(developerId, loadedProfiles);
         }
     }
 
+    private void loadDeveloperInfo(String developerId, java.util.Set<String> loadedProfiles) {
+        loadedProfiles.add(developerId);
+        Log.d("HomeFragment", "Loading developer info for: " + developerId);
+        
+        DatabaseReference userRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(developerId);
+
+        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
+    @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String username = snapshot.child("username").getValue(String.class);
+                    String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                    
+                    // Create unique profile item
+                    ImageItem profileItem = new ImageItem(developerId, profilePhotoUrl != null ? profilePhotoUrl : "");
+                    profileItems.add(profileItem);
+                    
+                    Log.d("HomeFragment", "Added profile for: " + developerId + " (username: " + username + ")");
+                    
+                    // Update adapter when all profiles are loaded
+                    if (profileItems.size() == loadedProfiles.size()) {
+                        Log.d("HomeFragment", "All profiles loaded: " + profileItems.size() + " profiles");
+                        homeAdapter.updateData(profileItems, videoItems);
+                    }
+                } else {
+                    Log.d("HomeFragment", "Developer not found: " + developerId);
+        }
+    }
+
+    @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e("HomeFragment", "Error loading profile: " + error.getMessage());
+            }
+        });
+    }
+
     private void loadVideosFromFollowing() {
+        Log.d("HomeFragment", "loadVideosFromFollowing called - followingList size: " + followingList.size());
+        
         if (followingList.isEmpty()) {
             // Show empty state
+            Log.d("HomeFragment", "Following list is empty, showing empty state for videos");
             videoItems.clear();
+            homeAdapter.setLoading(false);
             homeAdapter.notifyDataSetChanged();
             return;
         }
@@ -186,13 +236,22 @@ public class HomeFragment extends Fragment {
         // Use a Set to track loaded videos to prevent duplicates
         java.util.Set<String> loadedVideos = new java.util.HashSet<>();
         
+        // Track how many developers we're loading videos from
+        final int totalDevelopers = followingList.size();
+        final java.util.concurrent.atomic.AtomicInteger loadedDevelopers = new java.util.concurrent.atomic.AtomicInteger(0);
+        
+        Log.d("HomeFragment", "Starting to load videos from " + totalDevelopers + " developers");
+        
         // Load videos from all following channels
         for (String developerId : followingList) {
-            loadVideosFromDeveloper(developerId, loadedVideos);
+            Log.d("HomeFragment", "Loading videos from developer: " + developerId);
+            loadVideosFromDeveloper(developerId, loadedVideos, totalDevelopers, loadedDevelopers);
         }
     }
 
-    private void loadVideosFromDeveloper(String developerId, java.util.Set<String> loadedVideos) {
+    private void loadVideosFromDeveloper(String developerId, java.util.Set<String> loadedVideos, final int totalDevelopers, final java.util.concurrent.atomic.AtomicInteger loadedDevelopers) {
+        Log.d("HomeFragment", "loadVideosFromDeveloper called for: " + developerId);
+        
         DatabaseReference userVideosRef = FirebaseDatabase.getInstance()
                 .getReference("users")
                 .child(developerId)
@@ -202,6 +261,8 @@ public class HomeFragment extends Fragment {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 Log.d("HomeFragment", "Loading videos for developer: " + developerId + ", found " + snapshot.getChildrenCount() + " videos");
+                
+                int videosLoaded = 0;
                 for (DataSnapshot videoSnap : snapshot.getChildren()) {
                     String videoId = videoSnap.getKey();
                     if (videoId != null && !loadedVideos.contains(videoId)) {
@@ -210,20 +271,47 @@ public class HomeFragment extends Fragment {
                         Log.d("HomeFragment", "Loading video: " + videoId + " from developer: " + developerId);
                         // Load video details from videos node
                         loadVideoDetails(videoId, developerId);
-                    } else if (videoId != null) {
-                        Log.d("HomeFragment", "Skipping duplicate video: " + videoId);
+                        videosLoaded++;
+                    } else {
+                        Log.d("HomeFragment", "Skipping video: " + videoId + " (already loaded or null)");
                     }
+                }
+                
+                Log.d("HomeFragment", "Loaded " + videosLoaded + " videos from developer: " + developerId);
+                
+                // Increment loaded developers counter
+                int currentLoaded = loadedDevelopers.incrementAndGet();
+                Log.d("HomeFragment", "Loaded developers: " + currentLoaded + "/" + totalDevelopers);
+                
+                // If all developers are processed and no videos were found, hide loading
+                if (currentLoaded >= totalDevelopers && videoItems.isEmpty()) {
+                    Log.d("HomeFragment", "All developers processed, no videos found, hiding loading state");
+                    homeAdapter.setLoading(false);
+                    homeAdapter.notifyDataSetChanged();
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("HomeFragment", "Error loading videos from developer: " + error.getMessage());
+                Log.e("HomeFragment", "Error loading videos from developer " + developerId + ": " + error.getMessage());
+                
+                // Increment loaded developers counter even on error
+                int currentLoaded = loadedDevelopers.incrementAndGet();
+                Log.d("HomeFragment", "Loaded developers (with errors): " + currentLoaded + "/" + totalDevelopers);
+                
+                // If all developers are processed and no videos were found, hide loading
+                if (currentLoaded >= totalDevelopers && videoItems.isEmpty()) {
+                    Log.d("HomeFragment", "All developers processed (with errors), no videos found, hiding loading state");
+                    homeAdapter.setLoading(false);
+                    homeAdapter.notifyDataSetChanged();
+                }
             }
         });
     }
 
     private void loadVideoDetails(String videoId, String developerId) {
+        Log.d("HomeFragment", "loadVideoDetails called for video: " + videoId + " from developer: " + developerId);
+        
         DatabaseReference videoRef = FirebaseDatabase.getInstance()
                 .getReference("videos")
                 .child(videoId);
@@ -231,22 +319,28 @@ public class HomeFragment extends Fragment {
         videoRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Log.d("HomeFragment", "Video details response for " + videoId + " - exists: " + snapshot.exists());
+                
                 if (snapshot.exists()) {
                     String title = snapshot.child("video_title").getValue(String.class);
                     String description = snapshot.child("description").getValue(String.class);
                     String likeCount = snapshot.child("like_count").getValue(String.class);
                     String viewCount = snapshot.child("view_count").getValue(String.class);
                     String createdAt = snapshot.child("created_at").getValue(String.class);
-                    String gameId = snapshot.child("game_id").getValue(String.class);
-
-                    // Load developer info
+                    String gameId = snapshot.child("gameid").getValue(String.class);
+                    
+                    Log.d("HomeFragment", "Video details loaded - title: " + title + ", description: " + description);
+                    
+                    // Load developer info for this video
                     loadDeveloperInfo(developerId, videoId, title, description, likeCount, viewCount, createdAt, gameId);
+                } else {
+                    Log.d("HomeFragment", "Video not found in database: " + videoId);
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("HomeFragment", "Error loading video details: " + error.getMessage());
+                Log.e("HomeFragment", "Error loading video details for " + videoId + ": " + error.getMessage());
             }
         });
     }
@@ -323,6 +417,8 @@ public class HomeFragment extends Fragment {
                             Log.d("HomeFragment", "Got signed URL: " + signedUrl);
                             
                             requireActivity().runOnUiThread(() -> {
+                                Log.d("HomeFragment", "Processing video on UI thread: " + videoItem.id);
+                                
                                 // Check if video is already in the list to prevent duplicates
                                 boolean videoExists = false;
                                 for (VideoItem existingVideo : videoItems) {
@@ -335,8 +431,37 @@ public class HomeFragment extends Fragment {
                                 // Only add if not already in the list
                                 if (!videoExists) {
                                     videoItems.add(videoItem);
-                                    homeAdapter.notifyDataSetChanged();
-                                    Log.d("HomeFragment", "Added video: " + videoItem.id + " from " + videoItem.channelName);
+                                    
+                                    Log.d("HomeFragment", "Before adding video - Loading state: " + homeAdapter.isLoading + ", Video count: " + videoItems.size());
+                                    
+                                    // Hide loading state when first video is added
+                                    if (videoItems.size() == 1) {
+                                        Log.d("HomeFragment", "First video added, hiding loading state");
+                                        homeAdapter.setLoading(false);
+                                    }
+                                    
+                                    // Update adapter with new data
+                                    homeAdapter.updateData(profileItems, videoItems);
+                                    
+                                    // Double-check the adapter state
+                                    Log.d("HomeFragment", "Added video: " + videoItem.id + " from " + videoItem.channelName + ". Total videos: " + videoItems.size() + ", Loading state: " + homeAdapter.isLoading);
+                                    
+                                    // Force another refresh after a short delay to ensure UI updates
+                                    new android.os.Handler().postDelayed(() -> {
+                                        if (isAdded() && !isDetached()) {
+                                            homeAdapter.updateData(profileItems, videoItems);
+                                            Log.d("HomeFragment", "Forced refresh after delay");
+                                            
+                                            // Play the first video after a short delay
+                                            if (videoItems.size() == 1) {
+                                                new android.os.Handler().postDelayed(() -> {
+                                                    if (isAdded() && !isDetached()) {
+                                                        playMostVisibleVideo();
+                                                    }
+                                                }, 500);
+                                            }
+                                        }
+                                    }, 100);
                                 } else {
                                     Log.d("HomeFragment", "Video already exists: " + videoItem.id);
                                 }
@@ -366,17 +491,82 @@ public class HomeFragment extends Fragment {
         }
     }
 
-    @Override
-    public void onPause() {
-        super.onPause();
-        if (homeAdapter != null) {
-            homeAdapter.releaseAllPlayers();
+    private void playMostVisibleVideo() {
+        if (homeAdapter == null || videoItems.isEmpty()) {
+            Log.d("HomeFragment", "Cannot play video - adapter is null or no videos");
+            return;
+        }
+        
+        LinearLayoutManager layoutManager = (LinearLayoutManager) homeRecyclerView.getLayoutManager();
+        if (layoutManager == null) {
+            Log.d("HomeFragment", "LayoutManager is null");
+            return;
+        }
+        
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        
+        Log.d("HomeFragment", "Visible range: " + firstVisible + " to " + lastVisible);
+        
+        // Find the most visible video item
+        int mostVisiblePosition = -1;
+        float maxVisibility = 0f;
+        
+        for (int i = firstVisible; i <= lastVisible; i++) {
+            if (i < 0 || i >= homeAdapter.getItemCount()) continue;
+            
+            // Skip profile item (position 0)
+            if (i == 0) continue;
+            
+            View view = layoutManager.findViewByPosition(i);
+            if (view != null) {
+                // Calculate visibility percentage
+                int[] location = new int[2];
+                view.getLocationInWindow(location);
+                int viewTop = location[1];
+                int viewBottom = viewTop + view.getHeight();
+                
+                int screenHeight = getResources().getDisplayMetrics().heightPixels;
+                int visibleHeight = Math.min(viewBottom, screenHeight) - Math.max(viewTop, 0);
+                float visibility = (float) visibleHeight / view.getHeight();
+                
+                Log.d("HomeFragment", "Position " + i + " visibility: " + visibility);
+                
+                if (visibility > maxVisibility) {
+                    maxVisibility = visibility;
+                    mostVisiblePosition = i;
+                }
+            }
+        }
+        
+        // If no video is visible, play the first video (position 1)
+        if (mostVisiblePosition == -1 && homeAdapter.getItemCount() > 1) {
+            mostVisiblePosition = 1;
+            Log.d("HomeFragment", "No visible video found, playing first video at position 1");
+        }
+        
+        // Play the most visible video if it's different from current
+        if (mostVisiblePosition != -1 && mostVisiblePosition != homeAdapter.currentPlayingPosition) {
+            Log.d("HomeFragment", "Playing most visible video at position: " + mostVisiblePosition);
+            homeAdapter.playVideoAtPosition(mostVisiblePosition);
         }
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        Log.d("HomeFragment", "onResume called - Video count: " + videoItems.size() + ", Loading state: " + homeAdapter.isLoading);
+        
+        // Force refresh when resuming
+        if (homeAdapter != null) {
+            homeAdapter.updateData(profileItems, videoItems);
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        Log.d("HomeFragment", "onPause called");
         if (homeAdapter != null) {
             homeAdapter.releaseAllPlayers();
         }

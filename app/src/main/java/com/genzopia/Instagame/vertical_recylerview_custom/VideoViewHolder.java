@@ -41,6 +41,11 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import de.hdodenhof.circleimageview.CircleImageView;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 
 public class VideoViewHolder extends RecyclerView.ViewHolder {
     FrameLayout videoContainer;
@@ -865,25 +870,214 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
     
     private void showThumbnail(VideoItem videoItem) {
-        if (videoItem.preloadedPlayer != null) {
-            // Use preloaded player for thumbnail
-            playerView.setPlayer(videoItem.preloadedPlayer);
-            playerView.setVisibility(View.VISIBLE);
-            android.util.Log.d("VideoViewHolder", "Showing thumbnail for video " + videoItem.id);
-        } else {
-            // No preloaded player, show black or placeholder
-            playerView.setPlayer(null);
-            playerView.setVisibility(View.VISIBLE);
-            android.util.Log.d("VideoViewHolder", "No preloaded player for video " + videoItem.id);
+        if (videoItem.videoUrl == null || videoItem.videoUrl.isEmpty()) {
+            android.util.Log.d("VideoViewHolder", "Cannot generate thumbnail - no video URL");
+            return;
         }
+        
+        android.util.Log.d("VideoViewHolder", "Generating thumbnail for video: " + videoItem.id);
+        
+        // Create a temporary ExoPlayer for thumbnail generation
+        ExoPlayer thumbnailPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
+        
+        // Set up the player with the video URL
+        String videoUri = videoItem.videoUrl;
+        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
+        MediaItem mediaItem = MediaItem.fromUri(videoUri);
+        
+        // Use progressive media source for MP4 files
+        MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+        
+        thumbnailPlayer.setMediaSource(mediaSource);
+        thumbnailPlayer.prepare();
+        
+        // Seek to 40th frame (assuming 30fps, that's about 1.33 seconds)
+        thumbnailPlayer.seekTo(1333); // 1.33 seconds in milliseconds
+        
+        // Add listener to capture thumbnail when ready
+        thumbnailPlayer.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int playbackState) {
+                if (playbackState == Player.STATE_READY) {
+                    // Temporarily set the player to capture the frame
+                    playerView.setPlayer(thumbnailPlayer);
+                    
+                    // After a short delay to ensure frame is rendered, capture it
+                    new android.os.Handler().postDelayed(() -> {
+                        try {
+                            // Capture the current frame as a bitmap
+                            android.graphics.Bitmap frameBitmap = captureFrameFromPlayerView();
+                            
+                            if (frameBitmap != null) {
+                                // Create an ImageView to display the thumbnail
+                                ImageView thumbnailImageView = new ImageView(itemView.getContext());
+                                thumbnailImageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                                thumbnailImageView.setImageBitmap(frameBitmap);
+                                thumbnailImageView.setId(android.R.id.text1); // Use unique ID
+                                
+                                // Add the thumbnail to the player view's parent
+                                if (playerView.getParent() instanceof ViewGroup) {
+                                    ViewGroup parent = (ViewGroup) playerView.getParent();
+                                    parent.addView(thumbnailImageView);
+                                    
+                                    // Position the thumbnail to cover the player view
+                                    // Use the same layout parameters as the player view
+                                    ViewGroup.LayoutParams params = playerView.getLayoutParams();
+                                    if (params != null) {
+                                        thumbnailImageView.setLayoutParams(params);
+                                    } else {
+                                        // Fallback to basic layout parameters
+                                        thumbnailImageView.setLayoutParams(new ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT
+                                        ));
+                                    }
+                                }
+                                
+                                // Add a play icon overlay
+                                ImageView playIcon = new ImageView(itemView.getContext());
+                                playIcon.setImageResource(android.R.drawable.ic_media_play);
+                                playIcon.setScaleType(ImageView.ScaleType.CENTER);
+                                playIcon.setColorFilter(android.graphics.Color.WHITE);
+                                playIcon.setId(android.R.id.text2); // Different ID for play icon
+                                
+                                if (playerView.getParent() instanceof ViewGroup) {
+                                    ViewGroup parent = (ViewGroup) playerView.getParent();
+                                    parent.addView(playIcon);
+                                    
+                                    // Center the play icon using basic layout parameters
+                                    ViewGroup.LayoutParams iconParams = new ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT
+                                    );
+                                    playIcon.setLayoutParams(iconParams);
+                                    
+                                    // Position the play icon in the center
+                                    playIcon.post(() -> {
+                                        int parentWidth = parent.getWidth();
+                                        int parentHeight = parent.getHeight();
+                                        int iconWidth = playIcon.getWidth();
+                                        int iconHeight = playIcon.getHeight();
+                                        
+                                        if (parentWidth > 0 && parentHeight > 0 && iconWidth > 0 && iconHeight > 0) {
+                                            playIcon.setX((parentWidth - iconWidth) / 2f);
+                                            playIcon.setY((parentHeight - iconHeight) / 2f);
+                                        }
+                                    });
+                                }
+                                
+                                android.util.Log.d("VideoViewHolder", "Successfully captured thumbnail for video: " + videoItem.id);
+                            } else {
+                                android.util.Log.d("VideoViewHolder", "Failed to capture frame, showing fallback");
+                                showFallbackThumbnail();
+                            }
+                            
+                        } catch (Exception e) {
+                            android.util.Log.e("VideoViewHolder", "Error capturing thumbnail: " + e.getMessage());
+                            showFallbackThumbnail();
+                        }
+                        
+                        // Clean up the thumbnail player
+                        playerView.setPlayer(null);
+                        thumbnailPlayer.release();
+                        
+                    }, 500); // Wait 500ms to ensure frame is rendered
+                }
+            }
+            
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                android.util.Log.e("VideoViewHolder", "Thumbnail player error: " + error.getMessage());
+                thumbnailPlayer.release();
+                showFallbackThumbnail();
+            }
+        });
+    }
+    
+    private android.graphics.Bitmap captureFrameFromPlayerView() {
+        try {
+            // Create a bitmap with the same size as the player view
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
+                playerView.getWidth(),
+                playerView.getHeight(),
+                android.graphics.Bitmap.Config.ARGB_8888
+            );
+            
+            // Create a canvas to draw the player view content
+            android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+            
+            // Draw the player view content to the canvas
+            playerView.draw(canvas);
+            
+            return bitmap;
+        } catch (Exception e) {
+            android.util.Log.e("VideoViewHolder", "Error capturing frame: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    private void showFallbackThumbnail() {
+        // Show a dark background as fallback thumbnail
+        playerView.setBackgroundColor(android.graphics.Color.parseColor("#1F1F1F"));
+        
+        // Add a play icon overlay
+        ImageView playIcon = new ImageView(itemView.getContext());
+        playIcon.setImageResource(android.R.drawable.ic_media_play);
+        playIcon.setScaleType(ImageView.ScaleType.CENTER);
+        playIcon.setColorFilter(android.graphics.Color.WHITE);
+        playIcon.setId(android.R.id.text1);
+        
+        if (playerView.getParent() instanceof ViewGroup) {
+            ViewGroup parent = (ViewGroup) playerView.getParent();
+            parent.addView(playIcon);
+            
+            // Use basic layout parameters
+            ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            playIcon.setLayoutParams(params);
+            
+            // Position the play icon in the center
+            playIcon.post(() -> {
+                int parentWidth = parent.getWidth();
+                int parentHeight = parent.getHeight();
+                int iconWidth = playIcon.getWidth();
+                int iconHeight = playIcon.getHeight();
+                
+                if (parentWidth > 0 && parentHeight > 0 && iconWidth > 0 && iconHeight > 0) {
+                    playIcon.setX((parentWidth - iconWidth) / 2f);
+                    playIcon.setY((parentHeight - iconHeight) / 2f);
+                }
+            });
+        }
+    }
+    
+    public void hideThumbnail() {
+        // Remove the thumbnail image and play icon when video starts playing
+        if (playerView.getParent() instanceof ViewGroup) {
+            ViewGroup parent = (ViewGroup) playerView.getParent();
+            
+            // Remove thumbnail image
+            View thumbnailImage = parent.findViewById(android.R.id.text1);
+            if (thumbnailImage != null) {
+                parent.removeView(thumbnailImage);
+            }
+            
+            // Remove play icon
+            View playIcon = parent.findViewById(android.R.id.text2);
+            if (playIcon != null) {
+                parent.removeView(playIcon);
+            }
+        }
+        
+        // Clear the background
+        playerView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
     }
     
     private void showVideo(VideoItem videoItem) {
         if (videoItem.videoUrl != null && !videoItem.videoUrl.isEmpty()) {
-            // Create a new ExoPlayer instance for each video
-            ExoPlayer newExoPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
-            
-            // Set up the player with the video URL like ReelView
+            // Set up the player view for shared player
             String videoUri = videoItem.videoUrl;
             if (videoUri == null || videoUri.isEmpty()) {
                 playerView.setVisibility(View.INVISIBLE);
@@ -892,67 +1086,13 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             }
             
             playerView.setVisibility(View.VISIBLE);
-            android.util.Log.d("VideoViewHolder", "Loading video: " + videoUri);
+            android.util.Log.d("VideoViewHolder", "Setting up player view for video: " + videoUri);
             
-            // Use the same approach as ReelView
-            com.google.android.exoplayer2.upstream.DefaultDataSourceFactory dataSourceFactory = 
-                new com.google.android.exoplayer2.upstream.DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
-            com.google.android.exoplayer2.MediaItem mediaItem = com.google.android.exoplayer2.MediaItem.fromUri(videoUri);
-            com.google.android.exoplayer2.source.MediaSource hlsSource = 
-                new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-            
-            newExoPlayer.setMediaSource(hlsSource);
-            newExoPlayer.prepare();
-            newExoPlayer.setPlayWhenReady(true); // Start playback immediately
-            
-            // Set the player to the PlayerView
-            playerView.setPlayer(newExoPlayer);
-            
-            // Store the ExoPlayer instance
-            this.exoPlayer = newExoPlayer;
-            
-            // Add a listener to release the player when the video is done or the view is detached
-            newExoPlayer.addListener(new Player.Listener() {
-                @Override
-                public void onPlaybackStateChanged(int playbackState) {
-                    if (playbackState == Player.STATE_READY) {
-                        android.util.Log.d("VideoViewHolder", "Video is ready to play");
-                        
-                        // Store video duration for view tracking
-                        final VideoItem item = currentItem;
-                        if (item != null && newExoPlayer.getDuration() > 0) {
-                            ViewCountManager.setVideoDuration(item.id, newExoPlayer.getDuration());
-                        }
-                    } else if (playbackState == Player.STATE_ENDED) {
-                        newExoPlayer.release();
-                        android.util.Log.d("VideoViewHolder", "Video ended, releasing player.");
-                    }
-                }
-                
-                @Override
-                public void onPlayerError(PlaybackException error) {
-                    android.util.Log.e("VideoViewHolder", "Player error: " + error.getMessage());
-                    newExoPlayer.release();
-                }
-                
-                @Override
-                public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-                    // Track view count when video reaches 60%
-                    final VideoItem item = currentItem;
-                    if (item != null && newExoPlayer.getDuration() > 0) {
-                        ViewCountManager.checkAndIncrementViewCount(
-                            item.id, 
-                            newExoPlayer.getCurrentPosition(), 
-                            newExoPlayer.getDuration()
-                        );
-                    }
-                }
-            });
-            
-            android.util.Log.d("VideoViewHolder", "Playing video: " + videoUri);
+            // The actual video playback will be handled by the HomeAdapter's shared player
+            // This method just sets up the player view and shows thumbnail
+            showThumbnail(videoItem);
         } else {
-            playerView.setPlayer(null);
-            playerView.setVisibility(View.VISIBLE);
+            playerView.setVisibility(View.INVISIBLE);
             android.util.Log.d("VideoViewHolder", "No video URL for video " + videoItem.id);
         }
     }

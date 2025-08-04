@@ -27,6 +27,12 @@ import android.os.Handler;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.genzopia.Instagame.vertical_recylerview_custom.PlayerManager;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -37,20 +43,41 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final String TAG = "HomeAdapter";
     public RecyclerView recyclerView;
 
-    private Context context;
     private List<Object> items = new ArrayList<>();
+    private List<ImageItem> profileItems = new ArrayList<>();
+    private List<VideoItem> videoItems = new ArrayList<>();
+    private Context context;
     private final PlayerManager playerManager = PlayerManager.getInstance();
     private View.OnTouchListener globalTouchListener;
     private String currentlyPlayingVideoId = null;
-    private boolean isLoading = false;
+    public boolean isLoading = false;
     private int skeletonCount = 5;
     private int skeletonFeedCount = 5;
     private ExoPlayer exoPlayer;
+    
+    // Shared player for video playback
+    private ExoPlayer sharedPlayer;
+    private VideoViewHolder currentPlayingViewHolder = null;
+    public int currentPlayingPosition = -1;
 
     public HomeAdapter(Context context, List<ImageItem> profileItems, List<VideoItem> videoItems) {
         this.context = context;
+        this.profileItems = profileItems;
+        this.videoItems = videoItems;
         items.add(profileItems);
         items.addAll(videoItems);
+        
+        // Initialize shared player
+        initializeSharedPlayer();
+    }
+    
+    private void initializeSharedPlayer() {
+        if (sharedPlayer == null) {
+            android.util.Log.d("HomeAdapter", "Initializing shared player");
+            sharedPlayer = new ExoPlayer.Builder(context).build();
+            sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
+            sharedPlayer.setPlayWhenReady(false);
+        }
     }
 
     public void setGlobalTouchListener(View.OnTouchListener listener) {
@@ -59,6 +86,15 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     public void setLoading(boolean loading) {
         isLoading = loading;
+        notifyDataSetChanged();
+    }
+
+    public void updateData(List<ImageItem> profileItems, List<VideoItem> videoItems) {
+        this.profileItems = profileItems;
+        this.videoItems = videoItems;
+        items.clear();
+        items.add(profileItems);
+        items.addAll(videoItems);
         notifyDataSetChanged();
     }
 
@@ -88,10 +124,14 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             return;
         }
         if (holder.getItemViewType() == TYPE_PROFILE) {
-            ((ProfileViewHolder) holder).bind((List<ImageItem>) items.get(position));
+            // Pass the entire profileItems list to the ProfileViewHolder
+            ((ProfileViewHolder) holder).bind(profileItems);
         } else {
             VideoItem videoItem = (VideoItem) items.get(position);
-            ((VideoViewHolder) holder).bind(videoItem, context);
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            videoHolder.bind(videoItem, context);
+            
+            // Don't play video immediately during binding - let the scroll listener handle it
         }
     }
 
@@ -100,10 +140,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         if (holder instanceof VideoViewHolder) {
             // Release the video player when view is recycled
             VideoViewHolder videoHolder = (VideoViewHolder) holder;
-            if (videoHolder.exoPlayer != null) {
-                videoHolder.exoPlayer.release();
-                videoHolder.exoPlayer = null;
-            }
+            // Don't release the shared player here - it's managed by HomeAdapter
             videoHolder.playerView.setPlayer(null);
         }
         super.onViewRecycled(holder);
@@ -133,9 +170,106 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return items.size();
     }
 
-    public void releaseAllPlayers() {
-        playerManager.releaseAll();
+    public void playVideoAtPosition(int position) {
+        if (position < 0 || position >= items.size()) {
+            android.util.Log.d("HomeAdapter", "Invalid position: " + position);
+            return;
+        }
+        
+        // Ensure shared player is initialized
+        initializeSharedPlayer();
+        
+        // Pause current video
+        pauseCurrentVideo();
+        
+        // Get the video item at this position
+        Object item = items.get(position);
+        if (!(item instanceof VideoItem)) {
+            android.util.Log.d("HomeAdapter", "Item at position " + position + " is not a VideoItem");
+            return;
+        }
+        
+        VideoItem videoItem = (VideoItem) item;
+        
+        // Check if recyclerView is available
+        if (recyclerView == null) {
+            android.util.Log.d("HomeAdapter", "RecyclerView is null, cannot play video");
+            return;
+        }
+        
+        // Find the VideoViewHolder for this position
+        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+        if (!(holder instanceof VideoViewHolder)) {
+            android.util.Log.d("HomeAdapter", "VideoViewHolder not found for position: " + position);
+            return;
+        }
+        
+        VideoViewHolder videoHolder = (VideoViewHolder) holder;
+        playVideoInViewHolder(videoHolder, videoItem, position);
+    }
+    
+    private void playVideoInViewHolder(VideoViewHolder holder, VideoItem videoItem, int position) {
+        if (videoItem.videoUrl == null || videoItem.videoUrl.isEmpty()) {
+            android.util.Log.d("HomeAdapter", "No video URL for video: " + videoItem.id);
+            return;
+        }
+        
+        android.util.Log.d("HomeAdapter", "Playing video: " + videoItem.id + " at position: " + position);
+        
+        // Check if sharedPlayer is null and reinitialize if needed
+        if (sharedPlayer == null) {
+            android.util.Log.d("HomeAdapter", "SharedPlayer is null, reinitializing...");
+            sharedPlayer = new ExoPlayer.Builder(context).build();
+            sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
+            sharedPlayer.setPlayWhenReady(false);
+        }
+        
+        // Set up the player with the video URL
+        String videoUri = videoItem.videoUrl;
+        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+        MediaItem mediaItem = MediaItem.fromUri(videoUri);
+        
+        // Use progressive media source for MP4 files
+        MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+        
+        try {
+            sharedPlayer.setMediaSource(mediaSource);
+            sharedPlayer.prepare();
+            sharedPlayer.setPlayWhenReady(true);
+            
+            // Hide the thumbnail when video starts playing
+            holder.hideThumbnail();
+            
+            // Attach player to the view holder
+            holder.playerView.setPlayer(sharedPlayer);
+            currentPlayingViewHolder = holder;
+            currentPlayingPosition = position;
+            currentlyPlayingVideoId = videoItem.id;
+            
+            android.util.Log.d("HomeAdapter", "Successfully started playing video: " + videoItem.id);
+        } catch (Exception e) {
+            android.util.Log.e("HomeAdapter", "Error playing video: " + e.getMessage());
+        }
+    }
+    
+    private void pauseCurrentVideo() {
+        if (sharedPlayer != null) {
+            sharedPlayer.setPlayWhenReady(false);
+        }
+        if (currentPlayingViewHolder != null) {
+            currentPlayingViewHolder.playerView.setPlayer(null);
+            currentPlayingViewHolder = null;
+        }
+        currentPlayingPosition = -1;
         currentlyPlayingVideoId = null;
+    }
+    
+    public void releaseAllPlayers() {
+        pauseCurrentVideo();
+        if (sharedPlayer != null) {
+            sharedPlayer.release();
+            sharedPlayer = null;
+        }
     }
 
     public void setRecyclerView(RecyclerView recyclerView) {
