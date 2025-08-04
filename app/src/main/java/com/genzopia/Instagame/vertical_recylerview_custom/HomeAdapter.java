@@ -18,6 +18,7 @@ import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.I
 
 import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.StoryProfileAdapter;
 import com.genzopia.Instagame.vertical_recylerview_custom.profile_recyclerview.StoryGridLayoutManager;
+import com.genzopia.Instagame.vertical_recylerview_custom.VideoViewHolder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,7 +98,13 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
         if (holder instanceof VideoViewHolder) {
-            // No playerView to detach from view
+            // Release the video player when view is recycled
+            VideoViewHolder videoHolder = (VideoViewHolder) holder;
+            if (videoHolder.exoPlayer != null) {
+                videoHolder.exoPlayer.release();
+                videoHolder.exoPlayer = null;
+            }
+            videoHolder.playerView.setPlayer(null);
         }
         super.onViewRecycled(holder);
     }

@@ -10,10 +10,12 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.LinearLayout;
 import android.view.GestureDetector;
 import android.view.ViewGroup;
 import android.os.Handler;
 import android.os.Looper;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.navigation.NavController;
@@ -31,6 +33,12 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.PlaybackException;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
 import com.genzopia.Instagame.utils.ViewCountManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -41,10 +49,23 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     TextView title;
     TextView channelName;
     TextView viewsAndTime;
+    TextView description; // Add description TextView
     private VideoItem currentItem;
     
     // Three-dot menu
     private ImageView threeDotMenu;
+    
+    // Action buttons
+    private LinearLayout likeButton;
+    private ImageView likeIcon;
+    private LinearLayout followButton;
+    private TextView followText;
+    private LinearLayout shareButton;
+    private ImageView shareIcon;
+    
+    // Button states
+    private boolean isLiked = false;
+    private boolean isFollowing = false;
     
     // Seek bar and touch controls
     private View progressLine;
@@ -54,7 +75,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private Runnable progressRunnable;
     private boolean isHolding = false;
     private boolean isPausedByHold = false;
-    private ExoPlayer exoPlayer;
+    public ExoPlayer exoPlayer; // Make public for HomeAdapter access
     
     // View count tracking
     private boolean hasIncrementedView = false;
@@ -70,16 +91,26 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         channelName    = itemView.findViewById(R.id.channelName);
         viewsAndTime   = itemView.findViewById(R.id.viewsAndTime);
         threeDotMenu   = itemView.findViewById(R.id.threeDotMenu);
+        description    = itemView.findViewById(R.id.description); // Initialize description TextView
+        
+        // Initialize action buttons
+        likeButton = itemView.findViewById(R.id.likeButton);
+        likeIcon = itemView.findViewById(R.id.likeIcon);
+        followButton = itemView.findViewById(R.id.followButton);
+        followText = itemView.findViewById(R.id.tv_follow_text);
+        shareButton = itemView.findViewById(R.id.shareButton);
+        shareIcon = itemView.findViewById(R.id.shareIcon);
         
         // Initialize progress line and container
         progressLine = itemView.findViewById(R.id.progress_line);
         progressContainer = itemView.findViewById(R.id.progress_container);
         
+        // Set up action button click listeners
+        setupActionButtons();
+        
         // Set up three-dot menu click listener
         threeDotMenu.setOnClickListener(v -> {
             android.util.Log.d("VideoViewHolder", "Three-dot menu clicked for video: " + (currentItem != null ? currentItem.id : "unknown"));
-            android.util.Log.d("VideoViewHolder", "Three-dot menu position: " + threeDotMenu.getX() + ", " + threeDotMenu.getY());
-            android.util.Log.d("VideoViewHolder", "Three-dot menu visibility: " + threeDotMenu.getVisibility());
             showVideoDetailsBottomSheet();
         });
         
@@ -112,12 +143,395 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             
             return handled;
         });
+    }
+
+    private void setupActionButtons() {
+        // Like button
+        likeButton.setOnClickListener(v -> handleLikeClick());
         
-        // Set up three-dot menu click listener
-        threeDotMenu.setOnClickListener(v -> {
-            final VideoItem item = currentItem;
-            if (item != null) {
-                showVideoDetailsBottomSheet();
+        // Follow button
+        followButton.setOnClickListener(v -> handleFollowClick());
+        
+        // Share button
+        shareButton.setOnClickListener(v -> handleShareClick());
+        
+        // Profile image click to navigate to channel
+        channelIcon.setOnClickListener(v -> {
+            if (currentItem != null && currentItem.developerId != null && !currentItem.developerId.isEmpty()) {
+                // Navigate to ChannelActivity with developer ID
+                Intent intent = new Intent(itemView.getContext(), ChannelActivity.class);
+                intent.putExtra("developer_id", currentItem.developerId);
+                itemView.getContext().startActivity(intent);
+            }
+        });
+    }
+
+    private void handleLikeClick() {
+        if (currentItem == null) return;
+        
+        String videoId = currentItem.id;
+        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        
+        // Prevent multiple rapid clicks
+        if (likeButton.isEnabled()) {
+            likeButton.setEnabled(false);
+            
+            // Optimistic update - update UI immediately
+            boolean newLikeState = !isLiked;
+            updateLikeUI(newLikeState);
+            
+            // Perform Firebase operations
+            if (newLikeState) {
+                likeVideoOptimistic(videoId, currentUserId);
+            } else {
+                unlikeVideoOptimistic(videoId, currentUserId);
+            }
+        }
+    }
+
+    private void likeVideoOptimistic(String videoId, String userId) {
+        // Use Firebase transaction for atomic updates
+        DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                .getReference("videos")
+                .child(videoId);
+        
+        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                String currentLikeCount = mutableData.child("like_count").getValue(String.class);
+                int newLikeCount = 1;
+                if (currentLikeCount != null) {
+                    newLikeCount = Integer.parseInt(currentLikeCount) + 1;
+                }
+                mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+            
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if (committed && error == null) {
+                    // Success - update user's liked videos
+                    DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                            .getReference("users")
+                            .child(userId)
+                            .child("liked_videos")
+                            .child(videoId);
+                    userLikedVideosRef.setValue(true);
+                    
+                    Toast.makeText(itemView.getContext(), "Liked!", Toast.LENGTH_SHORT).show();
+                } else {
+                    // Rollback UI on failure
+                    updateLikeUI(false);
+                    Toast.makeText(itemView.getContext(), "Failed to like video", Toast.LENGTH_SHORT).show();
+                }
+                likeButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void unlikeVideoOptimistic(String videoId, String userId) {
+        // Use Firebase transaction for atomic updates
+        DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                .getReference("videos")
+                .child(videoId);
+        
+        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                String currentLikeCount = mutableData.child("like_count").getValue(String.class);
+                int newLikeCount = 0;
+                if (currentLikeCount != null) {
+                    newLikeCount = Math.max(0, Integer.parseInt(currentLikeCount) - 1);
+                }
+                mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+            
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if (committed && error == null) {
+                    // Success - remove from user's liked videos
+                    DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                            .getReference("users")
+                            .child(userId)
+                            .child("liked_videos")
+                            .child(videoId);
+                    userLikedVideosRef.removeValue();
+                    
+                    Toast.makeText(itemView.getContext(), "Unliked", Toast.LENGTH_SHORT).show();
+                } else {
+                    // Rollback UI on failure
+                    updateLikeUI(true);
+                    Toast.makeText(itemView.getContext(), "Failed to unlike video", Toast.LENGTH_SHORT).show();
+                }
+                likeButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void updateLikeUI(boolean liked) {
+        isLiked = liked;
+        
+        // Update like icon color
+        if (liked) {
+            likeIcon.setImageResource(R.drawable.ic_heart_filled);
+            likeIcon.setColorFilter(android.graphics.Color.RED);
+        } else {
+            likeIcon.setImageResource(R.drawable.ic_heart);
+            likeIcon.setColorFilter(android.graphics.Color.WHITE);
+        }
+    }
+
+    private void handleFollowClick() {
+        if (currentItem == null) return;
+        
+        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        String developerId = currentItem.developerId; // Use the actual developer ID
+        
+        // Prevent following yourself
+        if (currentUserId.equals(developerId)) {
+            Toast.makeText(itemView.getContext(), "You cannot follow yourself", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Prevent multiple rapid clicks
+        if (followButton.isEnabled()) {
+            followButton.setEnabled(false);
+            
+            // Optimistic update - update UI immediately
+            boolean newFollowState = !isFollowing;
+            updateFollowUI(newFollowState);
+            
+            // Perform Firebase operations
+            if (newFollowState) {
+                followUserOptimistic(currentUserId, developerId);
+            } else {
+                unfollowUserOptimistic(currentUserId, developerId);
+            }
+        }
+    }
+
+    private void followUserOptimistic(String currentUserId, String developerId) {
+        // Use Firebase transaction for atomic updates
+        DatabaseReference developerRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(developerId);
+        
+        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
+                int newFollowerCount = 1;
+                if (currentFollowerCount != null) {
+                    newFollowerCount = Integer.parseInt(currentFollowerCount) + 1;
+                }
+                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+            
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if (committed && error == null) {
+                    // Success - add to current user's following list
+                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                            .getReference("users")
+                            .child(currentUserId)
+                            .child("following_list")
+                            .child(developerId);
+                    
+                    currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
+                        Toast.makeText(itemView.getContext(), "Following", Toast.LENGTH_SHORT).show();
+                    }).addOnFailureListener(e -> {
+                        // Rollback UI on failure
+                        updateFollowUI(false);
+                        Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
+                    });
+                } else {
+                    // Rollback UI on failure
+                    updateFollowUI(false);
+                    Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
+                }
+                followButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void unfollowUserOptimistic(String currentUserId, String developerId) {
+        // Use Firebase transaction for atomic updates
+        DatabaseReference developerRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(developerId);
+        
+        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
+                int newFollowerCount = 0;
+                if (currentFollowerCount != null) {
+                    newFollowerCount = Math.max(0, Integer.parseInt(currentFollowerCount) - 1);
+                }
+                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+            
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if (committed && error == null) {
+                    // Success - remove from current user's following list
+                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                            .getReference("users")
+                            .child(currentUserId)
+                            .child("following_list")
+                            .child(developerId);
+                    
+                    currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
+                        Toast.makeText(itemView.getContext(), "Unfollowed", Toast.LENGTH_SHORT).show();
+                    }).addOnFailureListener(e -> {
+                        // Rollback UI on failure
+                        updateFollowUI(true);
+                        Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
+                    });
+                } else {
+                    // Rollback UI on failure
+                    updateFollowUI(true);
+                    Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
+                }
+                followButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void updateFollowUI(boolean following) {
+        isFollowing = following;
+        
+        if (following) {
+            followText.setText("Following");
+            followText.setTextColor(android.graphics.Color.RED);
+        } else {
+            followText.setText("Follow");
+            followText.setTextColor(android.graphics.Color.WHITE);
+        }
+    }
+
+    private void handleShareClick() {
+        if (currentItem == null) return;
+        
+        String videoId = currentItem.id;
+        String videoTitle = currentItem.title;
+        
+        // Increment share count in Firebase
+        incrementShareCount(videoId);
+        
+        // Create share intent
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.setType("text/plain");
+        
+        // Create share text with video ID
+        String shareText = "Check out this amazing video: " + videoTitle + "\n\nVideo ID: " + videoId + "\n\nShared from Instagame";
+        
+        shareIntent.putExtra(Intent.EXTRA_TEXT, shareText);
+        shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Amazing video from Instagame");
+        
+        // Start activity chooser
+        try {
+            itemView.getContext().startActivity(Intent.createChooser(shareIntent, "Share via"));
+        } catch (Exception e) {
+            // Handle case where no sharing app is available
+            Toast.makeText(itemView.getContext(), "No sharing app available", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void incrementShareCount(String videoId) {
+        // Use Firebase transaction for atomic update
+        DatabaseReference videoRef = FirebaseDatabase.getInstance()
+                .getReference("videos")
+                .child(videoId);
+        
+        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                String currentShareCount = mutableData.child("share_count").getValue(String.class);
+                int newShareCount = 1;
+                if (currentShareCount != null) {
+                    newShareCount = Integer.parseInt(currentShareCount) + 1;
+                }
+                mutableData.child("share_count").setValue(String.valueOf(newShareCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+            
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if (committed && error == null) {
+                    // Success - share count updated
+                    // You could also update the UI here if needed
+                } else {
+                    // Handle error silently for share count
+                    // Share functionality still works even if count update fails
+                }
+            }
+        });
+    }
+
+    private void checkIfLiked(String videoId) {
+        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        
+        // Use a more efficient approach - check if the user has liked this video
+        DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(currentUserId)
+                .child("liked_videos")
+                .child(videoId);
+        
+        userLikedVideosRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                boolean liked = snapshot.exists();
+                updateLikeUI(liked);
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                // On error, assume not liked
+                updateLikeUI(false);
+            }
+        });
+    }
+
+    private void checkFollowState(String developerId) {
+        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        
+        // Prevent checking if trying to follow yourself
+        if (currentUserId.equals(developerId)) {
+            followButton.setVisibility(View.GONE); // Hide follow button for own videos
+            return;
+        }
+        
+        // Check if current user is following this developer
+        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(currentUserId)
+                .child("following_list")
+                .child(developerId);
+        
+        currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                boolean following = snapshot.exists();
+                updateFollowUI(following);
+                
+                // If already following, hide the follow button or show "Following"
+                if (following) {
+                    followButton.setVisibility(View.VISIBLE); // Keep visible but show "Following"
+                } else {
+                    followButton.setVisibility(View.VISIBLE); // Show "Follow" button
+                }
+            }
+            
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                // On error, assume not following
+                updateFollowUI(false);
+                followButton.setVisibility(View.VISIBLE);
             }
         });
     }
@@ -295,8 +709,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     
                     // Debug log every 2 seconds
                     if (exoPlayer.getCurrentPosition() % 2000 < 100) {
-                        android.util.Log.d("VideoViewHolder", "Progress: " + progress + " (" + 
-                            exoPlayer.getCurrentPosition() + "/" + exoPlayer.getDuration() + ")");
+                        android.util.Log.d("VideoViewHolder", "Progress: " + progress + " (" + exoPlayer.getCurrentPosition() + "/" + exoPlayer.getDuration() + ")");
                         android.util.Log.d("VideoViewHolder", "Progress line scaleX: " + progressLine.getScaleX());
                         android.util.Log.d("VideoViewHolder", "Progress line visibility: " + progressLine.getVisibility());
                         android.util.Log.d("VideoViewHolder", "Video is playing: " + exoPlayer.isPlaying());
@@ -409,16 +822,34 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Reset view tracking for new video
         resetViewTracking();
         
+        // Reset PlayerView to ensure clean state
+        resetPlayerView();
+        
         // Set channel info
-        channelName.setText("Channel " + videoItem.id);
-        title.setText("Video " + videoItem.id + " - Amazing Content");
-        viewsAndTime.setText("1.2M views • 3 days ago");
+        channelName.setText(videoItem.channelName);
+        title.setText(videoItem.title);
+        viewsAndTime.setText(videoItem.views + " • " + videoItem.timeAgo);
+        description.setText(videoItem.description); // Set description text
         
-        // Set channel icon (using a placeholder for now)
-        channelIcon.setImageResource(R.drawable.ic_launcher_foreground);
+        // Load channel icon using Glide
+        if (videoItem.channelIconUrl != null && !videoItem.channelIconUrl.isEmpty()) {
+            Glide.with(context)
+                    .load(videoItem.channelIconUrl)
+                    .placeholder(R.drawable.demo_user)
+                    .error(R.drawable.demo_user)
+                    .into(channelIcon);
+        } else {
+            channelIcon.setImageResource(R.drawable.demo_user);
+        }
         
-        // Show thumbnail using preloaded player
-        showThumbnail(videoItem);
+        // Show video using the video URL
+        showVideo(videoItem);
+        
+        // Check if current user has liked this video
+        checkIfLiked(videoItem.id);
+        
+        // Check follow state
+        checkFollowState(videoItem.developerId); // Use the actual developer ID
         
         // Debug logging for three-dot menu
         android.util.Log.d("VideoViewHolder", "Three-dot menu visibility: " + threeDotMenu.getVisibility());
@@ -430,7 +861,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         android.util.Log.d("VideoViewHolder", "Bound video item: " + videoItem.id);
         android.util.Log.d("VideoViewHolder", "PlayerView visibility: " + playerView.getVisibility());
         android.util.Log.d("VideoViewHolder", "PlayerView width: " + playerView.getWidth() + ", height: " + playerView.getHeight());
-        android.util.Log.d("VideoViewHolder", "Preloaded player available: " + (videoItem.preloadedPlayer != null));
+        android.util.Log.d("VideoViewHolder", "Video URL: " + videoItem.videoUrl);
     }
     
     private void showThumbnail(VideoItem videoItem) {
@@ -444,6 +875,85 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             playerView.setPlayer(null);
             playerView.setVisibility(View.VISIBLE);
             android.util.Log.d("VideoViewHolder", "No preloaded player for video " + videoItem.id);
+        }
+    }
+    
+    private void showVideo(VideoItem videoItem) {
+        if (videoItem.videoUrl != null && !videoItem.videoUrl.isEmpty()) {
+            // Create a new ExoPlayer instance for each video
+            ExoPlayer newExoPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
+            
+            // Set up the player with the video URL like ReelView
+            String videoUri = videoItem.videoUrl;
+            if (videoUri == null || videoUri.isEmpty()) {
+                playerView.setVisibility(View.INVISIBLE);
+                android.util.Log.d("VideoViewHolder", "No video URL for video " + videoItem.id);
+                return;
+            }
+            
+            playerView.setVisibility(View.VISIBLE);
+            android.util.Log.d("VideoViewHolder", "Loading video: " + videoUri);
+            
+            // Use the same approach as ReelView
+            com.google.android.exoplayer2.upstream.DefaultDataSourceFactory dataSourceFactory = 
+                new com.google.android.exoplayer2.upstream.DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
+            com.google.android.exoplayer2.MediaItem mediaItem = com.google.android.exoplayer2.MediaItem.fromUri(videoUri);
+            com.google.android.exoplayer2.source.MediaSource hlsSource = 
+                new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+            
+            newExoPlayer.setMediaSource(hlsSource);
+            newExoPlayer.prepare();
+            newExoPlayer.setPlayWhenReady(true); // Start playback immediately
+            
+            // Set the player to the PlayerView
+            playerView.setPlayer(newExoPlayer);
+            
+            // Store the ExoPlayer instance
+            this.exoPlayer = newExoPlayer;
+            
+            // Add a listener to release the player when the video is done or the view is detached
+            newExoPlayer.addListener(new Player.Listener() {
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        android.util.Log.d("VideoViewHolder", "Video is ready to play");
+                        
+                        // Store video duration for view tracking
+                        final VideoItem item = currentItem;
+                        if (item != null && newExoPlayer.getDuration() > 0) {
+                            ViewCountManager.setVideoDuration(item.id, newExoPlayer.getDuration());
+                        }
+                    } else if (playbackState == Player.STATE_ENDED) {
+                        newExoPlayer.release();
+                        android.util.Log.d("VideoViewHolder", "Video ended, releasing player.");
+                    }
+                }
+                
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    android.util.Log.e("VideoViewHolder", "Player error: " + error.getMessage());
+                    newExoPlayer.release();
+                }
+                
+                @Override
+                public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                    // Track view count when video reaches 60%
+                    final VideoItem item = currentItem;
+                    if (item != null && newExoPlayer.getDuration() > 0) {
+                        ViewCountManager.checkAndIncrementViewCount(
+                            item.id, 
+                            newExoPlayer.getCurrentPosition(), 
+                            newExoPlayer.getDuration()
+                        );
+                    }
+                }
+            });
+            
+            android.util.Log.d("VideoViewHolder", "Playing video: " + videoUri);
+        } else {
+            playerView.setPlayer(null);
+            playerView.setVisibility(View.VISIBLE);
+            android.util.Log.d("VideoViewHolder", "No video URL for video " + videoItem.id);
         }
     }
     
@@ -470,6 +980,25 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             ViewCountManager.resetVideoViewTracking(currentItem.id);
             hasIncrementedView = false;
         }
+    }
+    
+    private void resetPlayerView() {
+        // Release any existing player
+        if (exoPlayer != null) {
+            exoPlayer.release();
+            exoPlayer = null;
+        }
+        
+        // Reset PlayerView
+        playerView.setPlayer(null);
+        playerView.setVisibility(View.VISIBLE);
+        
+        // Reset progress
+        if (progressLine != null) {
+            progressLine.setScaleX(0f);
+        }
+        
+        android.util.Log.d("VideoViewHolder", "Reset PlayerView");
     }
     
     // Removed playVideo, pauseVideo, and releasePlayer methods
