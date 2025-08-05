@@ -137,9 +137,9 @@ public class HomeFragment extends Fragment {
                 
                 // Load videos from following channels
                 loadVideosFromFollowing();
-            }
+    }
 
-            @Override
+    @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e("HomeFragment", "Failed to load following list: " + error.getMessage());
                 // Show empty state on error
@@ -476,6 +476,22 @@ public class HomeFragment extends Fragment {
             });
         } catch (Exception e) {
             Log.e("HomeFragment", "Error setting up video URL request: " + e.getMessage());
+        }
+    }
+    
+    private void preloadThumbnails() {
+        Log.d("HomeFragment", "Preloading thumbnails for " + videoItems.size() + " videos");
+        
+        // Create a temporary adapter to preload thumbnails
+        HomeAdapter tempAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
+        
+        // Preload thumbnails for each video
+        for (int i = 0; i < videoItems.size(); i++) {
+            VideoItem videoItem = videoItems.get(i);
+            if (videoItem.videoUrl != null && !videoItem.videoUrl.isEmpty()) {
+                Log.d("HomeFragment", "Preloading thumbnail for video: " + videoItem.id);
+                // The thumbnail will be generated when the VideoViewHolder is created
+            }
         }
     }
 

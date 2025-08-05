@@ -257,6 +257,9 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             sharedPlayer.setPlayWhenReady(false);
         }
         if (currentPlayingViewHolder != null) {
+            // Show thumbnail when video stops playing
+            currentPlayingViewHolder.showThumbnailWhenStopped();
+            
             currentPlayingViewHolder.playerView.setPlayer(null);
             currentPlayingViewHolder = null;
         }
