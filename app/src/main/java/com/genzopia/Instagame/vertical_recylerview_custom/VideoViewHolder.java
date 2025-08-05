@@ -1,10 +1,8 @@
 package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -12,24 +10,19 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.LinearLayout;
 import android.view.GestureDetector;
-import android.view.ViewGroup;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.navigation.NavController;
-import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.genzopia.Instagame.MainActivity;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.PlaybackException;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
@@ -44,7 +37,6 @@ import com.google.firebase.database.ValueEventListener;
 import de.hdodenhof.circleimageview.CircleImageView;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 
