@@ -163,6 +163,28 @@
 
         </LinearLayout>
 
+        <!-- Play Button -->
+        <LinearLayout
+            android:id="@+id/playButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackgroundBorderless">
+
+            <ImageView
+                android:id="@+id/playIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_media_play"
+                android:contentDescription="Play Game"
+                android:tint="?attr/colorPrimary" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
     <!-- Title -->

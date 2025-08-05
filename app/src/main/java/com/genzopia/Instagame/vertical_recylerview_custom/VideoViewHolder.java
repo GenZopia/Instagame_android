@@ -67,6 +67,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private TextView followText;
     private LinearLayout shareButton;
     private ImageView shareIcon;
+    private LinearLayout playButton;
+    private ImageView playIcon;
     
     // Button states
     private boolean isLiked = false;
@@ -109,6 +111,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         followText = itemView.findViewById(R.id.tv_follow_text);
         shareButton = itemView.findViewById(R.id.shareButton);
         shareIcon = itemView.findViewById(R.id.shareIcon);
+        playButton = itemView.findViewById(R.id.playButton);
+        playIcon = itemView.findViewById(R.id.playIcon);
         
         // Initialize progress line and container
         progressLine = itemView.findViewById(R.id.progress_line);
@@ -169,6 +173,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         
         // Share button
         shareButton.setOnClickListener(v -> handleShareClick());
+        
+        // Play button
+        playButton.setOnClickListener(v -> handlePlayClick());
         
         // Profile image click to navigate to channel
         channelIcon.setOnClickListener(v -> {
@@ -455,6 +462,40 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             Toast.makeText(itemView.getContext(), "No sharing app available", Toast.LENGTH_SHORT).show();
         }
     }
+    
+    private void handleVideoPlayPause() {
+        if (exoPlayer != null) {
+            if (exoPlayer.isPlaying()) {
+                exoPlayer.setPlayWhenReady(false);
+                android.util.Log.d("VideoViewHolder", "Video paused");
+            } else {
+                exoPlayer.setPlayWhenReady(true);
+                android.util.Log.d("VideoViewHolder", "Video resumed");
+            }
+        }
+    }
+    
+    private void handlePlayClick() {
+        if (currentItem == null) return;
+        
+        // Get the game ID from the current item
+        String gameId = currentItem.gameId; // Assuming VideoItem has a gameId field
+        
+        // Pause current video before launching activity (same as double-click in reel view)
+        if (exoPlayer != null && exoPlayer.isPlaying()) {
+            exoPlayer.setPlayWhenReady(false);
+        }
+        
+        // Launch Game_mode activity with game_id (same as double-click in reel view)
+        if (gameId != null && !gameId.isEmpty()) {
+            Intent intent = new Intent(itemView.getContext(), com.genzopia.Instagame.webgl_gameloading.Game_mode.class);
+            intent.putExtra("game_id", gameId);
+            itemView.getContext().startActivity(intent);
+        } else {
+            android.util.Log.e("VideoViewHolder", "Game ID is null or empty");
+            Toast.makeText(itemView.getContext(), "Game information not found", Toast.LENGTH_SHORT).show();
+        }
+    }
 
     private void incrementShareCount(String videoId) {
         // Use Firebase transaction for atomic update
@@ -710,39 +751,17 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
-            // Check if tap is in upper or lower half of the PlayerView
-            float y = e.getY();
-            float height = playerView.getHeight();
-            
-            // Debug log
-            android.util.Log.d("VideoViewHolder", "Single tap at y=" + y + ", height=" + height);
-            
-            if (y < height / 2) {
-                // Upper half - toggle mute/unmute
-                android.util.Log.d("VideoViewHolder", "Upper half tap - toggling mute");
-                if (exoPlayer != null) {
-                    float currentVolume = exoPlayer.getVolume();
-                    if (currentVolume > 0f) {
-                        exoPlayer.setVolume(0f); // Mute
-                        android.util.Log.d("VideoViewHolder", "Muted video");
-                    } else {
-                        exoPlayer.setVolume(1f); // Unmute
-                        android.util.Log.d("VideoViewHolder", "Unmuted video");
-                    }
-                }
-            } else {
-                // Lower half - toggle pause/resume
-                android.util.Log.d("VideoViewHolder", "Lower half tap - toggling pause/resume");
-                if (exoPlayer != null) {
-                    if (exoPlayer.isPlaying()) {
-                        exoPlayer.setPlayWhenReady(false);
-                        android.util.Log.d("VideoViewHolder", "Paused video");
-                    } else {
-                        exoPlayer.setPlayWhenReady(true);
-                        android.util.Log.d("VideoViewHolder", "Resumed video");
-                    }
-                }
-            }
+            // Single tap - toggle play/pause
+            android.util.Log.d("VideoViewHolder", "Single tap - toggling play/pause");
+            handleVideoPlayPause();
+            return true;
+        }
+        
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+            // Double tap - launch game (same as play button)
+            android.util.Log.d("VideoViewHolder", "Double tap - launching game");
+            handlePlayClick();
             return true;
         }
 

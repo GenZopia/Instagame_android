@@ -327,7 +327,7 @@ public class HomeFragment extends Fragment {
                     String likeCount = snapshot.child("like_count").getValue(String.class);
                     String viewCount = snapshot.child("view_count").getValue(String.class);
                     String createdAt = snapshot.child("created_at").getValue(String.class);
-                    String gameId = snapshot.child("gameid").getValue(String.class);
+                    String gameId = snapshot.child("game_id").getValue(String.class);
                     
                     Log.d("HomeFragment", "Video details loaded - title: " + title + ", description: " + description);
                     
@@ -373,7 +373,8 @@ public class HomeFragment extends Fragment {
                             profilePhotoUrl != null ? profilePhotoUrl : "",
                             "", // videoUrl will be loaded separately
                             description != null ? description : "",
-                            developerId // Pass the developer ID
+                            developerId, // Pass the developer ID
+                            gameId != null ? gameId : "" // Pass the game ID
                     );
                     
                     // Load signed video URL
