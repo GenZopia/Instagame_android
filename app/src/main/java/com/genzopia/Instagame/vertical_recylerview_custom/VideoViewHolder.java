@@ -114,6 +114,13 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         progressLine = itemView.findViewById(R.id.progress_line);
         progressContainer = itemView.findViewById(R.id.progress_container);
         
+        // Ensure progress container is clickable and visible
+        if (progressContainer != null) {
+            progressContainer.setClickable(true);
+            progressContainer.setFocusable(true);
+            progressContainer.setVisibility(View.VISIBLE);
+        }
+        
         // Set up action button click listeners
         setupActionButtons();
         
@@ -130,16 +137,15 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         
         // Set up touch listener for video container
         videoContainer.setOnTouchListener((v, event) -> {
-            // Check if touch is on progress line first
-            if (progressLine.getVisibility() == View.VISIBLE) {
-                float touchY = event.getY();
-                float progressY = progressLine.getY();
-                float progressHeight = progressLine.getHeight();
-                
-                if (touchY >= progressY && touchY <= progressY + progressHeight) {
-                    // Handle progress line touch for seeking
-                    return handleProgressLineTouch(event);
-                }
+            // Check if touch is on progress container area - make it bigger
+            float touchY = event.getY();
+            float containerHeight = videoContainer.getHeight();
+            float progressContainerHeight = 120f; // Increased height for bigger touch area
+            
+            if (touchY >= containerHeight - progressContainerHeight) {
+                // Touch is in progress container area - handle seeking
+                android.util.Log.d("VideoViewHolder", "Touch in seek area: y=" + touchY + ", containerHeight=" + containerHeight);
+                return handleProgressLineTouch(event);
             }
             
             // Handle general video container touch
@@ -550,18 +556,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                 case MotionEvent.ACTION_MOVE:
-                    // Get touch coordinates - if from progress container, use directly; if from PlayerView, convert
+                    // Get touch coordinates relative to the progress container
                     float x = event.getX();
-                    float width = progressContainer.getWidth(); // Use progress container width
-                    
-                    // If the event is from PlayerView, we need to adjust the x coordinate
-                    if (event.getSource() == MotionEvent.TOOL_TYPE_FINGER) {
-                        // This is likely from PlayerView, so we need to convert coordinates
-                        float playerViewWidth = playerView.getWidth();
-                        float progressContainerWidth = progressContainer.getWidth();
-                        // Convert x coordinate to progress container coordinate system
-                        x = (x / playerViewWidth) * progressContainerWidth;
-                    }
+                    float width = progressContainer.getWidth();
                     
                     // Calculate progress (0.0 to 1.0)
                     float progress = x / width;
@@ -582,6 +579,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     android.util.Log.d("VideoViewHolder", "Seek bar touch ended");
                     return true;
             }
+        } else {
+            android.util.Log.d("VideoViewHolder", "Cannot seek - exoPlayer is null or duration is 0");
         }
         return false;
     }
@@ -629,54 +628,22 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             }
         });
         
-        // Force progress line to always be visible
+        // Ensure progress line is always visible
         progressLine.setVisibility(View.VISIBLE);
         progressContainer.setVisibility(View.VISIBLE);
-        progressLine.setBackgroundColor(0xFFFFFFFF); // White color
         progressLine.setScaleX(0f); // Start at 0 progress
         
         // Set pivot point to left edge so progress grows from left to right
         progressLine.setPivotX(0f);
         progressLine.setPivotY(progressLine.getHeight() / 2f);
         
-        // Ensure progress bar stays visible
+        // Ensure progress bar stays on top
         progressLine.bringToFront();
         progressContainer.bringToFront();
         
-        // Debug logging for visibility
-        android.util.Log.d("VideoViewHolder", "Progress line visibility: " + progressLine.getVisibility());
-        android.util.Log.d("VideoViewHolder", "Progress container visibility: " + progressContainer.getVisibility());
-        android.util.Log.d("VideoViewHolder", "Progress line background: " + progressLine.getBackground());
-        android.util.Log.d("VideoViewHolder", "Progress line width: " + progressLine.getWidth() + ", height: " + progressLine.getHeight());
-        android.util.Log.d("VideoViewHolder", "Progress container width: " + progressContainer.getWidth() + ", height: " + progressContainer.getHeight());
+
         
-        // Set up touch listener for the PlayerView itself
-        playerView.setOnTouchListener((v, event) -> {
-            android.util.Log.d("VideoViewHolder", "PlayerView onTouch event: action=" + event.getAction() + ", x=" + event.getX() + ", y=" + event.getY());
-            
-            // Check if touch is in the bottom area (progress container area)
-            float touchY = event.getY();
-            float playerHeight = playerView.getHeight();
-            float progressContainerHeight = 60f; // Height of progress container
-            
-            if (touchY >= playerHeight - progressContainerHeight) {
-                // Touch is in progress container area - handle seeking
-                android.util.Log.d("VideoViewHolder", "Touch in progress container area, y=" + touchY + ", playerHeight=" + playerHeight);
-                return handleProgressLineTouch(event);
-            }
-            
-            // Handle general video touch
-            boolean handled = gestureDetector.onTouchEvent(event);
-            
-            // Handle touch up for hold/pause functionality
-            if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                onTouchUp();
-            }
-            
-            return handled;
-        });
-        
-        // Set up touch listener for the progress container
+        // Set up touch listener specifically for progress container
         progressContainer.setOnTouchListener((v, event) -> {
             android.util.Log.d("VideoViewHolder", "Progress container touch: action=" + event.getAction() + ", x=" + event.getX() + ", y=" + event.getY());
             return handleProgressLineTouch(event);
@@ -697,16 +664,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     float progress = (float) exoPlayer.getCurrentPosition() / exoPlayer.getDuration();
                     progressLine.setScaleX(progress);
                     
-                    // Ensure progress bar stays visible
-                    if (progressLine.getVisibility() != View.VISIBLE) {
-                        progressLine.setVisibility(View.VISIBLE);
-                        android.util.Log.d("VideoViewHolder", "Forced progress line to visible");
-                    }
-                    if (progressContainer.getVisibility() != View.VISIBLE) {
-                        progressContainer.setVisibility(View.VISIBLE);
-                        android.util.Log.d("VideoViewHolder", "Forced progress container to visible");
-                    }
-                    
                     // Check for view count increment every 500ms
                     final VideoItem item = currentItem;
                     if (item != null && exoPlayer.getCurrentPosition() % 500 < 100) {
@@ -715,14 +672,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                             exoPlayer.getCurrentPosition(),
                             exoPlayer.getDuration()
                         );
-                    }
-                    
-                    // Debug log every 2 seconds
-                    if (exoPlayer.getCurrentPosition() % 2000 < 100) {
-                        android.util.Log.d("VideoViewHolder", "Progress: " + progress + " (" + exoPlayer.getCurrentPosition() + "/" + exoPlayer.getDuration() + ")");
-                        android.util.Log.d("VideoViewHolder", "Progress line scaleX: " + progressLine.getScaleX());
-                        android.util.Log.d("VideoViewHolder", "Progress line visibility: " + progressLine.getVisibility());
-                        android.util.Log.d("VideoViewHolder", "Video is playing: " + exoPlayer.isPlaying());
                     }
                 }
                 if (progressHandler != null) {
@@ -1216,6 +1165,18 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         showFallbackThumbnail();
     }
     
+    public void testSeekBar() {
+        android.util.Log.d("VideoViewHolder", "=== TESTING SEEK BAR ===");
+        android.util.Log.d("VideoViewHolder", "Progress container: " + (progressContainer != null ? "exists" : "null"));
+        android.util.Log.d("VideoViewHolder", "Progress line: " + (progressLine != null ? "exists" : "null"));
+        android.util.Log.d("VideoViewHolder", "ExoPlayer: " + (exoPlayer != null ? "exists" : "null"));
+        if (exoPlayer != null) {
+            android.util.Log.d("VideoViewHolder", "Duration: " + exoPlayer.getDuration());
+            android.util.Log.d("VideoViewHolder", "Current position: " + exoPlayer.getCurrentPosition());
+        }
+        android.util.Log.d("VideoViewHolder", "=== END TEST ===");
+    }
+    
 
     
     private void showFallbackThumbnail() {
@@ -1333,6 +1294,10 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Reset progress
         if (progressLine != null) {
             progressLine.setScaleX(0f);
+            progressLine.setVisibility(View.VISIBLE);
+        }
+        if (progressContainer != null) {
+            progressContainer.setVisibility(View.VISIBLE);
         }
         
         // Reset thumbnail state

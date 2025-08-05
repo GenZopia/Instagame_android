@@ -63,25 +63,24 @@
             android:foreground="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="More options" />
 
-        <!-- Progress Container (at bottom, on top of everything) -->
+        <!-- Sleek Progress Line -->
         <FrameLayout
             android:id="@+id/progress_container"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_gravity="bottom"
-            android:background="@android:color/transparent"
+            android:layout_height="120dp"
+            android:background="#33000000"
             android:clickable="true"
-            android:focusable="true">
+            android:focusable="true"
+            android:layout_gravity="bottom">
 
-            <!-- Progress line -->
             <View
                 android:id="@+id/progress_line"
                 android:layout_width="match_parent"
-                android:layout_height="6dp"
+                android:layout_height="3dp"
                 android:layout_gravity="bottom"
-                android:background="#FFFFFF"
+                android:background="@drawable/progress_line_background"
                 android:scaleX="0"
-                android:visibility="visible" />
+                android:scaleType="fitXY" />
 
         </FrameLayout>
 

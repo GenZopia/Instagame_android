@@ -240,6 +240,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // Show the PlayerView and attach player when video starts playing
             holder.showPlayerView();
             holder.playerView.setPlayer(sharedPlayer);
+            
+            // Set up seek bar and touch controls
+            holder.setupSeekBarAndTouchControls(holder.playerView, sharedPlayer);
+            
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             currentlyPlayingVideoId = videoItem.id;
@@ -432,6 +436,15 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 VideoViewHolder videoHolder = (VideoViewHolder) holder;
                 videoHolder.forceShowFallbackThumbnail();
             }
+        }
+    }
+    
+    public void testSeekBarForCurrentVideo() {
+        if (currentPlayingViewHolder != null) {
+            android.util.Log.d("HomeAdapter", "Testing seek bar for current playing video");
+            currentPlayingViewHolder.testSeekBar();
+        } else {
+            android.util.Log.d("HomeAdapter", "No video currently playing");
         }
     }
 
