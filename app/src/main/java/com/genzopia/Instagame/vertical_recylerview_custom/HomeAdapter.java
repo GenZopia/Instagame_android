@@ -237,10 +237,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             sharedPlayer.prepare();
             sharedPlayer.setPlayWhenReady(true);
             
-            // Hide the thumbnail when video starts playing
-            holder.hideThumbnail();
-            
-            // Attach player to the view holder
+            // Show the PlayerView and attach player when video starts playing
+            holder.showPlayerView();
             holder.playerView.setPlayer(sharedPlayer);
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
@@ -257,10 +255,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             sharedPlayer.setPlayWhenReady(false);
         }
         if (currentPlayingViewHolder != null) {
-            // Show thumbnail when video stops playing
-            currentPlayingViewHolder.showThumbnailWhenStopped();
-            
+            // Hide PlayerView and show thumbnail when video stops playing
             currentPlayingViewHolder.playerView.setPlayer(null);
+            currentPlayingViewHolder.hideThumbnail();
+            currentPlayingViewHolder.showThumbnailWhenStopped();
             currentPlayingViewHolder = null;
         }
         currentPlayingPosition = -1;
@@ -393,6 +391,46 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 } else {
                     android.util.Log.w("HomeAdapter", "Item at position " + i + " is not a VideoItem or is null");
                 }
+            }
+        }
+    }
+    
+    public void debugVisibleThumbnails() {
+        if (recyclerView == null) return;
+        
+        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+        
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        
+        android.util.Log.d("HomeAdapter", "Debugging thumbnails for positions " + firstVisible + " to " + lastVisible);
+        
+        for (int i = firstVisible; i <= lastVisible; i++) {
+            RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder instanceof VideoViewHolder) {
+                VideoViewHolder videoHolder = (VideoViewHolder) holder;
+                videoHolder.debugThumbnailGeneration();
+            }
+        }
+    }
+    
+    public void forceShowFallbackThumbnails() {
+        if (recyclerView == null) return;
+        
+        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+        if (layoutManager == null) return;
+        
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        
+        android.util.Log.d("HomeAdapter", "Forcing fallback thumbnails for positions " + firstVisible + " to " + lastVisible);
+        
+        for (int i = firstVisible; i <= lastVisible; i++) {
+            RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder instanceof VideoViewHolder) {
+                VideoViewHolder videoHolder = (VideoViewHolder) holder;
+                videoHolder.forceShowFallbackThumbnail();
             }
         }
     }

@@ -1,8 +1,10 @@
 package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -10,19 +12,23 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.LinearLayout;
 import android.view.GestureDetector;
+import android.view.ViewGroup;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import androidx.navigation.NavController;
+import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.genzopia.Instagame.MainActivity;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.PlaybackException;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
@@ -37,6 +43,7 @@ import com.google.firebase.database.ValueEventListener;
 import de.hdodenhof.circleimageview.CircleImageView;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 
@@ -460,9 +467,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                 mutableData.child("share_count").setValue(String.valueOf(newShareCount));
                 return com.google.firebase.database.Transaction.success(mutableData);
             }
-
+            
             @Override
-            public void onComplete(@Nullable DatabaseError error, boolean committed, @Nullable DataSnapshot currentData) {
+            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
                 if (committed && error == null) {
                     // Success - share count updated
                     // You could also update the UI here if needed
@@ -471,7 +478,6 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     // Share functionality still works even if count update fails
                 }
             }
-
         });
     }
 
@@ -583,7 +589,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     public void setupSeekBarAndTouchControls(PlayerView playerView, ExoPlayer exoPlayer) {
         this.exoPlayer = exoPlayer;
         
-        // Switch from thumbnail to main player for actual playback
+        // Show PlayerView and switch from thumbnail to main player for actual playback
+        playerView.setVisibility(View.VISIBLE);
         playerView.setPlayer(exoPlayer);
         android.util.Log.d("VideoViewHolder", "Switched to main player for video " + (currentItem != null ? currentItem.id : "unknown"));
         
@@ -848,6 +855,9 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Show video using the video URL
         showVideo(videoItem);
         
+        // Ensure PlayerView is hidden initially to show thumbnail
+        playerView.setVisibility(View.INVISIBLE);
+        
         // Check if current user has liked this video
         checkIfLiked(videoItem.id);
         
@@ -865,104 +875,232 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         android.util.Log.d("VideoViewHolder", "PlayerView visibility: " + playerView.getVisibility());
         android.util.Log.d("VideoViewHolder", "PlayerView width: " + playerView.getWidth() + ", height: " + playerView.getHeight());
         android.util.Log.d("VideoViewHolder", "Video URL: " + videoItem.videoUrl);
+        
+        // Add a layout listener to regenerate thumbnail when dimensions are available
+        videoContainer.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                // Remove the listener to avoid multiple calls
+                videoContainer.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                
+                // If we have a video item but no thumbnail yet, generate it now that dimensions are available
+                if (currentVideoItem != null && !hasThumbnail && videoContainer.getWidth() > 0 && videoContainer.getHeight() > 0) {
+                    android.util.Log.d("VideoViewHolder", "VideoContainer dimensions available, generating thumbnail");
+                    showThumbnail(currentVideoItem);
+                }
+            }
+        });
     }
     
     private void showThumbnail(VideoItem videoItem) {
         if (videoItem.videoUrl == null || videoItem.videoUrl.isEmpty()) {
             android.util.Log.d("VideoViewHolder", "Cannot generate thumbnail - no video URL");
+            showFallbackThumbnail();
             return;
         }
         
         // Store the current video item for later thumbnail restoration
         this.currentVideoItem = videoItem;
         
-        android.util.Log.d("VideoViewHolder", "Generating thumbnail for video: " + videoItem.id);
+        android.util.Log.d("VideoViewHolder", "Generating thumbnail for video: " + videoItem.id + " URL: " + videoItem.videoUrl);
         
         // Show loading state initially (dark background)
-        playerView.setBackgroundColor(android.graphics.Color.parseColor("#1F1F1F"));
+        videoContainer.setBackgroundColor(android.graphics.Color.parseColor("#1F1F1F"));
         
-        // Create a temporary ExoPlayer for thumbnail generation
-        ExoPlayer thumbnailPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
-        
-        // Set up the player with the video URL
-        String videoUri = videoItem.videoUrl;
-        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
-        MediaItem mediaItem = MediaItem.fromUri(videoUri);
-        
-        // Use progressive media source for MP4 files
-        MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-        
-        thumbnailPlayer.setMediaSource(mediaSource);
-        thumbnailPlayer.prepare();
-        
-        // Seek to 1 second for thumbnail
-        thumbnailPlayer.seekTo(1000); // 1 second in milliseconds
-        
-        // Add listener to capture thumbnail when ready
-        thumbnailPlayer.addListener(new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int playbackState) {
-                if (playbackState == Player.STATE_READY) {
-                    // Temporarily set the player to capture the frame
-                    playerView.setPlayer(thumbnailPlayer);
+        // Test URL accessibility first
+        testVideoUrlAccessibility(videoItem);
+    }
+    
+    private void testVideoUrlAccessibility(VideoItem videoItem) {
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(videoItem.videoUrl);
+                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("HEAD");
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                
+                int responseCode = connection.getResponseCode();
+                android.util.Log.d("VideoViewHolder", "Video URL test - Response code: " + responseCode + " for video: " + videoItem.id);
+                
+                if (responseCode == 200) {
+                    android.util.Log.d("VideoViewHolder", "Video URL is accessible, proceeding with thumbnail generation");
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        tryMediaMetadataRetriever(videoItem);
+                    });
+                } else {
+                    android.util.Log.w("VideoViewHolder", "Video URL not accessible (code: " + responseCode + "), showing fallback");
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        showFallbackThumbnail();
+                    });
+                }
+                
+            } catch (Exception e) {
+                android.util.Log.e("VideoViewHolder", "Error testing video URL: " + e.getMessage());
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    showFallbackThumbnail();
+                });
+            }
+        }).start();
+    }
+    
+    private void tryMediaMetadataRetriever(VideoItem videoItem) {
+        new Thread(() -> {
+            android.media.MediaMetadataRetriever retriever = null;
+            try {
+                android.util.Log.d("VideoViewHolder", "Trying MediaMetadataRetriever for video: " + videoItem.id);
+                retriever = new android.media.MediaMetadataRetriever();
+                
+                // Set network timeout for better error handling
+                retriever.setDataSource(videoItem.videoUrl);
+                
+                // Try to get frame at 1 second (1,000,000 microseconds)
+                android.graphics.Bitmap thumbnail = retriever.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                
+                if (thumbnail == null) {
+                    android.util.Log.d("VideoViewHolder", "No frame at 1 second, trying at 0 seconds");
+                    // If no frame at 1 second, try at 0 seconds
+                    thumbnail = retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                }
+                
+                if (thumbnail == null) {
+                    android.util.Log.d("VideoViewHolder", "No frame at 0 seconds, trying any available frame");
+                    // If still no frame, try any available frame
+                    thumbnail = retriever.getFrameAtTime();
+                }
+                
+                if (retriever != null) {
+                    retriever.release();
+                }
+                
+                if (thumbnail != null) {
+                    android.util.Log.d("VideoViewHolder", "MediaMetadataRetriever succeeded for video: " + videoItem.id);
+                    // Scale thumbnail to fit the video container dimensions
+                    final android.graphics.Bitmap scaledThumbnail = scaleBitmap(thumbnail, videoContainer.getWidth(), videoContainer.getHeight());
+                    thumbnail.recycle(); // Free the original bitmap
                     
-                    // After a short delay to ensure frame is rendered, capture it
-                    new android.os.Handler().postDelayed(() -> {
+                    // Create and store the thumbnail drawable on main thread
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                         try {
-                            // Capture the current frame as a bitmap
-                            android.graphics.Bitmap frameBitmap = captureFrameFromPlayerView();
-                            
-                            if (frameBitmap != null) {
-                                // Create and store the thumbnail drawable
+                            // Check if this view holder is still bound to the same video item
+                            if (currentVideoItem != null && currentVideoItem.id.equals(videoItem.id)) {
                                 storedThumbnail = new android.graphics.drawable.BitmapDrawable(
                                     itemView.getContext().getResources(), 
-                                    frameBitmap
+                                    scaledThumbnail
                                 );
                                 
-                                // Set the bitmap as background of the player view
-                                playerView.setBackground(storedThumbnail);
+                                // Set the bitmap as background of the video container instead of player view
+                                videoContainer.setBackground(storedThumbnail);
                                 
                                 hasThumbnail = true;
                                 
                                 android.util.Log.d("VideoViewHolder", "Successfully captured thumbnail for video: " + videoItem.id);
                             } else {
-                                android.util.Log.d("VideoViewHolder", "Failed to capture frame, showing fallback");
+                                android.util.Log.d("VideoViewHolder", "View holder recycled, discarding thumbnail");
+                                scaledThumbnail.recycle();
+                            }
+                        } catch (Exception e) {
+                            android.util.Log.e("VideoViewHolder", "Error setting thumbnail: " + e.getMessage());
+                            showFallbackThumbnail();
+                        }
+                    });
+                } else {
+                    android.util.Log.d("VideoViewHolder", "MediaMetadataRetriever failed, trying ExoPlayer fallback");
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        tryExoPlayerThumbnail(videoItem);
+                    });
+                }
+                
+            } catch (Exception e) {
+                android.util.Log.e("VideoViewHolder", "Error with MediaMetadataRetriever: " + e.getMessage());
+                if (retriever != null) {
+                    try {
+                        retriever.release();
+                    } catch (Exception releaseException) {
+                        android.util.Log.e("VideoViewHolder", "Error releasing retriever: " + releaseException.getMessage());
+                    }
+                }
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    tryExoPlayerThumbnail(videoItem);
+                });
+            }
+        }).start();
+    }
+    
+    private void tryExoPlayerThumbnail(VideoItem videoItem) {
+        android.util.Log.d("VideoViewHolder", "Trying ExoPlayer thumbnail generation for video: " + videoItem.id);
+        
+        // Create a temporary ExoPlayer for thumbnail generation
+        ExoPlayer thumbnailPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
+        
+        try {
+            String videoUri = videoItem.videoUrl;
+            DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
+            MediaItem mediaItem = MediaItem.fromUri(videoUri);
+            MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+            
+            thumbnailPlayer.setMediaSource(mediaSource);
+            thumbnailPlayer.prepare();
+            thumbnailPlayer.seekTo(1000); // Seek to 1 second for thumbnail
+            
+            thumbnailPlayer.addListener(new Player.Listener() {
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        android.util.Log.d("VideoViewHolder", "ExoPlayer ready, capturing frame");
+                        // Temporarily set the player to capture frame
+                        playerView.setPlayer(thumbnailPlayer);
+                        
+                        // Wait a bit for the frame to be rendered
+                        new android.os.Handler().postDelayed(() -> {
+                            try {
+                                android.graphics.Bitmap frameBitmap = captureFrameFromPlayerView();
+                                if (frameBitmap != null) {
+                                    android.util.Log.d("VideoViewHolder", "ExoPlayer thumbnail capture succeeded");
+                                    // Scale the bitmap to fit the video container
+                                    android.graphics.Bitmap scaledBitmap = scaleBitmap(frameBitmap, videoContainer.getWidth(), videoContainer.getHeight());
+                                    frameBitmap.recycle(); // Free the original bitmap
+                                    
+                                    // Create and store the thumbnail drawable
+                                    storedThumbnail = new android.graphics.drawable.BitmapDrawable(
+                                        itemView.getContext().getResources(), 
+                                        scaledBitmap
+                                    );
+                                    
+                                    // Set the bitmap as background of the video container instead of player view
+                                    videoContainer.setBackground(storedThumbnail);
+                                    
+                                    hasThumbnail = true;
+                                    
+                                    android.util.Log.d("VideoViewHolder", "Successfully captured thumbnail with ExoPlayer for video: " + videoItem.id);
+                                } else {
+                                    android.util.Log.d("VideoViewHolder", "ExoPlayer frame capture failed, showing fallback");
+                                    showFallbackThumbnail();
+                                }
+                            } catch (Exception e) {
+                                android.util.Log.e("VideoViewHolder", "Error capturing ExoPlayer thumbnail: " + e.getMessage());
                                 showFallbackThumbnail();
                             }
                             
-                        } catch (Exception e) {
-                            android.util.Log.e("VideoViewHolder", "Error capturing thumbnail: " + e.getMessage());
-                            showFallbackThumbnail();
-                        }
-                        
-                        // Clean up the thumbnail player
-                        playerView.setPlayer(null);
-                        thumbnailPlayer.release();
-                        
-                    }, 500); // Wait 500ms to ensure frame is rendered
+                            // Detach player and release
+                            playerView.setPlayer(null);
+                            thumbnailPlayer.release();
+                        }, 1000); // Wait 1 second to ensure frame is rendered
+                    }
                 }
-            }
+                
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    android.util.Log.e("VideoViewHolder", "ExoPlayer thumbnail error: " + error.getMessage());
+                    thumbnailPlayer.release();
+                    showFallbackThumbnail();
+                }
+            });
             
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                android.util.Log.e("VideoViewHolder", "Thumbnail player error: " + error.getMessage());
-                thumbnailPlayer.release();
-                showFallbackThumbnail();
-            }
-        });
-    }
-    
-    public void showThumbnailWhenStopped() {
-        if (currentVideoItem != null && hasThumbnail && storedThumbnail != null) {
-            android.util.Log.d("VideoViewHolder", "Restoring stored thumbnail for video: " + currentVideoItem.id);
-            
-            // Restore the stored thumbnail
-            playerView.setBackground(storedThumbnail);
-            
-            // No play icon overlay - just pure thumbnail
-        } else if (currentVideoItem != null) {
-            android.util.Log.d("VideoViewHolder", "No stored thumbnail, generating new one for video: " + currentVideoItem.id);
-            showThumbnail(currentVideoItem);
+        } catch (Exception e) {
+            android.util.Log.e("VideoViewHolder", "Error setting up ExoPlayer thumbnail: " + e.getMessage());
+            thumbnailPlayer.release();
+            showFallbackThumbnail();
         }
     }
     
@@ -988,18 +1126,149 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         }
     }
     
-    private void showFallbackThumbnail() {
-        // Show a dark background as fallback thumbnail
-        playerView.setBackgroundColor(android.graphics.Color.parseColor("#1F1F1F"));
+
+    
+    private android.graphics.Bitmap scaleBitmap(android.graphics.Bitmap bitmap, int targetWidth, int targetHeight) {
+        if (bitmap == null) return null;
         
-        // Don't add play icon for fallback - let the loading state show
+        // If target dimensions are not set yet, use the original bitmap
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            return bitmap;
+        }
+        
+        // Calculate scaling to maintain aspect ratio
+        float scaleX = (float) targetWidth / bitmap.getWidth();
+        float scaleY = (float) targetHeight / bitmap.getHeight();
+        float scale = Math.max(scaleX, scaleY); // Use the larger scale to ensure coverage
+        
+        int newWidth = Math.round(bitmap.getWidth() * scale);
+        int newHeight = Math.round(bitmap.getHeight() * scale);
+        
+        // Create scaled bitmap
+        android.graphics.Bitmap scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+        
+        // If the scaled bitmap is larger than target, crop it to center
+        if (newWidth > targetWidth || newHeight > targetHeight) {
+            int x = (newWidth - targetWidth) / 2;
+            int y = (newHeight - targetHeight) / 2;
+            
+            // Ensure we don't go out of bounds
+            x = Math.max(0, Math.min(x, newWidth - targetWidth));
+            y = Math.max(0, Math.min(y, newHeight - targetHeight));
+            
+            android.graphics.Bitmap croppedBitmap = android.graphics.Bitmap.createBitmap(scaledBitmap, x, y, targetWidth, targetHeight);
+            if (scaledBitmap != bitmap) {
+                scaledBitmap.recycle();
+            }
+            return croppedBitmap;
+        }
+        
+        return scaledBitmap;
+    }
+    
+    public void showThumbnailWhenStopped() {
+        // Hide PlayerView to show thumbnail
+        playerView.setVisibility(View.INVISIBLE);
+        
+        if (currentVideoItem != null && hasThumbnail && storedThumbnail != null) {
+            android.util.Log.d("VideoViewHolder", "Restoring stored thumbnail for video: " + currentVideoItem.id);
+            
+            // Restore the stored thumbnail
+            videoContainer.setBackground(storedThumbnail);
+            
+            // No play icon overlay - just pure thumbnail
+        } else if (currentVideoItem != null) {
+            android.util.Log.d("VideoViewHolder", "No stored thumbnail, generating new one for video: " + currentVideoItem.id);
+            showThumbnail(currentVideoItem);
+        } else {
+            // No video item, show fallback
+            showFallbackThumbnail();
+        }
+    }
+    
+    public void regenerateThumbnail() {
+        if (currentVideoItem != null) {
+            android.util.Log.d("VideoViewHolder", "Regenerating thumbnail for video: " + currentVideoItem.id);
+            hasThumbnail = false;
+            storedThumbnail = null;
+            showThumbnail(currentVideoItem);
+        }
+    }
+    
+    public void debugThumbnailGeneration() {
+        if (currentVideoItem != null) {
+            android.util.Log.d("VideoViewHolder", "=== DEBUG THUMBNAIL GENERATION ===");
+            android.util.Log.d("VideoViewHolder", "Video ID: " + currentVideoItem.id);
+            android.util.Log.d("VideoViewHolder","Video URL: " + currentVideoItem.videoUrl);
+            android.util.Log.d("VideoViewHolder","Has thumbnail: " + hasThumbnail);
+            android.util.Log.d("VideoViewHolder","Stored thumbnail: " + (storedThumbnail != null ? "exists" : "null"));
+            android.util.Log.d("VideoViewHolder","VideoContainer width: " + videoContainer.getWidth() + ", height: " + videoContainer.getHeight());
+            android.util.Log.d("VideoViewHolder","PlayerView visibility: " + playerView.getVisibility());
+            android.util.Log.d("VideoViewHolder","Current background: " + videoContainer.getBackground());
+            android.util.Log.d("VideoViewHolder","=== END DEBUG ===");
+        } else {
+            android.util.Log.d("VideoViewHolder", "No current video item for debugging");
+        }
+    }
+    
+    public void forceShowFallbackThumbnail() {
+        android.util.Log.d("VideoViewHolder", "Forcing fallback thumbnail display");
+        showFallbackThumbnail();
+    }
+    
+
+    
+    private void showFallbackThumbnail() {
+        android.util.Log.d("VideoViewHolder", "Showing fallback thumbnail for video: " + (currentVideoItem != null ? currentVideoItem.id : "unknown"));
+        
+        // Create a gradient background as fallback thumbnail
+        android.graphics.drawable.GradientDrawable gradient = new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{
+                android.graphics.Color.parseColor("#2C2C2C"),
+                android.graphics.Color.parseColor("#1A1A1A")
+            }
+        );
+        gradient.setCornerRadius(8f);
+        
+        videoContainer.setBackground(gradient);
+        
+        // Add a subtle play icon overlay
+        android.graphics.drawable.Drawable playIcon = itemView.getContext().getDrawable(android.R.drawable.ic_media_play);
+        if (playIcon != null) {
+            playIcon.setTint(android.graphics.Color.WHITE);
+            playIcon.setAlpha(128); // 50% opacity
+            
+            // Create a layer drawable with gradient background and play icon
+            android.graphics.drawable.Drawable[] layers = {gradient, playIcon};
+            android.graphics.drawable.LayerDrawable layerDrawable = new android.graphics.drawable.LayerDrawable(layers);
+            
+            // Center the play icon
+            int iconSize = 80;
+            int left = (videoContainer.getWidth() - iconSize) / 2;
+            int top = (videoContainer.getHeight() - iconSize) / 2;
+            layerDrawable.setLayerInset(1, left, top, left, top);
+            
+            videoContainer.setBackground(layerDrawable);
+        }
+        
+        // Mark that we have a fallback thumbnail
+        hasThumbnail = true;
+        storedThumbnail = playerView.getBackground();
     }
     
     public void hideThumbnail() {
-        // Clear the background and foreground when video starts playing
-        // But keep the stored thumbnail for later restoration
-        playerView.setBackground(null);
-        playerView.setForeground(null);
+        // Hide the PlayerView when video starts playing to show thumbnail
+        playerView.setVisibility(View.INVISIBLE);
+        
+        android.util.Log.d("VideoViewHolder", "Hidden PlayerView for video: " + (currentVideoItem != null ? currentVideoItem.id : "unknown"));
+    }
+    
+    public void showPlayerView() {
+        // Show the PlayerView when video is actually playing
+        playerView.setVisibility(View.VISIBLE);
+        
+        android.util.Log.d("VideoViewHolder", "Showed PlayerView for video: " + (currentVideoItem != null ? currentVideoItem.id : "unknown"));
     }
     
     private void showVideo(VideoItem videoItem) {
@@ -1021,6 +1290,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         } else {
             playerView.setVisibility(View.INVISIBLE);
             android.util.Log.d("VideoViewHolder", "No video URL for video " + videoItem.id);
+            showFallbackThumbnail();
         }
     }
     
@@ -1056,17 +1326,20 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             exoPlayer = null;
         }
         
-        // Reset PlayerView
+        // Reset PlayerView - hide it initially to show thumbnail
         playerView.setPlayer(null);
-        playerView.setVisibility(View.VISIBLE);
+        playerView.setVisibility(View.INVISIBLE);
         
         // Reset progress
         if (progressLine != null) {
             progressLine.setScaleX(0f);
         }
         
+        // Reset thumbnail state
+        hasThumbnail = false;
+        storedThumbnail = null;
+        currentVideoItem = null;
+        
         android.util.Log.d("VideoViewHolder", "Reset PlayerView");
     }
-    
-    // Removed playVideo, pauseVideo, and releasePlayer methods
 }
