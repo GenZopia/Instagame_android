@@ -77,6 +77,72 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             sharedPlayer = new ExoPlayer.Builder(context).build();
             sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
             sharedPlayer.setPlayWhenReady(false);
+            
+            // Add error listener
+            sharedPlayer.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+                    android.util.Log.e("HomeAdapter", "Shared player error: " + error.getMessage());
+                    // Recover from error
+                    mainHandler.post(() -> recoverFromPlayerError());
+                }
+                
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    // If player is in IDLE state for too long, force reset
+                    if (playbackState == Player.STATE_IDLE) {
+                        mainHandler.postDelayed(() -> {
+                            if (sharedPlayer != null && sharedPlayer.getPlaybackState() == Player.STATE_IDLE) {
+                                android.util.Log.d("HomeAdapter", "Player stuck in IDLE state, forcing reset");
+                                forceCompleteReset();
+                            }
+                        }, 1000); // Reduced to 1 second delay
+                    }
+                }
+            });
+        }
+    }
+    
+    public void checkForBlackScreenIssue() {
+        // Check if current playing view holder is visible and has a valid player
+        if (currentPlayingViewHolder != null && sharedPlayer != null) {
+            try {
+                // Check if the view is still attached and visible
+                if (!currentPlayingViewHolder.itemView.isAttachedToWindow() || 
+                    currentPlayingViewHolder.itemView.getVisibility() != View.VISIBLE) {
+                    android.util.Log.d("HomeAdapter", "Current playing view not visible, forcing reset");
+                    forceCompleteReset();
+                    return;
+                }
+                
+                // Check if player is in a valid state
+                int state = sharedPlayer.getPlaybackState();
+                if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
+                    android.util.Log.d("HomeAdapter", "Player in invalid state: " + state + ", forcing reset");
+                    forceCompleteReset();
+                    return;
+                }
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error checking for black screen issue: " + e.getMessage());
+                forceCompleteReset();
+            }
+        }
+    }
+    
+    private void resetSharedPlayer() {
+        android.util.Log.d("HomeAdapter", "Resetting shared player");
+        if (sharedPlayer != null) {
+            try {
+                sharedPlayer.stop();
+                sharedPlayer.clearMediaItems();
+                sharedPlayer.setPlayWhenReady(false);
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error resetting shared player: " + e.getMessage());
+                // Release and recreate if there's an error
+                sharedPlayer.release();
+                sharedPlayer = null;
+                initializeSharedPlayer();
+            }
         }
     }
 
@@ -138,10 +204,25 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
         if (holder instanceof VideoViewHolder) {
-            // Release the video player when view is recycled
             VideoViewHolder videoHolder = (VideoViewHolder) holder;
-            // Don't release the shared player here - it's managed by HomeAdapter
-            videoHolder.playerView.setPlayer(null);
+            
+            android.util.Log.d("HomeAdapter", "Recycling view holder at position: " + holder.getAdapterPosition());
+            
+            // If this is the currently playing view holder, stop the video
+            if (videoHolder == currentPlayingViewHolder) {
+                android.util.Log.d("HomeAdapter", "Recycling currently playing view holder, pausing video");
+                pauseCurrentVideo();
+            }
+            
+            // Always detach player from recycled view
+            try {
+                videoHolder.playerView.setPlayer(null);
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error detaching player from recycled view: " + e.getMessage());
+            }
+            
+            // Reset the view holder state
+            videoHolder.resetPlayerView();
         }
         super.onViewRecycled(holder);
     }
@@ -176,8 +257,21 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             return;
         }
         
-        // Ensure shared player is initialized
-        initializeSharedPlayer();
+        // Check if we need to force a complete reset
+        if (sharedPlayer != null) {
+            try {
+                int state = sharedPlayer.getPlaybackState();
+                if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
+                    android.util.Log.d("HomeAdapter", "Player in bad state: " + state + ", forcing complete reset");
+                    forceCompleteReset();
+                    return;
+                }
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error checking player state: " + e.getMessage());
+                forceCompleteReset();
+                return;
+            }
+        }
         
         // Pause current video
         pauseCurrentVideo();
@@ -216,13 +310,13 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         
         android.util.Log.d("HomeAdapter", "Playing video: " + videoItem.id + " at position: " + position);
         
-        // Check if sharedPlayer is null and reinitialize if needed
-        if (sharedPlayer == null) {
-            android.util.Log.d("HomeAdapter", "SharedPlayer is null, reinitializing...");
-            sharedPlayer = new ExoPlayer.Builder(context).build();
-            sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
-            sharedPlayer.setPlayWhenReady(false);
-        }
+        // Always pause current video first
+        pauseCurrentVideo();
+        
+        // Create a fresh player for this video to avoid state corruption
+        ExoPlayer freshPlayer = new ExoPlayer.Builder(context).build();
+        freshPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
+        freshPlayer.setPlayWhenReady(false);
         
         // Set up the player with the video URL
         String videoUri = videoItem.videoUrl;
@@ -233,47 +327,137 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
         
         try {
-            sharedPlayer.setMediaSource(mediaSource);
-            sharedPlayer.prepare();
-            sharedPlayer.setPlayWhenReady(true);
+            // Prepare the fresh player
+            freshPlayer.setMediaSource(mediaSource);
+            freshPlayer.prepare();
             
-            // Show the PlayerView and attach player when video starts playing
+            // Show the PlayerView and attach fresh player
             holder.showPlayerView();
-            holder.playerView.setPlayer(sharedPlayer);
+            holder.playerView.setPlayer(freshPlayer);
             
             // Set up seek bar and touch controls
-            holder.setupSeekBarAndTouchControls(holder.playerView, sharedPlayer);
+            holder.setupSeekBarAndTouchControls(holder.playerView, freshPlayer);
             
+            // Start playback
+            freshPlayer.setPlayWhenReady(true);
+            
+            // Update tracking variables
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             currentlyPlayingVideoId = videoItem.id;
             
-            android.util.Log.d("HomeAdapter", "Successfully started playing video: " + videoItem.id);
+            // Store the fresh player
+            sharedPlayer = freshPlayer;
+            
+            android.util.Log.d("HomeAdapter", "Successfully started playing video with fresh player: " + videoItem.id);
         } catch (Exception e) {
             android.util.Log.e("HomeAdapter", "Error playing video: " + e.getMessage());
+            // Show thumbnail as fallback
+            holder.showThumbnailWhenStopped();
+            // Release fresh player on error
+            if (freshPlayer != null) {
+                freshPlayer.release();
+            }
         }
     }
     
     private void pauseCurrentVideo() {
+        android.util.Log.d("HomeAdapter", "Pausing current video");
+        
+        // Pause and release the current player
         if (sharedPlayer != null) {
-            sharedPlayer.setPlayWhenReady(false);
+            try {
+                sharedPlayer.setPlayWhenReady(false);
+                sharedPlayer.release();
+                android.util.Log.d("HomeAdapter", "Current player paused and released");
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error pausing/releasing player: " + e.getMessage());
+            } finally {
+                sharedPlayer = null;
+            }
         }
+        
+        // Clean up the current playing view holder
         if (currentPlayingViewHolder != null) {
-            // Hide PlayerView and show thumbnail when video stops playing
-            currentPlayingViewHolder.playerView.setPlayer(null);
-            currentPlayingViewHolder.hideThumbnail();
-            currentPlayingViewHolder.showThumbnailWhenStopped();
-            currentPlayingViewHolder = null;
+            try {
+                // Detach player from view
+                currentPlayingViewHolder.playerView.setPlayer(null);
+                
+                // Show thumbnail
+                currentPlayingViewHolder.hideThumbnail();
+                currentPlayingViewHolder.showThumbnailWhenStopped();
+                
+                android.util.Log.d("HomeAdapter", "Cleaned up current playing view holder");
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error cleaning up view holder: " + e.getMessage());
+            } finally {
+                currentPlayingViewHolder = null;
+            }
         }
+        
         currentPlayingPosition = -1;
         currentlyPlayingVideoId = null;
+        
+        android.util.Log.d("HomeAdapter", "Video pause completed");
     }
     
     public void releaseAllPlayers() {
         pauseCurrentVideo();
         if (sharedPlayer != null) {
-            sharedPlayer.release();
+            try {
+                sharedPlayer.release();
+            } catch (Exception e) {
+                android.util.Log.e("HomeAdapter", "Error releasing shared player: " + e.getMessage());
+            }
             sharedPlayer = null;
+        }
+    }
+    
+    public void recoverFromPlayerError() {
+        android.util.Log.d("HomeAdapter", "Recovering from player error");
+        pauseCurrentVideo();
+        resetSharedPlayer();
+        
+        // Force reset all visible view holders
+        resetAllVisibleViewHolders();
+    }
+    
+    public void forceCompleteReset() {
+        android.util.Log.d("HomeAdapter", "Force complete reset - all videos black");
+        
+        // Release all players
+        releaseAllPlayers();
+        
+        // Reset all visible view holders
+        resetAllVisibleViewHolders();
+        
+        // Force notify data set changed to refresh all views
+        notifyDataSetChanged();
+        
+        android.util.Log.d("HomeAdapter", "Complete reset completed");
+    }
+    
+    private void resetAllVisibleViewHolders() {
+        if (recyclerView == null) return;
+        
+        android.util.Log.d("HomeAdapter", "Resetting all visible view holders");
+        
+        // Get all visible view holders
+        for (int i = 0; i < recyclerView.getChildCount(); i++) {
+            View child = recyclerView.getChildAt(i);
+            RecyclerView.ViewHolder holder = recyclerView.getChildViewHolder(child);
+            
+            if (holder instanceof VideoViewHolder) {
+                VideoViewHolder videoHolder = (VideoViewHolder) holder;
+                try {
+                    // Reset the view holder
+                    videoHolder.playerView.setPlayer(null);
+                    videoHolder.resetPlayerView();
+                    android.util.Log.d("HomeAdapter", "Reset view holder at position: " + holder.getAdapterPosition());
+                } catch (Exception e) {
+                    android.util.Log.e("HomeAdapter", "Error resetting view holder: " + e.getMessage());
+                }
+            }
         }
     }
 

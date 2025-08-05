@@ -76,11 +76,30 @@ public class HomeFragment extends Fragment {
         
         // Add scroll listener for auto-play
         homeRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            private long lastScrollTime = 0;
+            private int rapidScrollCount = 0;
+            
             @Override
             public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
                 super.onScrollStateChanged(recyclerView, newState);
                 
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    long currentTime = System.currentTimeMillis();
+                    
+                    // Check for rapid scrolling
+                    if (currentTime - lastScrollTime < 300) { // Reduced to 300ms for faster detection
+                        rapidScrollCount++;
+                        if (rapidScrollCount > 2) { // Reduced threshold to 2
+                            Log.d("HomeFragment", "Rapid scrolling detected, checking for black screen issue");
+                            checkForBlackScreenIssue();
+                            rapidScrollCount = 0;
+                        }
+                    } else {
+                        rapidScrollCount = 0;
+                    }
+                    
+                    lastScrollTime = currentTime;
+                    
                     // Find the most visible video and play it
                     playMostVisibleVideo();
                 }
@@ -568,6 +587,19 @@ public class HomeFragment extends Fragment {
             homeAdapter.playVideoAtPosition(mostVisiblePosition);
         }
     }
+    
+    public void handleBlackScreenIssue() {
+        if (homeAdapter != null) {
+            Log.d("HomeFragment", "Handling black screen issue");
+            homeAdapter.forceCompleteReset();
+        }
+    }
+    
+    public void checkForBlackScreenIssue() {
+        if (homeAdapter != null) {
+            homeAdapter.checkForBlackScreenIssue();
+        }
+    }
 
     @Override
     public void onResume() {
@@ -578,6 +610,23 @@ public class HomeFragment extends Fragment {
         if (homeAdapter != null) {
             homeAdapter.updateData(profileItems, videoItems);
         }
+        
+        // Start periodic black screen check
+        startPeriodicBlackScreenCheck();
+    }
+    
+    private void startPeriodicBlackScreenCheck() {
+        // Check for black screen issues every 3 seconds
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isAdded() && homeAdapter != null) {
+                    checkForBlackScreenIssue();
+                    // Schedule next check
+                    startPeriodicBlackScreenCheck();
+                }
+            }
+        }, 3000);
     }
 
     @Override

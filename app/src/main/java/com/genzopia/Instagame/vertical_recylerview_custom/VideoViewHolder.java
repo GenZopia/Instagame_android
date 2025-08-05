@@ -668,6 +668,11 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     if (item != null && exoPlayer.getDuration() > 0) {
                         ViewCountManager.setVideoDuration(item.id, exoPlayer.getDuration());
                     }
+                    
+                    // Smooth transition: Clear thumbnail when video is ready
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        hideThumbnailSmoothly();
+                    }, 100); // Small delay to ensure video is visible
                 }
             }
             
@@ -686,6 +691,15 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                         exoPlayer.getCurrentPosition(), 
                         exoPlayer.getDuration()
                     );
+                }
+            }
+            
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                if (isPlaying) {
+                    android.util.Log.d("VideoViewHolder", "Video started playing, ensuring thumbnail is hidden");
+                    // Ensure thumbnail is hidden when video starts playing
+                    hideThumbnailSmoothly();
                 }
             }
         });
@@ -1294,6 +1308,11 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Hide the PlayerView when video starts playing to show thumbnail
         playerView.setVisibility(View.INVISIBLE);
         
+        // Ensure thumbnail is visible when hiding player
+        if (videoContainer.getBackground() == null && storedThumbnail != null) {
+            videoContainer.setBackground(storedThumbnail);
+        }
+        
         android.util.Log.d("VideoViewHolder", "Hidden PlayerView for video: " + (currentVideoItem != null ? currentVideoItem.id : "unknown"));
     }
     
@@ -1301,7 +1320,31 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Show the PlayerView when video is actually playing
         playerView.setVisibility(View.VISIBLE);
         
+        // Keep thumbnail visible until video is ready to prevent black screen
+        // The thumbnail will be cleared when video starts playing
         android.util.Log.d("VideoViewHolder", "Showed PlayerView for video: " + (currentVideoItem != null ? currentVideoItem.id : "unknown"));
+        
+        // Ensure thumbnail is visible initially to prevent black screen
+        if (videoContainer.getBackground() == null && storedThumbnail != null) {
+            videoContainer.setBackground(storedThumbnail);
+            android.util.Log.d("VideoViewHolder", "Restored thumbnail to prevent black screen");
+        }
+    }
+    
+    public void hideThumbnailSmoothly() {
+        // Clear the thumbnail background smoothly when video is ready
+        if (videoContainer.getBackground() != null) {
+            // Use alpha animation for smooth transition
+            videoContainer.animate()
+                .alpha(0f)
+                .setDuration(200)
+                .withEndAction(() -> {
+                    videoContainer.setBackground(null);
+                    videoContainer.setAlpha(1f);
+                    android.util.Log.d("VideoViewHolder", "Cleared thumbnail background smoothly with fade");
+                })
+                .start();
+        }
     }
     
     private void showVideo(VideoItem videoItem) {
@@ -1352,16 +1395,26 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         }
     }
     
-    private void resetPlayerView() {
+    void resetPlayerView() {
+        android.util.Log.d("VideoViewHolder", "Resetting PlayerView");
+        
         // Release any existing player
         if (exoPlayer != null) {
-            exoPlayer.release();
+            try {
+                exoPlayer.release();
+            } catch (Exception e) {
+                android.util.Log.e("VideoViewHolder", "Error releasing exoPlayer: " + e.getMessage());
+            }
             exoPlayer = null;
         }
         
         // Reset PlayerView - hide it initially to show thumbnail
-        playerView.setPlayer(null);
-        playerView.setVisibility(View.INVISIBLE);
+        try {
+            playerView.setPlayer(null);
+            playerView.setVisibility(View.INVISIBLE);
+        } catch (Exception e) {
+            android.util.Log.e("VideoViewHolder", "Error resetting PlayerView: " + e.getMessage());
+        }
         
         // Reset progress
         if (progressLine != null) {
@@ -1376,7 +1429,10 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         clearStoredThumbnail();
         currentVideoItem = null;
         
-        android.util.Log.d("VideoViewHolder", "Reset PlayerView");
+        // Stop any progress updates
+        stopProgressUpdates();
+        
+        android.util.Log.d("VideoViewHolder", "PlayerView reset completed");
     }
     
     private void clearStoredThumbnail() {
