@@ -70,6 +70,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private LinearLayout playButton;
     private ImageView playIcon;
     
+
+    
     // Button states
     private boolean isLiked = false;
     private boolean isFollowing = false;
@@ -113,6 +115,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         shareIcon = itemView.findViewById(R.id.shareIcon);
         playButton = itemView.findViewById(R.id.playButton);
         playIcon = itemView.findViewById(R.id.playIcon);
+        
+
         
         // Initialize progress line and container
         progressLine = itemView.findViewById(R.id.progress_line);
@@ -176,6 +180,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         
         // Play button
         playButton.setOnClickListener(v -> handlePlayClick());
+        
+
         
         // Profile image click to navigate to channel
         channelIcon.setOnClickListener(v -> {
@@ -475,6 +481,21 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         }
     }
     
+    private void handleMuteToggle() {
+        if (exoPlayer != null) {
+            float currentVolume = exoPlayer.getVolume();
+            if (currentVolume > 0f) {
+                // Mute
+                exoPlayer.setVolume(0f);
+                android.util.Log.d("VideoViewHolder", "Video muted");
+            } else {
+                // Unmute
+                exoPlayer.setVolume(1f);
+                android.util.Log.d("VideoViewHolder", "Video unmuted");
+            }
+        }
+    }
+    
     private void handlePlayClick() {
         if (currentItem == null) return;
         
@@ -693,6 +714,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         // Progress line is already in layout, just start updates
         startProgressUpdates();
         android.util.Log.d("VideoViewHolder", "Setup seek bar and touch controls");
+        
+
     }
 
     void startProgressUpdates() {
@@ -751,9 +774,21 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
-            // Single tap - toggle play/pause
-            android.util.Log.d("VideoViewHolder", "Single tap - toggling play/pause");
-            handleVideoPlayPause();
+            // Check if tap is in upper or lower half of the video
+            float y = e.getY();
+            float height = videoContainer.getHeight();
+            
+            android.util.Log.d("VideoViewHolder", "Single tap at y=" + y + ", height=" + height);
+            
+            if (y < height / 2) {
+                // Upper half - toggle mute/unmute
+                android.util.Log.d("VideoViewHolder", "Upper half tap - toggling mute/unmute");
+                handleMuteToggle();
+            } else {
+                // Lower half - toggle play/pause
+                android.util.Log.d("VideoViewHolder", "Lower half tap - toggling play/pause");
+                handleVideoPlayPause();
+            }
             return true;
         }
         
@@ -945,7 +980,7 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                     android.util.Log.d("VideoViewHolder", "MediaMetadataRetriever succeeded for video: " + videoItem.id);
                     // Scale thumbnail to fit the video container dimensions
                     final android.graphics.Bitmap scaledThumbnail = scaleBitmap(thumbnail, videoContainer.getWidth(), videoContainer.getHeight());
-                    thumbnail.recycle(); // Free the original bitmap
+                    safeRecycleBitmap(thumbnail); // Free the original bitmap safely
                     
                     // Create and store the thumbnail drawable on main thread
                     new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
@@ -1096,42 +1131,60 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     
 
     
+    private void safeRecycleBitmap(android.graphics.Bitmap bitmap) {
+        if (bitmap != null && !bitmap.isRecycled()) {
+            try {
+                bitmap.recycle();
+            } catch (Exception e) {
+                android.util.Log.e("VideoViewHolder", "Error recycling bitmap: " + e.getMessage());
+            }
+        }
+    }
+    
     private android.graphics.Bitmap scaleBitmap(android.graphics.Bitmap bitmap, int targetWidth, int targetHeight) {
-        if (bitmap == null) return null;
+        if (bitmap == null || bitmap.isRecycled()) return null;
         
         // If target dimensions are not set yet, use the original bitmap
         if (targetWidth <= 0 || targetHeight <= 0) {
             return bitmap;
         }
         
-        // Calculate scaling to maintain aspect ratio
-        float scaleX = (float) targetWidth / bitmap.getWidth();
-        float scaleY = (float) targetHeight / bitmap.getHeight();
-        float scale = Math.max(scaleX, scaleY); // Use the larger scale to ensure coverage
+        android.graphics.Bitmap scaledBitmap = null;
+        android.graphics.Bitmap croppedBitmap = null;
         
-        int newWidth = Math.round(bitmap.getWidth() * scale);
-        int newHeight = Math.round(bitmap.getHeight() * scale);
-        
-        // Create scaled bitmap
-        android.graphics.Bitmap scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
-        
-        // If the scaled bitmap is larger than target, crop it to center
-        if (newWidth > targetWidth || newHeight > targetHeight) {
-            int x = (newWidth - targetWidth) / 2;
-            int y = (newHeight - targetHeight) / 2;
+        try {
+            // Calculate scaling to maintain aspect ratio
+            float scaleX = (float) targetWidth / bitmap.getWidth();
+            float scaleY = (float) targetHeight / bitmap.getHeight();
+            float scale = Math.max(scaleX, scaleY); // Use the larger scale to ensure coverage
             
-            // Ensure we don't go out of bounds
-            x = Math.max(0, Math.min(x, newWidth - targetWidth));
-            y = Math.max(0, Math.min(y, newHeight - targetHeight));
+            int newWidth = Math.round(bitmap.getWidth() * scale);
+            int newHeight = Math.round(bitmap.getHeight() * scale);
             
-            android.graphics.Bitmap croppedBitmap = android.graphics.Bitmap.createBitmap(scaledBitmap, x, y, targetWidth, targetHeight);
-            if (scaledBitmap != bitmap) {
-                scaledBitmap.recycle();
+            // Create scaled bitmap
+            scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+            
+            // If the scaled bitmap is larger than target, crop it to center
+            if (newWidth > targetWidth || newHeight > targetHeight) {
+                int x = (newWidth - targetWidth) / 2;
+                int y = (newHeight - targetHeight) / 2;
+                
+                // Ensure we don't go out of bounds
+                x = Math.max(0, Math.min(x, newWidth - targetWidth));
+                y = Math.max(0, Math.min(y, newHeight - targetHeight));
+                
+                croppedBitmap = android.graphics.Bitmap.createBitmap(scaledBitmap, x, y, targetWidth, targetHeight);
+                safeRecycleBitmap(scaledBitmap);
+                return croppedBitmap;
             }
-            return croppedBitmap;
+            
+            return scaledBitmap;
+        } catch (Exception e) {
+            android.util.Log.e("VideoViewHolder", "Error scaling bitmap: " + e.getMessage());
+            safeRecycleBitmap(scaledBitmap);
+            safeRecycleBitmap(croppedBitmap);
+            return null;
         }
-        
-        return scaledBitmap;
     }
     
     public void showThumbnailWhenStopped() {
@@ -1319,11 +1372,23 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             progressContainer.setVisibility(View.VISIBLE);
         }
         
-        // Reset thumbnail state
-        hasThumbnail = false;
-        storedThumbnail = null;
+        // Reset thumbnail state safely
+        clearStoredThumbnail();
         currentVideoItem = null;
         
         android.util.Log.d("VideoViewHolder", "Reset PlayerView");
+    }
+    
+    private void clearStoredThumbnail() {
+        if (storedThumbnail != null) {
+            try {
+                // Clear the background
+                videoContainer.setBackground(null);
+                storedThumbnail = null;
+            } catch (Exception e) {
+                android.util.Log.e("VideoViewHolder", "Error clearing stored thumbnail: " + e.getMessage());
+            }
+        }
+        hasThumbnail = false;
     }
 }
