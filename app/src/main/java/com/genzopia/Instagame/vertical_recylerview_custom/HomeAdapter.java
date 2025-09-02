@@ -36,6 +36,7 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
+    private static final int TYPE_HEADER = 2;
     private static final int TYPE_PROFILE = 0;
     private static final int TYPE_VIDEO = 1;
     private static final int TYPE_SKELETON_HEADER = -2;
@@ -64,6 +65,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.context = context;
         this.profileItems = profileItems;
         this.videoItems = videoItems;
+        // Add header as first item (null placeholder)
+        items.add(null); // Header placeholder
         items.add(profileItems);
         items.addAll(videoItems);
         
@@ -159,6 +162,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.profileItems = profileItems;
         this.videoItems = videoItems;
         items.clear();
+        items.add(null); // Header placeholder
         items.add(profileItems);
         items.addAll(videoItems);
         notifyDataSetChanged();
@@ -174,6 +178,9 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         } else if (viewType == TYPE_SKELETON_FEED) {
             View view = inflater.inflate(R.layout.item_home_skeleton_feed, parent, false);
             return new SkeletonFeedViewHolder(view);
+        } else if (viewType == TYPE_HEADER) {
+            View view = inflater.inflate(R.layout.item_header, parent, false);
+            return new HeaderViewHolder(view);
         } else if (viewType == TYPE_PROFILE) {
             View view = inflater.inflate(R.layout.item_profile_container, parent, false);
             return new ProfileViewHolder(view);
@@ -189,7 +196,10 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // No binding needed for skeletons
             return;
         }
-        if (holder.getItemViewType() == TYPE_PROFILE) {
+        if (holder.getItemViewType() == TYPE_HEADER) {
+            // No binding needed for header
+            return;
+        } else if (holder.getItemViewType() == TYPE_PROFILE) {
             // Pass the entire profileItems list to the ProfileViewHolder
             ((ProfileViewHolder) holder).bind(profileItems);
         } else {
@@ -237,6 +247,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             }
         }
         if (position == 0) {
+            return TYPE_HEADER;
+        } else if (position == 1) {
             return TYPE_PROFILE;
         } else {
             return TYPE_VIDEO;
@@ -520,8 +532,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     public void preloadAround(int centerIndex) {
-        if (items == null || items.size() <= 1) return;
-        int start = Math.max(1, centerIndex - 5); // skip profile at 0
+        if (items == null || items.size() <= 2) return; // Need at least header + profile + 1 video
+        int start = Math.max(2, centerIndex - 5); // skip header at 0 and profile at 1
         int end = Math.min(items.size() - 1, centerIndex + 5);
         // Preload and pause all in window (no playerView logic)
         for (int i = start; i <= end; i++) {
@@ -629,6 +641,14 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             currentPlayingViewHolder.testSeekBar();
         } else {
             android.util.Log.d("HomeAdapter", "No video currently playing");
+        }
+    }
+
+
+
+    static class HeaderViewHolder extends RecyclerView.ViewHolder {
+        HeaderViewHolder(View itemView) {
+            super(itemView);
         }
     }
 

@@ -121,4 +121,5 @@
         <item name="android:textSize">10sp</item>
         <item name="android:textColor">?android:attr/textColorPrimary</item>
     </style>
+
 </resources>

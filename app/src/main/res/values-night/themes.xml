@@ -35,5 +35,6 @@
         <!-- Button Styles -->
         <item name="materialButtonStyle">@style/Widget.Instagram.Button</item>
         <item name="materialButtonOutlinedStyle">@style/Widget.Instagram.Button.Outlined</item>
+        
     </style>
 </resources>

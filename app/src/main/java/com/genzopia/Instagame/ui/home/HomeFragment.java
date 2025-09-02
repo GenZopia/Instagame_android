@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.databinding.FragmentHomeBinding;
@@ -44,6 +45,7 @@ public class HomeFragment extends Fragment {
     private List<VideoItem> videoItems = new ArrayList<>();
     private List<ImageItem> profileItems = new ArrayList<>();
     private RecyclerView homeRecyclerView;
+    private SwipeRefreshLayout swipeRefreshLayout;
     private boolean isLoadingMore = false;
     private boolean hasMore = true;
     private String lastKey = null;
@@ -56,6 +58,7 @@ public class HomeFragment extends Fragment {
         View root = binding.getRoot();
 
         homeRecyclerView = root.findViewById(R.id.verticalRecyclerView);
+        swipeRefreshLayout = root.findViewById(R.id.swipeRefreshLayout);
 
         LinearLayoutManager layoutManager = new LinearLayoutManager(
                 getContext(),
@@ -64,8 +67,25 @@ public class HomeFragment extends Fragment {
         );
         homeRecyclerView.setLayoutManager(layoutManager);
 
-        // Remove snap helper - keep original scrolling behavior
-        homeRecyclerView.setNestedScrollingEnabled(false);
+        // Enable nested scrolling for better pull-to-refresh experience
+        homeRecyclerView.setNestedScrollingEnabled(true);
+
+        // Set up SwipeRefreshLayout with theme-aware colors
+        swipeRefreshLayout.setColorSchemeResources(R.color.button_primary);
+        swipeRefreshLayout.setProgressBackgroundColorSchemeResource(android.R.color.transparent);
+        swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                // Add a small delay for better UX
+                new android.os.Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        // Refresh all data
+                        refreshAllData();
+                    }
+                }, 100); // 100ms delay
+            }
+        });
 
         // Initialize adapter with empty lists
         homeAdapter = new HomeAdapter(requireContext(), profileItems, videoItems);
@@ -148,6 +168,7 @@ public class HomeFragment extends Fragment {
                     Log.d("HomeFragment", "No following users found, showing empty state");
                     homeAdapter.setLoading(false);
                     homeAdapter.notifyDataSetChanged();
+                    hideRefreshIndicator();
                     return;
                 }
                 
@@ -158,12 +179,13 @@ public class HomeFragment extends Fragment {
                 loadVideosFromFollowing();
     }
 
-    @Override
+                @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e("HomeFragment", "Failed to load following list: " + error.getMessage());
                 // Show empty state on error
                 homeAdapter.setLoading(false);
                 homeAdapter.notifyDataSetChanged();
+                hideRefreshIndicator();
             }
         });
     }
@@ -244,6 +266,7 @@ public class HomeFragment extends Fragment {
             videoItems.clear();
             homeAdapter.setLoading(false);
             homeAdapter.notifyDataSetChanged();
+            hideRefreshIndicator();
             return;
         }
 
@@ -307,6 +330,7 @@ public class HomeFragment extends Fragment {
                     Log.d("HomeFragment", "All developers processed, no videos found, hiding loading state");
                     homeAdapter.setLoading(false);
                     homeAdapter.notifyDataSetChanged();
+                    hideRefreshIndicator();
                 }
             }
 
@@ -323,6 +347,7 @@ public class HomeFragment extends Fragment {
                     Log.d("HomeFragment", "All developers processed (with errors), no videos found, hiding loading state");
                     homeAdapter.setLoading(false);
                     homeAdapter.notifyDataSetChanged();
+                    hideRefreshIndicator();
                 }
             }
         });
@@ -458,6 +483,7 @@ public class HomeFragment extends Fragment {
                                     if (videoItems.size() == 1) {
                                         Log.d("HomeFragment", "First video added, hiding loading state");
                                         homeAdapter.setLoading(false);
+                                        hideRefreshIndicator();
                                     }
                                     
                                     // Update adapter with new data
@@ -551,8 +577,8 @@ public class HomeFragment extends Fragment {
         for (int i = firstVisible; i <= lastVisible; i++) {
             if (i < 0 || i >= homeAdapter.getItemCount()) continue;
             
-            // Skip profile item (position 0)
-            if (i == 0) continue;
+            // Skip header (position 0) and profile item (position 1)
+            if (i == 0 || i == 1) continue;
             
             View view = layoutManager.findViewByPosition(i);
             if (view != null) {
@@ -575,10 +601,10 @@ public class HomeFragment extends Fragment {
             }
         }
         
-        // If no video is visible, play the first video (position 1)
-        if (mostVisiblePosition == -1 && homeAdapter.getItemCount() > 1) {
-            mostVisiblePosition = 1;
-            Log.d("HomeFragment", "No visible video found, playing first video at position 1");
+        // If no video is visible, play the first video (position 2, after header and profile)
+        if (mostVisiblePosition == -1 && homeAdapter.getItemCount() > 2) {
+            mostVisiblePosition = 2;
+            Log.d("HomeFragment", "No visible video found, playing first video at position 2");
         }
         
         // Play the most visible video if it's different from current
@@ -646,4 +672,43 @@ public class HomeFragment extends Fragment {
         }
         binding = null;
     }
+
+    /**
+     * Hide the refresh indicator
+     */
+    private void hideRefreshIndicator() {
+        if (swipeRefreshLayout != null) {
+            swipeRefreshLayout.setRefreshing(false);
+        }
+    }
+
+    /**
+     * Refresh all data - called when user pulls down to refresh
+     */
+    private void refreshAllData() {
+        Log.d("HomeFragment", "Refreshing all data");
+        
+        // Clear existing data
+        videoItems.clear();
+        profileItems.clear();
+        followingList.clear();
+        
+        // Reset loading states
+        isLoadingMore = false;
+        hasMore = true;
+        lastKey = null;
+        
+        // Show loading state in adapter
+        if (homeAdapter != null) {
+            homeAdapter.setLoading(true);
+            homeAdapter.notifyDataSetChanged();
+        }
+        
+        // Reload all data
+        loadUserFollowingList();
+        
+        // Note: The refresh indicator will be hidden when data loading completes
+        // in the existing callback methods
+    }
+
 }

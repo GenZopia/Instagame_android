@@ -87,6 +87,7 @@ dependencies {
     implementation("org.mozilla.components:browser-engine-gecko:$geckoVersionStable")
     implementation("com.google.android.exoplayer:exoplayer:2.19.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     implementation(libs.glide)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
