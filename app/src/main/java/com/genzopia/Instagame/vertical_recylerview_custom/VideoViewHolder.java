@@ -907,6 +907,26 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                 }
             }
         });
+
+        // Wire Comments bottom sheet if a comments button is present in layout
+        View commentsBtn = itemView.findViewById(R.id.comment_button);
+        if (commentsBtn == null) {
+            commentsBtn = itemView.findViewById(R.id.comments_button);
+        }
+        if (commentsBtn != null) {
+            final String vId = videoItem.id;
+            commentsBtn.setOnClickListener(v -> {
+                try {
+                    if (vId == null || vId.isEmpty()) return;
+                    if (itemView.getContext() instanceof androidx.fragment.app.FragmentActivity) {
+                        androidx.fragment.app.FragmentActivity act = (androidx.fragment.app.FragmentActivity) itemView.getContext();
+                        com.genzopia.Instagame.comments.ui.CommentsBottomSheetFragment
+                                .newInstance(vId)
+                                .show(act.getSupportFragmentManager(), "Comments");
+                    }
+                } catch (Exception ignored) {}
+            });
+        }
     }
     
     private void showThumbnail(VideoItem videoItem) {

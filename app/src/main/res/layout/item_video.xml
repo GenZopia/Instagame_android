@@ -164,6 +164,15 @@
 
         </LinearLayout>
 
+        <!-- Comments Button -->
+        <ImageView
+            android:id="@+id/comment_button"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginEnd="16dp"
+            android:src="@android:drawable/ic_menu_edit"
+            android:contentDescription="Comments" />
+
         <!-- Play Button -->
         <LinearLayout
             android:id="@+id/playButton"

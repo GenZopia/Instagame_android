@@ -404,6 +404,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         
         // Three-dot menu
         ImageView threeDotMenu;
+        ImageView commentsButton;
         
         // Like button components
         LinearLayout likeButton;
@@ -443,12 +444,26 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             
             // Initialize three-dot menu
             threeDotMenu = itemView.findViewById(R.id.threeDotMenu);
+            commentsButton = itemView.findViewById(R.id.comments_button);
             
             // Set up three-dot menu click listener
             threeDotMenu.setOnClickListener(v -> {
                 android.util.Log.d("ReelViewHolder", "Three-dot menu clicked for video: " + currentVideoId);
                 showVideoDetailsBottomSheet();
             });
+
+            if (commentsButton != null) {
+                commentsButton.setOnClickListener(v -> {
+                    if (currentVideoId == null) return;
+                    Context context = itemView.getContext();
+                    if (context instanceof androidx.fragment.app.FragmentActivity) {
+                        androidx.fragment.app.FragmentActivity activity = (androidx.fragment.app.FragmentActivity) context;
+                        com.genzopia.Instagame.comments.ui.CommentsBottomSheetFragment
+                                .newInstance(currentVideoId)
+                                .show(activity.getSupportFragmentManager(), "Comments");
+                    }
+                });
+            }
             
             // Ensure follow button is visible by default
             if (followButton != null) {
