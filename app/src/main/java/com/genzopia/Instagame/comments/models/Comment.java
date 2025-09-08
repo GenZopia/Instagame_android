@@ -8,6 +8,7 @@ public class Comment {
     public String text;
     public Long created_at;
     public Long like_count;
+    public Long dislike_count;
     public Long reply_count;
 
     public Comment() {}

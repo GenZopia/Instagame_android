@@ -1,34 +1,97 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="0dp">
 
+    <!-- Header -->
+    <LinearLayout
+        android:id="@+id/comments_header"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:id="@+id/comments_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Comments"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary"/>
+
+        <ImageButton
+            android:id="@+id/comments_close"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Close"
+            android:src="@drawable/ic_close"/>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_light"/>
+
+    <!-- List -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/comments_list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"/>
+        android:layout_weight="1"
+        android:padding="12dp"/>
 
+    <!-- Input Row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingTop="8dp">
+        android:gravity="center_vertical"
+        android:padding="12dp">
 
-        <EditText
-            android:id="@+id/comment_input"
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/current_user_avatar"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@drawable/demo_user"/>
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Add a comment"/>
+            android:orientation="horizontal"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_comment_input"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
 
-        <ImageButton
-            android:id="@+id/comment_send_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@android:drawable/ic_menu_send"
-            android:contentDescription="Send"/>
+            <EditText
+                android:id="@+id/comment_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Add a comment"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:background="@android:color/transparent"/>
+
+            <ImageButton
+                android:id="@+id/comment_send_btn"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_send"
+                android:tint="@color/button_primary"
+                android:contentDescription="Send"/>
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>

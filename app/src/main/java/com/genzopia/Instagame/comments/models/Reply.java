@@ -9,6 +9,7 @@ public class Reply {
     public String text;
     public Long created_at;
     public Long like_count;
+    public Long dislike_count;
 
     public Reply() {}
 }

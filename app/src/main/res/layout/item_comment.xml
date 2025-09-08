@@ -9,7 +9,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal">
 
-        <ImageView
+        <de.hdodenhof.circleimageview.CircleImageView
             android:id="@+id/comment_avatar"
             android:layout_width="36dp"
             android:layout_height="36dp"
@@ -39,34 +39,93 @@
                 android:layout_height="wrap_content"
                 android:textSize="12sp"/>
         </LinearLayout>
+
+        
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/comment_reply_btn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Reply"
-        android:paddingTop="4dp"/>
-
+    <!-- Actions row: Like • Dislike • Reply (one line) -->
     <LinearLayout
-        android:id="@+id/comment_like_container"
-        android:layout_width="wrap_content"
+        android:id="@+id/comment_actions_row"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingTop="2dp">
+        android:gravity="center_vertical"
+        android:paddingTop="6dp">
 
-        <ImageView
-            android:id="@+id/comment_like_icon"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@drawable/ic_heart"/>
-
-        <TextView
-            android:id="@+id/comment_like_count"
+        <LinearLayout
+            android:id="@+id/comment_like_container"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="6dp"
-            android:text="0"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/comment_like_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_thumb_up"
+                android:tint="@color/text_secondary"/>
+
+            <TextView
+                android:id="@+id/comment_like_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="6dp"
+                android:text="0"
+                android:textColor="@color/text_secondary"/>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp"/>
+
+        <LinearLayout
+            android:id="@+id/comment_dislike_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/comment_dislike_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_thumb_down"
+                android:tint="@color/text_secondary"/>
+
+            <TextView
+                android:id="@+id/comment_dislike_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="6dp"
+                android:text="0"
+                android:textColor="@color/text_secondary"/>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="1dp"/>
+
+        <TextView
+            android:id="@+id/comment_reply_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reply"
+            android:textColor="@color/text_secondary"/>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1"/>
+
+        <!-- Three dots stays at end -->
+        <ImageView
+            android:id="@+id/comment_menu"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="4dp"
+            android:src="@drawable/ic_more_vert"
+            android:contentDescription="More"/>
     </LinearLayout>
 
     <TextView
