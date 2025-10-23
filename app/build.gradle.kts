@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.genzopia.Instagame"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.genzopia.Instagame"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -23,6 +23,8 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Enable generation of BuildConfig so buildConfigField works
+        buildConfig = true
     }
 
     buildTypes {

@@ -128,7 +128,7 @@ class RegisterActivity : AppCompatActivity() {
                     }
 
                     // Upload image using the created user id; if upload or DB write fails we will rollback
-                    uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
+                    uploadProfileImage(user_id, object : UploadCallback {
                         override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
                             // After successful upload, write to database
                             saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
@@ -142,11 +142,11 @@ class RegisterActivity : AppCompatActivity() {
                             rollbackDeleteUser()
                         }
                     })
-                } else {
-                    Toast.makeText(this, "Registration failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-    }
+                 } else {
+                     Toast.makeText(this, "Registration failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                 }
+             }
+     }
 
     // Upload callback interface (now includes returned uploadedPath if worker returns it)
     private interface UploadCallback {
@@ -163,10 +163,6 @@ class RegisterActivity : AppCompatActivity() {
     // This function accepts an UploadCallback to continue the transactional flow.
     private fun uploadProfileImage(
         user_id: String,
-        email: String,
-        fullName: String,
-        dob: String,
-        mobileNo: String,
         callback: UploadCallback
     ) {
         val uri = selectedImageUri
@@ -240,10 +236,7 @@ class RegisterActivity : AppCompatActivity() {
                     var returnedPath: String? = null
                     try {
                         if (bodyStr.trimStart().startsWith("{")) {
-                            val obj = org.json.JSONObject(bodyStr)
-                            downloadUrl = obj.optString("url", obj.optString("link", obj.optString("file", obj.optString("location", bodyStr))))
-                            returnedPath = obj.optString("path", returnedPath)
-                        }
+9+                        }
                     } catch (_: Exception) {
                         // ignore JSON parse errors; fallback to the raw body
                     }
@@ -393,32 +386,5 @@ class RegisterActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         return name
-    }
-
-    private fun saveUserToDatabase(
-        user_id: String,
-        email: String,
-        fullName: String,
-        dob: String,
-        mobileNo: String,
-        profilePhotoUrl: String
-    ) {
-        val user = User(user_id, email, fullName, dob, mobileNo)
-        user.profile_photo_url = profilePhotoUrl
-
-        database.reference.child("users").child(user_id)
-            .setValue(user)
-            .addOnSuccessListener {
-                runOnUiThread {
-                    Toast.makeText(this, "Registration successful", Toast.LENGTH_SHORT).show()
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finish()
-                }
-            }
-            .addOnFailureListener {
-                runOnUiThread {
-                    Toast.makeText(this, "Failed to save user data", Toast.LENGTH_SHORT).show()
-                }
-            }
     }
 }
