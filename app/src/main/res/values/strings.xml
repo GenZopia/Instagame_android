@@ -13,4 +13,17 @@
     <string name="permission_storage_desc">This lets you select and upload videos. You can change this anytime in your device settings.</string>
     <string name="open_settings">Open Settings</string>
     <string name="dob_format">%1$d/%2$d/%3$d</string>
+
+    <!-- ForgotPassword strings -->
+    <string name="reset_password">Reset Password</string>
+    <string name="resetting_password_1">Resetting the password.</string>
+    <string name="resetting_password_2">Resetting the password..</string>
+    <string name="resetting_password_3">Resetting the password...</string>
+    <string name="resetting_password_4">Resetting the password....</string>
+    <string name="password_reset_email_sent">Password reset email sent. Please check your inbox.</string>
+    <string name="no_account_found">No account found with this email.</string>
+    <string name="network_error_try_again">Network error. Please try again.</string>
+    <string name="error_checking_account">Error checking account: %1$s</string>
+    <string name="error_generic">Error: %1$s</string>
+    <string name="provider_account_message">This account signs in using: %1$s. Password reset is not available; sign in with that provider (e.g., Google) or use account recovery for that provider.</string>
 </resources>
