@@ -26,4 +26,16 @@
     <string name="error_checking_account">Error checking account: %1$s</string>
     <string name="error_generic">Error: %1$s</string>
     <string name="provider_account_message">This account signs in using: %1$s. Password reset is not available; sign in with that provider (e.g., Google) or use account recovery for that provider.</string>
+
+    <!-- Register screen strings -->
+    <string name="profile_picture_desc">Profile picture</string>
+    <string name="add_photo">Add photo</string>
+    <string name="full_name">Full Name</string>
+    <string name="mobile_number">Mobile Number</string>
+    <string name="date_of_birth">Date Of Birth</string>
+    <string name="email_address">Email Address</string>
+    <string name="password">Password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="already_have_account">Already have an account? Sign in instead</string>
+    <string name="sign_up">Sign Up</string>
 </resources>

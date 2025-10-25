@@ -4,6 +4,12 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
+    <!-- App primary color (used across layout) -->
+    <color name="primaryColor">#FF6B35</color>
+
+    <!-- Secondary text color used in register hint/link -->
+    <color name="secondaryText">#8E8E93</color>
+
     <!-- Instagram brand colors -->
     <color name="instagram_orange">#FF6B35</color>
     <color name="instagram_orange_light">#FF8A65</color>
@@ -27,7 +33,7 @@
     <color name="divider_dark">#1C1C1E</color>
 
     <!-- Button colors -->
-    <color name="button_primary">@color/instagram_orange</color>
+    <color name="button_primary">#FF6B35</color>
     <color name="button_primary_disabled">#FFB3A3</color>
     <color name="button_secondary">#F8F9FA</color>
     <color name="button_secondary_dark">#2C2C2E</color>

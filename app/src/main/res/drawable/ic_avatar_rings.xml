@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Outer ring -->
+    <item>
+        <shape android:shape="oval">
+            <size android:width="176dp" android:height="176dp" />
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="6dp" android:color="@color/instagram_orange" />
+        </shape>
+    </item>
+
+    <!-- Inner ring (slightly inset) -->
+    <item android:left="6dp" android:top="6dp" android:right="6dp" android:bottom="6dp">
+        <shape android:shape="oval">
+            <size android:width="164dp" android:height="164dp" />
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="4dp" android:color="@color/instagram_orange_light" />
+        </shape>
+    </item>
+
+</layer-list>

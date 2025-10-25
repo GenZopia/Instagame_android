@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -37,7 +38,11 @@ class RegisterActivity : AppCompatActivity() {
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
             selectedImageUri = it
+            // Show selected image in the profile picture view
+            // binding is initialized in onCreate before this callback is ever invoked
             binding.profilePicture.setImageURI(it)
+            // hide the plus overlay when an image is selected
+            binding.avatarPlus.visibility = View.GONE
         }
     }
 
@@ -63,7 +68,15 @@ class RegisterActivity : AppCompatActivity() {
             ).show()
         }
 
-        // Profile image picker
+        // Profile image picker: clicking either the photo or the plus launches picker
+        binding.profilePicture.setOnClickListener {
+            getContent.launch("image/*")
+        }
+        binding.avatarPlus.setOnClickListener {
+            getContent.launch("image/*")
+        }
+
+        // Profile image picker (existing behavior also kept for older codepaths)
         binding.profilePicture.setOnClickListener {
             getContent.launch("image/*")
         }
@@ -111,6 +124,7 @@ class RegisterActivity : AppCompatActivity() {
         return true
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun registerUser(
         email: String,
         password: String,
@@ -118,6 +132,9 @@ class RegisterActivity : AppCompatActivity() {
         dob: String,
         mobileNo: String
     ) {
+        // Log parameters to avoid 'never used' warnings and aid debugging
+        Log.d(TAG, "registerUser called with email=$email fullName=$fullName dob=$dob mobile=$mobileNo")
+
         // Create auth first to get a stable user id used in the upload path
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
@@ -143,7 +160,8 @@ class RegisterActivity : AppCompatActivity() {
                         }
                     })
                 } else {
-                    Toast.makeText(this, "Registration failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                    val err = task.exception?.message ?: "Unknown error"
+                    Toast.makeText(this, "Registration failed: $err", Toast.LENGTH_SHORT).show()
                 }
             }
     }
@@ -169,6 +187,9 @@ class RegisterActivity : AppCompatActivity() {
         mobileNo: String,
         callback: UploadCallback
     ) {
+        // Use parameters in a debug log to avoid 'parameter never used' warnings and aid debugging
+        Log.d(TAG, "uploadProfileImage called for user=$user_id email=$email fullName=$fullName dob=$dob mobile=$mobileNo")
+
         val uri = selectedImageUri
         if (uri == null) {
             callback.onFailure("No image selected")
@@ -226,7 +247,8 @@ class RegisterActivity : AppCompatActivity() {
                     runOnUiThread { Toast.makeText(this@RegisterActivity, "Worker response: ${bodyStr ?: "<empty>"}", Toast.LENGTH_LONG).show() }
 
                     if (!it.isSuccessful) {
-                        callback.onFailure("${it.code} ${bodyStr ?: ""}")
+                        val errMsg = "${it.code} ${bodyStr ?: ""}"
+                        callback.onFailure(errMsg)
                         return
                     }
 
@@ -254,7 +276,7 @@ class RegisterActivity : AppCompatActivity() {
                     }
 
                     // Return both the download URL and any path the worker returned
-                    callback.onSuccess(downloadUrl, returnedPath)
+                    callback.onSuccess(downloadUrl!!, returnedPath)
                 }
             }
         })
