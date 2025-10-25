@@ -4,6 +4,9 @@
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/instagram_orange</item>
         <item name="colorPrimaryVariant">@color/instagram_orange_dark</item>
+        <!-- Surface / on-surface colors used by components and CCP bindings -->
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
         <item name="colorOnPrimary">@color/white</item>
         <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/instagram_orange_light</item>
@@ -35,6 +38,10 @@
         <!-- Button Styles -->
         <item name="materialButtonStyle">@style/Widget.Instagram.Button</item>
         <item name="materialButtonOutlinedStyle">@style/Widget.Instagram.Button.Outlined</item>
+        <!-- Ensure Material dialogs use our overlay so CCP dialog uses theme colors -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Genzcrop.MaterialAlertDialog</item>
+        <!-- Fallback for platforms/components that use legacy alertDialogTheme -->
+        <item name="alertDialogTheme">@style/ThemeOverlay.Genzcrop.MaterialAlertDialog</item>
     </style>
 
     <!-- Text Styles -->

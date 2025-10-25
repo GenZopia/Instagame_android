@@ -99,6 +99,10 @@ dependencies {
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
 
     implementation("com.facebook.shimmer:shimmer:0.5.0")
+    // Country picker with flags + search
+    implementation("com.hbb20:ccp:2.7.3")
+    // Google's libphonenumber for parsing/validation/formatting
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.30")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)

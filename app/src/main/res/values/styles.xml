@@ -4,4 +4,20 @@
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
     </style>
-</resources> 
+
+    <!-- Dialog theme overlay to ensure alert dialogs (including CountryCodePicker) use on-surface colors -->
+    <style name="ThemeOverlay.Genzcrop.MaterialAlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <!-- Background and surface for dialog windows -->
+        <item name="android:colorBackground">?attr/colorSurface</item>
+        <item name="android:colorForeground">?attr/colorOnSurface</item>
+        <!-- Dialog text colors -->
+        <item name="android:textColorPrimary">?attr/colorOnSurface</item>
+        <item name="android:textColorSecondary">?attr/colorOnSurfaceVariant</item>
+        <!-- Tint for search EditText and list items (if library honors these attrs) -->
+        <item name="colorControlNormal">?attr/colorOnSurface</item>
+        <item name="colorControlActivated">?attr/colorOnSurface</item>
+    </style>
+
+    <!-- Removed custom MaterialDatePicker overlay: prefer using platform DatePickerDialog or
+         the library-provided overlay at show-time to avoid attribute resolution/runtime crashes. -->
+</resources>

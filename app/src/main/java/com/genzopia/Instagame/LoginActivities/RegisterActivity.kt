@@ -9,6 +9,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import android.text.InputFilter
+import android.text.InputType
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.genzopia.Instagame.BuildConfig
@@ -54,51 +56,224 @@ class RegisterActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         database = FirebaseDatabase.getInstance()
 
-        // Date picker for date of birth
-        binding.txtDOB.setOnClickListener {
-            val calendar = Calendar.getInstance()
-            DatePickerDialog(
-                this,
-                { _, year, month, day ->
-                    binding.txtDOB.setText(getString(com.genzopia.Instagame.R.string.dob_format, day, month + 1, year))
-                },
-                calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)
-            ).show()
+        // Register the phone edittext with CountryCodePicker (shows flags & search dialog)
+        // Note: we replaced Spinner with CountryCodePicker in layout (id: ccp)
+        try {
+            binding.ccp.registerCarrierNumberEditText(binding.txtMobileNumber)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register mobile EditText with CountryCodePicker: ${e.message}")
+            // fallback: still set a length filter to avoid very long input
+            binding.txtMobileNumber.filters = arrayOf(InputFilter.LengthFilter(15))
         }
 
         // Profile image picker: clicking either the photo or the plus launches picker
-        binding.profilePicture.setOnClickListener {
-            getContent.launch("image/*")
-        }
-        binding.avatarPlus.setOnClickListener {
-            getContent.launch("image/*")
-        }
+        binding.profilePicture.setOnClickListener { getContent.launch("image/*") }
+        binding.avatarPlus.setOnClickListener { getContent.launch("image/*") }
 
-        // Profile image picker (existing behavior also kept for older codepaths)
-        binding.profilePicture.setOnClickListener {
-            getContent.launch("image/*")
-        }
+        // DOB field: disable keyboard and show a themed Material Date Picker dialog on click/focus
+        try {
+            // Disable keyboard so the MaterialDatePicker is used instead
+            binding.txtDOB.inputType = InputType.TYPE_NULL
+            binding.txtDOB.isFocusable = false
 
-        // Register button click
-        binding.btnRegister.setOnClickListener {
-            val email = binding.txtRegisterEmailAddress.text.toString()
-            val password = binding.txtRegisterPass.text.toString()
-            val confirmPassword = binding.txtRegisterConfirmPass.text.toString()
-            val fullName = binding.txtFullName.text.toString()
-            val dob = binding.txtDOB.text.toString()
-            val mobileNo = binding.txtMobileNumber.text.toString()
-
-            if (validateInputs(email, password, confirmPassword, fullName, dob, mobileNo)) {
-                registerUser(email, password, fullName, dob, mobileNo)
+            val showDobPicker = {
+                // show the picker
+                try {
+                    val now = Calendar.getInstance()
+                    val dpd = DatePickerDialog(this, { _, y, m, d ->
+                        binding.txtDOB.setText(getString(com.genzopia.Instagame.R.string.dob_format, d, m + 1, y))
+                    }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH))
+                    dpd.datePicker.maxDate = System.currentTimeMillis()
+                    dpd.show()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to show DatePickerDialog: ${e.message}")
+                }
             }
+
+            binding.txtDOB.setOnClickListener { showDobPicker() }
+            binding.txtDOB.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) showDobPicker() }
+        } catch (e: Exception) {
+            Log.w(TAG, "DOB picker setup failed: ${e.message}")
         }
 
-        // Sign in link click
-        binding.txtSignInInstead.setOnClickListener {
-            finish() // Go back to login activity
+        // Add click wrapper to recolor the CCP dialog views after it opens so text is visible in dark mode
+        binding.ccp.setOnClickListener {
+            // Debug: dump CCP internal structure to logcat to help identify dialog fields
+            dumpCcpInternalStructure()
+
+            // Open the picker dialog (default behavior)
+            binding.ccp.performClick()
+
+            // Retry loop: try multiple times (every 120ms) to catch the dialog when it's inflated on slower devices
+            val maxAttempts = 10
+            var attempt = 0
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            val runnable = object : Runnable {
+                override fun run() {
+                    try {
+                        val colorOnSurface = resolveThemeColor("colorOnSurface", android.R.color.white)
+                        val colorSurface = resolveThemeColor("colorSurface", android.R.color.background_light)
+
+                        val decor = window?.decorView
+                        var found = false
+
+                        // First try to recolor CCP internal dialog via reflection (more reliable on some devices)
+                        try {
+                            val reflOk = tryRecolorCcpInternalDialog()
+                            if (reflOk) found = true
+                        } catch (_: Exception) {}
+
+                        if (decor != null) {
+                            // Attempt to recolor; recolorDialogViewsRecursively will no-op if nothing to change
+                            recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
+                            // If there's a RecyclerView or ListView with children, assume we succeeded
+                            found = found || findDialogListOrItems(decor)
+                            if (found) Log.d(TAG, "Recolored CCP dialog on attempt $attempt")
+                        }
+
+                        attempt++
+                        if (!found && attempt < maxAttempts) {
+                            handler.postDelayed(this, 120)
+                        }
+                    } catch (ex: Exception) {
+                        Log.w(TAG, "Failed to recolor CCP dialog views: ${ex.message}")
+                        attempt++
+                        if (attempt < maxAttempts) handler.postDelayed(this, 120)
+                    }
+                }
+            }
+            handler.postDelayed(runnable, 120)
         }
+
+    }
+
+    // Small helper to heuristically detect if the dialog list is present (RecyclerView/ListView with children)
+    private fun findDialogListOrItems(view: android.view.View): Boolean {
+        try {
+            when (view) {
+                is androidx.recyclerview.widget.RecyclerView -> return view.childCount > 0
+                is android.widget.ListView -> return view.childCount > 0
+                is android.view.ViewGroup -> {
+                    for (i in 0 until view.childCount) {
+                        if (findDialogListOrItems(view.getChildAt(i))) return true
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return false
+    }
+
+    // Recursively traverse a view and set text colors for TextView/EditText and tint for ImageView
+    private fun recolorDialogViewsRecursively(view: android.view.View, textColor: Int, bgColor: Int) {
+        try {
+            when (view) {
+                is android.widget.EditText -> {
+                    view.setTextColor(textColor)
+                    view.setHintTextColor(textColor)
+                    view.background?.setTint(textColor)
+                }
+                is android.widget.TextView -> {
+                    view.setTextColor(textColor)
+                }
+                is androidx.recyclerview.widget.RecyclerView -> {
+                    // Recolor visible children
+                    for (i in 0 until view.childCount) {
+                        val child = view.getChildAt(i)
+                        recolorDialogViewsRecursively(child, textColor, bgColor)
+                    }
+                }
+                is android.widget.ListView -> {
+                    for (i in 0 until view.childCount) {
+                        val child = view.getChildAt(i)
+                        recolorDialogViewsRecursively(child, textColor, bgColor)
+                    }
+                }
+                is android.view.ViewGroup -> {
+                    for (i in 0 until view.childCount) {
+                        recolorDialogViewsRecursively(view.getChildAt(i), textColor, bgColor)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    // Attempt to find and recolor CCP's internal dialog/popup via reflection. Returns true if something was recolored.
+    private fun tryRecolorCcpInternalDialog(): Boolean {
+        try {
+            val colorOnSurface = resolveThemeColor("colorOnSurface", android.R.color.white)
+            val colorSurface = resolveThemeColor("colorSurface", android.R.color.background_light)
+
+            val ccpObj = binding.ccp
+            val cls = ccpObj.javaClass
+
+            // Search fields for Dialog, PopupWindow, View, RecyclerView, ListView
+            for (f in cls.declaredFields) {
+                try {
+                    f.isAccessible = true
+                    val value = f.get(ccpObj) ?: continue
+                    when (value) {
+                        is android.app.Dialog -> {
+                            val decor = value.window?.decorView
+                            if (decor != null) {
+                                recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
+                                return true
+                            }
+                        }
+                        is android.widget.PopupWindow -> {
+                            val cv = value.contentView
+                            if (cv != null) {
+                                recolorDialogViewsRecursively(cv, colorOnSurface, colorSurface)
+                                return true
+                            }
+                        }
+                        is android.view.View -> {
+                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
+                            return true
+                        }
+                        is androidx.recyclerview.widget.RecyclerView -> {
+                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
+                            return true
+                        }
+                        is android.widget.ListView -> {
+                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
+                            return true
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Search methods that return a dialog or view
+            for (m in cls.declaredMethods) {
+                try {
+                    if (m.parameterCount == 0) {
+                        m.isAccessible = true
+                        val ret = m.invoke(ccpObj) ?: continue
+                        when (ret) {
+                            is android.app.Dialog -> {
+                                val decor = ret.window?.decorView
+                                if (decor != null) {
+                                    recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
+                                    return true
+                                }
+                            }
+                            is android.widget.PopupWindow -> {
+                                val cv = ret.contentView
+                                if (cv != null) {
+                                    recolorDialogViewsRecursively(cv, colorOnSurface, colorSurface)
+                                    return true
+                                }
+                            }
+                            is android.view.View -> {
+                                recolorDialogViewsRecursively(ret, colorOnSurface, colorSurface)
+                                return true
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+        return false
     }
 
     private fun validateInputs(
@@ -121,6 +296,7 @@ class RegisterActivity : AppCompatActivity() {
             Toast.makeText(this, "Please select a profile picture", Toast.LENGTH_SHORT).show()
             return false
         }
+        // Mobile validation moved to registration click; here we only ensure it's not empty
         return true
     }
 
@@ -210,17 +386,17 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        // Determine filename (fall back to user_id.jpg)
-        val filename = queryFileName(uri) ?: "$user_id.jpg"
+        // Determine filename (fall back to user_id.jpg) and ensure non-null String for Java interop
+        val safeFilename: String = (queryFileName(uri) ?: "$user_id.jpg")
 
         // Build multipart request
         val client = OkHttpClient()
         val mediaType = (contentResolver.getType(uri) ?: "image/jpeg").toMediaTypeOrNull()
 
-        val multipartBody = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("file", filename, fileBytes.toRequestBody(mediaType))
-            .addFormDataPart("name", filename)
-            .addFormDataPart("path", "$user_id/$filename")
+        val multipartBody = MultipartBody.Builder()
+            .addFormDataPart("file", safeFilename, fileBytes.toRequestBody(mediaType))
+            .addFormDataPart("name", safeFilename)
+            .addFormDataPart("path", "$user_id/$safeFilename")
             .build()
 
         val request = Request.Builder()
@@ -230,7 +406,7 @@ class RegisterActivity : AppCompatActivity() {
             .build()
 
         // Show a simple progress toast
-        runOnUiThread { Toast.makeText(this, "Uploading profile image...", Toast.LENGTH_SHORT).show() }
+        runOnUiThread { Toast.makeText(this@RegisterActivity.applicationContext, "Uploading profile image...", Toast.LENGTH_SHORT).show() }
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -240,34 +416,44 @@ class RegisterActivity : AppCompatActivity() {
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    val bodyStr = try { it.body?.string()?.trim() } catch (_: Exception) { null }
+                    val bodyStrSafe = try { it.body?.string()?.trim() ?: "" } catch (_: Exception) { "" }
 
                     // Debug logging and toast of worker response
-                    Log.d(TAG, "upload response code=${it.code} body=$bodyStr")
-                    runOnUiThread { Toast.makeText(this@RegisterActivity, "Worker response: ${bodyStr ?: "<empty>"}", Toast.LENGTH_LONG).show() }
+                    Log.d(TAG, "upload response code=${it.code} body=$bodyStrSafe")
+                    runOnUiThread { Toast.makeText(this@RegisterActivity, "Worker response: ${if (bodyStrSafe.isEmpty()) "<empty>" else bodyStrSafe}", Toast.LENGTH_LONG).show() }
 
                     if (!it.isSuccessful) {
-                        val errMsg = "${it.code} ${bodyStr ?: ""}"
+                        val errMsg = "${it.code} ${bodyStrSafe}"
                         callback.onFailure(errMsg)
                         return
                     }
 
-                    if (bodyStr.isNullOrEmpty()) {
+                    if (bodyStrSafe.isEmpty()) {
                         callback.onFailure("Upload succeeded but returned empty URL")
                         return
                     }
 
                     // Try to extract a URL if the worker returned JSON and also the returned path if present
-                    var downloadUrl: String? = bodyStr
+                    var downloadUrl: String?
                     var returnedPath: String? = null
                     try {
-                        if (bodyStr.trimStart().startsWith("{")) {
-                            val obj = org.json.JSONObject(bodyStr)
-                            downloadUrl = obj.optString("url", obj.optString("link", obj.optString("file", obj.optString("location", bodyStr))))
-                            returnedPath = obj.optString("path", returnedPath)
+                        if (bodyStrSafe.trimStart().startsWith("{")) {
+                            val obj = org.json.JSONObject(bodyStrSafe)
+                            downloadUrl = when {
+                                obj.has("url") -> obj.optString("url")
+                                obj.has("link") -> obj.optString("link")
+                                obj.has("file") -> obj.optString("file")
+                                obj.has("location") -> obj.optString("location")
+                                else -> bodyStrSafe
+                            }
+                            val pathStr = obj.optString("path", "")
+                            if (pathStr.isNotEmpty()) returnedPath = pathStr
+                        } else {
+                            downloadUrl = bodyStrSafe
                         }
                     } catch (_: Exception) {
                         // ignore JSON parse errors; fallback to the raw body
+                        downloadUrl = bodyStrSafe
                     }
 
                     if (downloadUrl.isNullOrEmpty()) {
@@ -276,7 +462,7 @@ class RegisterActivity : AppCompatActivity() {
                     }
 
                     // Return both the download URL and any path the worker returned
-                    callback.onSuccess(downloadUrl!!, returnedPath)
+                    callback.onSuccess(downloadUrl, returnedPath)
                 }
             }
         })
@@ -335,7 +521,7 @@ class RegisterActivity : AppCompatActivity() {
         val client = OkHttpClient()
 
         // Build a form body with 'path' as form-data (multipart)
-        val multipartBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+        val multipartBody = MultipartBody.Builder()
             .addFormDataPart("path", path)
             .build()
 
@@ -415,6 +601,48 @@ class RegisterActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         return name
+    }
+
+    // Resolve a theme color attribute by name (falls back to textColorPrimary and then a given fallback resource)
+    private fun resolveThemeColor(attrName: String, fallbackResId: Int): Int {
+        val typed = android.util.TypedValue()
+        val attrId = resources.getIdentifier(attrName, "attr", packageName)
+        if (attrId != 0 && theme.resolveAttribute(attrId, typed, true)) {
+            return if (typed.resourceId != 0) androidx.core.content.ContextCompat.getColor(this, typed.resourceId) else typed.data
+        }
+        // Fallback to android:textColorPrimary if available
+        if (theme.resolveAttribute(android.R.attr.textColorPrimary, typed, true)) {
+            return if (typed.resourceId != 0) androidx.core.content.ContextCompat.getColor(this, typed.resourceId) else typed.data
+        }
+        return androidx.core.content.ContextCompat.getColor(this, fallbackResId)
+    }
+
+    // Debug helper: dump CCP internal fields and methods to logcat to help tailor recolor logic
+    private fun dumpCcpInternalStructure() {
+        try {
+            val ccp = binding.ccp
+            val cls = ccp.javaClass
+            Log.d(TAG, "--- CCP class: ${cls.name}")
+            for (f in cls.declaredFields) {
+                try {
+                    f.isAccessible = true
+                    val value = try { f.get(ccp) } catch (e: Exception) { "<unreadable>" }
+                    Log.d(TAG, "CCP.field: ${f.name} (${f.type.simpleName}) = ${value?.let { it::class.simpleName } ?: "null"}")
+                } catch (e: Exception) {
+                    Log.d(TAG, "CCP.field: ${f.name} (error: ${e.message})")
+                }
+            }
+            for (m in cls.declaredMethods) {
+                try {
+                    Log.d(TAG, "CCP.method: ${m.name} (params=${m.parameterCount})")
+                } catch (e: Exception) {
+                    Log.d(TAG, "CCP.method: ${m.name} (error)")
+                }
+            }
+            Log.d(TAG, "--- end CCP dump")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to dump CCP internals: ${e.message}")
+        }
     }
 
 

@@ -89,11 +89,57 @@
             android:layout_marginStart="28dp"
             android:layout_marginEnd="28dp">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/txtMobileNumber"
+            <!-- Use a horizontal container so the CountryCodePicker sits to the left and the phone EditText to the right
+                 Keeping the TextInputEditText as a descendant ensures the TextInputLayout draws the outlined box
+                 like the other fields. A thin vertical divider visually separates the country code from the number. -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="phone" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
+
+                <!-- Country picker with flags and search. Use theme-aware text color so it becomes white in dark mode -->
+                <com.hbb20.CountryCodePicker
+                    android:id="@+id/ccp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:textColor="?attr/colorOnSurface"
+                    app:ccp_showFlag="true"
+                    app:ccp_showNameCode="false"
+                    app:ccp_showPhoneCode="true"
+                    app:ccp_showFullName="false"
+                    app:ccp_contentColor="?attr/colorOnSurface"
+                    app:ccp_arrowColor="?attr/colorOnSurface"
+                    app:ccp_textSize="14sp"
+                    app:ccpDialog_textColor="?attr/colorOnSurface"
+                    app:ccpDialog_searchEditTextTint="?attr/colorOnSurface"
+                    app:ccpDialog_backgroundColor="?attr/colorSurface"
+                    app:ccpDialog_fastScroller_bubbleColor="?attr/colorOnSurface" />
+
+                <!-- Thin vertical divider to separate country picker from phone number -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="32dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="?attr/colorOnSurface"
+                    android:alpha="0.12" />
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/txtMobileNumber"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="phone"
+                    android:maxLength="15"
+                    android:digits="0123456789"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textColorHint="?attr/colorOnSurfaceVariant"
+                    />
+
+            </LinearLayout>
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- DOB -->

@@ -4,6 +4,9 @@
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/instagram_orange</item>
         <item name="colorPrimaryVariant">@color/instagram_orange_dark</item>
+        <!-- Surface / on-surface colors for dark mode -->
+        <item name="colorOnSurface">@color/text_primary_dark</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary_dark</item>
         <item name="colorOnPrimary">@color/white</item>
         <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/instagram_orange_light</item>

@@ -1,0 +1,7 @@
+<resources>
+    <!-- This file was previously used for a simple country code spinner.
+         The app now uses com.hbb20:ccp (CountryCodePicker) which provides a
+         full country list with flags and search. Keep this placeholder to avoid
+         accidental removal; it's not used by the current implementation.
+    -->
+</resources>

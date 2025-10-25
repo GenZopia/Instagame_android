@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Declare optional Material Calendar attributes in case the Material Components version in this project
+         doesn't provide them. These act as safe fallbacks so merged resources referencing them don't fail
+         during resource linking. If you later upgrade Material Components and they exist in the library,
+         these declarations will be harmless. -->
+
+    <attr name="materialCalendarHeaderToggleIconTint" format="color" />
+    <attr name="materialCalendarTitleTextColor" format="color" />
+</resources>
+
