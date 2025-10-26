@@ -38,6 +38,8 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private lateinit var database: FirebaseDatabase
     private var selectedImageUri: Uri? = null
+    // Keep original register button text so we can restore it after loading
+    private var registerBtnOriginalText: CharSequence? = null
 
     // State for email verification flow
     private var emailVerified = false
@@ -63,6 +65,9 @@ class RegisterActivity : AppCompatActivity() {
 
         // Disable register button until email is verified
         binding.btnRegister.isEnabled = false
+
+        // capture original text
+        registerBtnOriginalText = binding.btnRegister.text
 
         // Wire UI actions
         try {
@@ -142,12 +147,24 @@ class RegisterActivity : AppCompatActivity() {
                 val user_id = current.uid
                 // Disable register UI while uploading to prevent double-submit
                 runOnUiThread {
+                    // Show top loading bar
+                    binding.progressTop.visibility = View.VISIBLE
+                    // show spinner over button and clear text
+                    binding.btnRegisterProgress.visibility = View.VISIBLE
+                    registerBtnOriginalText = registerBtnOriginalText ?: binding.btnRegister.text
+                    binding.btnRegister.text = ""
                     binding.btnRegister.isEnabled = false
                     binding.btnVerifyEmail.isEnabled = false
                 }
 
                 uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
                     override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
+                        // Hide loading UI on main thread before proceeding to DB save
+                        runOnUiThread {
+                            binding.progressTop.visibility = View.GONE
+                            binding.btnRegisterProgress.visibility = View.GONE
+                            binding.btnRegister.text = registerBtnOriginalText
+                        }
                         saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
                     }
 
@@ -155,6 +172,9 @@ class RegisterActivity : AppCompatActivity() {
                         runOnUiThread {
                             Toast.makeText(this@RegisterActivity, "Upload failed: $message. Rolling back user creation.", Toast.LENGTH_LONG).show()
                             // Re-enable register UI so user can try again
+                            binding.progressTop.visibility = View.GONE
+                            binding.btnRegisterProgress.visibility = View.GONE
+                            binding.btnRegister.text = registerBtnOriginalText
                             binding.btnRegister.isEnabled = true
                             binding.btnVerifyEmail.isEnabled = true
                         }
@@ -473,6 +493,11 @@ class RegisterActivity : AppCompatActivity() {
             .setValue(user)
             .addOnSuccessListener {
                 runOnUiThread {
+                    // ensure loading UI is hidden
+                    binding.progressTop.visibility = View.GONE
+                    binding.btnRegisterProgress.visibility = View.GONE
+                    binding.btnRegister.text = registerBtnOriginalText
+
                     Toast.makeText(this, "Registration successful", Toast.LENGTH_SHORT).show()
                     startActivity(Intent(this, MainActivity::class.java))
                     finish()
@@ -494,6 +519,12 @@ class RegisterActivity : AppCompatActivity() {
                 deleteUploadedFileWithRetry(pathToDelete, 3, object : DeleteCallback {
                     override fun onComplete(success: Boolean) {
                         Log.d(TAG, "deleteUploadedFile completed success=$success")
+                        // hide loading UI and restore button so user can retry
+                        runOnUiThread {
+                            binding.progressTop.visibility = View.GONE
+                            binding.btnRegisterProgress.visibility = View.GONE
+                            binding.btnRegister.text = registerBtnOriginalText
+                        }
                         rollbackDeleteUser()
                     }
                 })
@@ -565,6 +596,10 @@ class RegisterActivity : AppCompatActivity() {
                             binding.btnVerifyEmail.text = "Verify"
                         } catch (_: Exception) {}
                         binding.btnRegister.isEnabled = false
+                        // hide loading UI if visible and restore button text
+                        binding.progressTop.visibility = View.GONE
+                        binding.btnRegisterProgress.visibility = View.GONE
+                        binding.btnRegister.text = registerBtnOriginalText
 
                         Toast.makeText(this, "Rolled back registration (user deleted)", Toast.LENGTH_SHORT).show()
                     }
@@ -580,6 +615,9 @@ class RegisterActivity : AppCompatActivity() {
                             binding.btnVerifyEmail.text = "Verify"
                         } catch (_: Exception) {}
                         binding.btnRegister.isEnabled = false
+                        binding.progressTop.visibility = View.GONE
+                        binding.btnRegisterProgress.visibility = View.GONE
+                        binding.btnRegister.text = registerBtnOriginalText
 
                         Toast.makeText(this, "Rollback: failed to delete user: ${delEx.message}", Toast.LENGTH_LONG).show()
                     }
@@ -595,6 +633,10 @@ class RegisterActivity : AppCompatActivity() {
                     binding.btnVerifyEmail.text = "Verify"
                 } catch (_: Exception) {}
                 binding.btnRegister.isEnabled = false
+
+                binding.progressTop.visibility = View.GONE
+                binding.btnRegisterProgress.visibility = View.GONE
+                binding.btnRegister.text = registerBtnOriginalText
 
                 Log.d(TAG, "rollbackDeleteUser: current user null")
             }
