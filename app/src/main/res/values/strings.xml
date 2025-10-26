@@ -38,4 +38,10 @@
     <string name="confirm_password">Confirm Password</string>
     <string name="already_have_account">Already have an account? Sign in instead</string>
     <string name="sign_up">Sign Up</string>
+
+
+    <!-- Add these to res/values/strings.xml -->
+    <string name="email_verified">Email verified</string>
+    <string name="verify">Verify</string>
+
 </resources>

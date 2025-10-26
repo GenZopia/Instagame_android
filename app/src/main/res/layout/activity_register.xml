@@ -89,9 +89,6 @@
             android:layout_marginStart="28dp"
             android:layout_marginEnd="28dp">
 
-            <!-- Use a horizontal container so the CountryCodePicker sits to the left and the phone EditText to the right
-                 Keeping the TextInputEditText as a descendant ensures the TextInputLayout draws the outlined box
-                 like the other fields. A thin vertical divider visually separates the country code from the number. -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -100,7 +97,6 @@
                 android:paddingTop="4dp"
                 android:paddingBottom="4dp">
 
-                <!-- Country picker with flags and search. Use theme-aware text color so it becomes white in dark mode -->
                 <com.hbb20.CountryCodePicker
                     android:id="@+id/ccp"
                     android:layout_width="wrap_content"
@@ -119,7 +115,6 @@
                     app:ccpDialog_backgroundColor="?attr/colorSurface"
                     app:ccpDialog_fastScroller_bubbleColor="?attr/colorOnSurface" />
 
-                <!-- Thin vertical divider to separate country picker from phone number -->
                 <View
                     android:layout_width="1dp"
                     android:layout_height="32dp"
@@ -136,8 +131,7 @@
                     android:maxLength="15"
                     android:digits="0123456789"
                     android:textColor="?attr/colorOnSurface"
-                    android:textColorHint="?attr/colorOnSurfaceVariant"
-                    />
+                    android:textColorHint="?attr/colorOnSurfaceVariant" />
 
             </LinearLayout>
         </com.google.android.material.textfield.TextInputLayout>
@@ -165,7 +159,7 @@
                 android:inputType="date" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- Email -->
+        <!-- Email + Verify button + verified tick -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/emailInputLayout"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
@@ -181,11 +175,46 @@
             android:layout_marginStart="28dp"
             android:layout_marginEnd="28dp">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/txtRegisterEmailAddress"
+            <!-- Horizontal layout: email edittext (weight=1), verify button, small tick image -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textEmailAddress" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/txtRegisterEmailAddress"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Email Address"
+                    android:inputType="textEmailAddress"
+                    android:imeOptions="actionNext" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVerifyEmail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Verify"
+                    android:textAllCaps="false"
+                    app:cornerRadius="8dp"
+                    app:backgroundTint="@color/primaryColor" />
+
+                <ImageView
+                    android:id="@+id/imgEmailVerified"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginStart="8dp"
+                    android:visibility="gone"
+                    android:contentDescription="@string/email_verified"
+                    android:src="@drawable/ic_check_circle"
+                    app:tint="@color/greenAccent" />
+
+            </LinearLayout>
+
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- Password -->

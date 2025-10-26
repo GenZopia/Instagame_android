@@ -23,6 +23,7 @@
     <color name="text_tertiary">#C7C7CC</color>
     <color name="border_light">#DBDBDB</color>
     <color name="divider_light">#F0F0F0</color>
+    <color name="greenAccent">#4CAF50</color>
 
     <!-- Dark theme colors -->
     <color name="background_primary_dark">#000000</color>

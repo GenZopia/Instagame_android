@@ -12,11 +12,13 @@ import android.widget.Toast
 import android.text.InputFilter
 import android.text.InputType
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.genzopia.Instagame.BuildConfig
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.databinding.ActivityRegisterBinding
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -37,13 +39,16 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var database: FirebaseDatabase
     private var selectedImageUri: Uri? = null
 
+    // State for email verification flow
+    private var emailVerified = false
+    private val verifyHandler = Handler(Looper.getMainLooper())
+    private var verifyAttemptsLeft = 10
+    private val verifyIntervalMs = 3000L
+
     private val getContent = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
             selectedImageUri = it
-            // Show selected image in the profile picture view
-            // binding is initialized in onCreate before this callback is ever invoked
             binding.profilePicture.setImageURI(it)
-            // hide the plus overlay when an image is selected
             binding.avatarPlus.visibility = View.GONE
         }
     }
@@ -56,28 +61,24 @@ class RegisterActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         database = FirebaseDatabase.getInstance()
 
-        // Register the phone edittext with CountryCodePicker (shows flags & search dialog)
-        // Note: we replaced Spinner with CountryCodePicker in layout (id: ccp)
+        // Disable register button until email is verified
+        binding.btnRegister.isEnabled = false
+
+        // Wire UI actions
         try {
             binding.ccp.registerCarrierNumberEditText(binding.txtMobileNumber)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register mobile EditText with CountryCodePicker: ${e.message}")
-            // fallback: still set a length filter to avoid very long input
             binding.txtMobileNumber.filters = arrayOf(InputFilter.LengthFilter(15))
         }
 
-        // Profile image picker: clicking either the photo or the plus launches picker
         binding.profilePicture.setOnClickListener { getContent.launch("image/*") }
         binding.avatarPlus.setOnClickListener { getContent.launch("image/*") }
 
-        // DOB field: disable keyboard and show a themed Material Date Picker dialog on click/focus
         try {
-            // Disable keyboard so the MaterialDatePicker is used instead
             binding.txtDOB.inputType = InputType.TYPE_NULL
             binding.txtDOB.isFocusable = false
-
             val showDobPicker = {
-                // show the picker
                 try {
                     val now = Calendar.getInstance()
                     val dpd = DatePickerDialog(this, { _, y, m, d ->
@@ -89,191 +90,191 @@ class RegisterActivity : AppCompatActivity() {
                     Log.w(TAG, "Failed to show DatePickerDialog: ${e.message}")
                 }
             }
-
             binding.txtDOB.setOnClickListener { showDobPicker() }
             binding.txtDOB.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) showDobPicker() }
         } catch (e: Exception) {
             Log.w(TAG, "DOB picker setup failed: ${e.message}")
         }
 
-        // Add click wrapper to recolor the CCP dialog views after it opens so text is visible in dark mode
-        binding.ccp.setOnClickListener {
-            // Debug: dump CCP internal structure to logcat to help identify dialog fields
-            dumpCcpInternalStructure()
-
-            // Open the picker dialog (default behavior)
-            binding.ccp.performClick()
-
-            // Retry loop: try multiple times (every 120ms) to catch the dialog when it's inflated on slower devices
-            val maxAttempts = 10
-            var attempt = 0
-            val handler = android.os.Handler(android.os.Looper.getMainLooper())
-            val runnable = object : Runnable {
-                override fun run() {
-                    try {
-                        val colorOnSurface = resolveThemeColor("colorOnSurface", android.R.color.white)
-                        val colorSurface = resolveThemeColor("colorSurface", android.R.color.background_light)
-
-                        val decor = window?.decorView
-                        var found = false
-
-                        // First try to recolor CCP internal dialog via reflection (more reliable on some devices)
-                        try {
-                            val reflOk = tryRecolorCcpInternalDialog()
-                            if (reflOk) found = true
-                        } catch (_: Exception) {}
-
-                        if (decor != null) {
-                            // Attempt to recolor; recolorDialogViewsRecursively will no-op if nothing to change
-                            recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
-                            // If there's a RecyclerView or ListView with children, assume we succeeded
-                            found = found || findDialogListOrItems(decor)
-                            if (found) Log.d(TAG, "Recolored CCP dialog on attempt $attempt")
-                        }
-
-                        attempt++
-                        if (!found && attempt < maxAttempts) {
-                            handler.postDelayed(this, 120)
-                        }
-                    } catch (ex: Exception) {
-                        Log.w(TAG, "Failed to recolor CCP dialog views: ${ex.message}")
-                        attempt++
-                        if (attempt < maxAttempts) handler.postDelayed(this, 120)
-                    }
-                }
+        // Email 'Verify' button — user clicks to create/resend verification email
+        binding.btnVerifyEmail.setOnClickListener {
+            val email = binding.txtRegisterEmailAddress.text?.toString()?.trim() ?: ""
+            val password = binding.txtRegisterPass.text?.toString() ?: ""
+            if (email.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "Enter email and password before verifying", Toast.LENGTH_SHORT).show()
+            } else {
+                startEmailVerificationFlow(email, password)
             }
-            handler.postDelayed(runnable, 120)
         }
 
+        // Register button: requires that the email is verified and a profile image is selected
+        binding.btnRegister.setOnClickListener {
+            val email = binding.txtRegisterEmailAddress.text?.toString()?.trim() ?: ""
+            val password = binding.txtRegisterPass.text?.toString() ?: ""
+            val confirmPassword = binding.txtRegisterConfirmPass.text?.toString() ?: ""
+            val fullName = binding.txtFullName.text?.toString() ?: ""
+            val dob = binding.txtDOB.text?.toString() ?: ""
+            val mobileNo = binding.txtMobileNumber.text?.toString() ?: ""
+
+            if (!validateInputs(email, password, confirmPassword, fullName, dob, mobileNo)) return@setOnClickListener
+
+            // Require email verification
+            val current = auth.currentUser
+            if (current == null || current.email?.trim()?.lowercase() != email.lowercase()) {
+                Toast.makeText(this, "Please verify using the same email first (press VERIFY)", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (!current.isEmailVerified) {
+                Toast.makeText(this, "Please verify your email first (open the verification link).", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            // Use the signed-in & verified user to proceed with uploading image + saving DB
+            val user_id = current.uid
+            uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
+                override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
+                    saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
+                }
+
+                override fun onFailure(message: String) {
+                    runOnUiThread {
+                        Toast.makeText(this@RegisterActivity, "Upload failed: $message. Rolling back user creation.", Toast.LENGTH_LONG).show()
+                    }
+                    rollbackDeleteUser()
+                }
+            })
+        }
+
+        // If user returns to the screen and is already signed in, refresh status
+        checkExistingSignedInUser()
     }
 
-    // Small helper to heuristically detect if the dialog list is present (RecyclerView/ListView with children)
-    private fun findDialogListOrItems(view: android.view.View): Boolean {
-        try {
-            when (view) {
-                is androidx.recyclerview.widget.RecyclerView -> return view.childCount > 0
-                is android.widget.ListView -> return view.childCount > 0
-                is android.view.ViewGroup -> {
-                    for (i in 0 until view.childCount) {
-                        if (findDialogListOrItems(view.getChildAt(i))) return true
-                    }
+    private fun checkExistingSignedInUser() {
+        val current = auth.currentUser
+        if (current != null) {
+            // If the email matches the entered email field, update UI and start polling to detect verification change
+            binding.txtRegisterEmailAddress.setText(current.email)
+            // Show tick if already verified
+            current.reload().addOnCompleteListener {
+                if (current.isEmailVerified) {
+                    onEmailVerified()
+                } else {
+                    // allow the user to resend verification
+                    binding.btnRegister.isEnabled = false
                 }
             }
-        } catch (_: Exception) {}
-        return false
-    }
-
-    // Recursively traverse a view and set text colors for TextView/EditText and tint for ImageView
-    private fun recolorDialogViewsRecursively(view: android.view.View, textColor: Int, bgColor: Int) {
-        try {
-            when (view) {
-                is android.widget.EditText -> {
-                    view.setTextColor(textColor)
-                    view.setHintTextColor(textColor)
-                    view.background?.setTint(textColor)
-                }
-                is android.widget.TextView -> {
-                    view.setTextColor(textColor)
-                }
-                is androidx.recyclerview.widget.RecyclerView -> {
-                    // Recolor visible children
-                    for (i in 0 until view.childCount) {
-                        val child = view.getChildAt(i)
-                        recolorDialogViewsRecursively(child, textColor, bgColor)
-                    }
-                }
-                is android.widget.ListView -> {
-                    for (i in 0 until view.childCount) {
-                        val child = view.getChildAt(i)
-                        recolorDialogViewsRecursively(child, textColor, bgColor)
-                    }
-                }
-                is android.view.ViewGroup -> {
-                    for (i in 0 until view.childCount) {
-                        recolorDialogViewsRecursively(view.getChildAt(i), textColor, bgColor)
-                    }
-                }
-            }
-        } catch (_: Exception) {
         }
     }
 
-    // Attempt to find and recolor CCP's internal dialog/popup via reflection. Returns true if something was recolored.
-    private fun tryRecolorCcpInternalDialog(): Boolean {
-        try {
-            val colorOnSurface = resolveThemeColor("colorOnSurface", android.R.color.white)
-            val colorSurface = resolveThemeColor("colorSurface", android.R.color.background_light)
+    private fun startEmailVerificationFlow(email: String, password: String) {
+        // If there's already a signed-in user with same email, just resend verification
+        val current = auth.currentUser
+        if (current != null && current.email?.equals(email, true) == true) {
+            sendVerificationEmail(current)
+            startPollingForVerification()
+            return
+        }
 
-            val ccpObj = binding.ccp
-            val cls = ccpObj.javaClass
-
-            // Search fields for Dialog, PopupWindow, View, RecyclerView, ListView
-            for (f in cls.declaredFields) {
-                try {
-                    f.isAccessible = true
-                    val value = f.get(ccpObj) ?: continue
-                    when (value) {
-                        is android.app.Dialog -> {
-                            val decor = value.window?.decorView
-                            if (decor != null) {
-                                recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
-                                return true
-                            }
-                        }
-                        is android.widget.PopupWindow -> {
-                            val cv = value.contentView
-                            if (cv != null) {
-                                recolorDialogViewsRecursively(cv, colorOnSurface, colorSurface)
-                                return true
-                            }
-                        }
-                        is android.view.View -> {
-                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
-                            return true
-                        }
-                        is androidx.recyclerview.widget.RecyclerView -> {
-                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
-                            return true
-                        }
-                        is android.widget.ListView -> {
-                            recolorDialogViewsRecursively(value, colorOnSurface, colorSurface)
-                            return true
-                        }
+        // Try creating an auth account (if already exists, sign-in and resend)
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    val user = auth.currentUser
+                    if (user != null) {
+                        // Keep user signed in so we can poll for email verification
+                        sendVerificationEmail(user)
+                        startPollingForVerification()
                     }
-                } catch (_: Exception) {}
-            }
-
-            // Search methods that return a dialog or view
-            for (m in cls.declaredMethods) {
-                try {
-                    if (m.parameterCount == 0) {
-                        m.isAccessible = true
-                        val ret = m.invoke(ccpObj) ?: continue
-                        when (ret) {
-                            is android.app.Dialog -> {
-                                val decor = ret.window?.decorView
-                                if (decor != null) {
-                                    recolorDialogViewsRecursively(decor, colorOnSurface, colorSurface)
-                                    return true
+                } else {
+                    val msg = task.exception?.message ?: "Unknown error"
+                    Log.d(TAG, "createUser (verify) failed: $msg")
+                    // If account exists already, sign in and resend verification
+                    if (msg.contains("email address is already in use", true) || msg.contains("already in use", true)) {
+                        auth.signInWithEmailAndPassword(email, password)
+                            .addOnCompleteListener(this) { signInTask ->
+                                if (signInTask.isSuccessful) {
+                                    val user = auth.currentUser
+                                    if (user != null) {
+                                        sendVerificationEmail(user)
+                                        startPollingForVerification()
+                                    }
+                                } else {
+                                    val err = signInTask.exception?.message ?: "Sign in failed"
+                                    Toast.makeText(this, err, Toast.LENGTH_LONG).show()
                                 }
                             }
-                            is android.widget.PopupWindow -> {
-                                val cv = ret.contentView
-                                if (cv != null) {
-                                    recolorDialogViewsRecursively(cv, colorOnSurface, colorSurface)
-                                    return true
-                                }
-                            }
-                            is android.view.View -> {
-                                recolorDialogViewsRecursively(ret, colorOnSurface, colorSurface)
-                                return true
-                            }
+                    } else {
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+    }
+
+    // Start a short polling loop to check user.reload() and detect email verification
+    private fun startPollingForVerification() {
+        verifyAttemptsLeft = 10
+        binding.btnVerifyEmail.isEnabled = false
+        binding.btnVerifyEmail.text = "Sent"
+        verifyHandler.postDelayed(verifyRunnable, verifyIntervalMs)
+    }
+
+    private val verifyRunnable = object : Runnable {
+        override fun run() {
+            try {
+                val current = auth.currentUser
+                if (current == null) {
+                    verifyHandler.postDelayed(this, verifyIntervalMs)
+                    return
+                }
+                current.reload().addOnCompleteListener { t ->
+                    if (current.isEmailVerified) {
+                        onEmailVerified()
+                    } else {
+                        verifyAttemptsLeft--
+                        if (verifyAttemptsLeft > 0) verifyHandler.postDelayed(this, verifyIntervalMs) else {
+                            // allow resend after timeout
+                            binding.btnVerifyEmail.isEnabled = true
+                            binding.btnVerifyEmail.text = "Verify"
                         }
                     }
-                } catch (_: Exception) {}
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "verifyRunnable failed: ${e.message}")
             }
-        } catch (_: Exception) {}
-        return false
+        }
+    }
+
+    private fun onEmailVerified() {
+        emailVerified = true
+        verifyHandler.removeCallbacks(verifyRunnable)
+        runOnUiThread {
+            // Show tick
+            try { binding.imgEmailVerified.visibility = View.VISIBLE } catch (_: Exception) {}
+            // Hide the verify button entirely when verified
+            try { binding.btnVerifyEmail.visibility = View.GONE } catch (_: Exception) {}
+            // Enable register button so user can complete signup
+            binding.btnRegister.isEnabled = true
+            Toast.makeText(this, "Email verified — you can now complete sign up.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    // Helper to send verification email and surface result to user (non-blocking)
+    private fun sendVerificationEmail(user: FirebaseUser) {
+        user.sendEmailVerification()
+            .addOnCompleteListener { sendTask ->
+                if (sendTask.isSuccessful) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Verification email sent to ${user.email}. Please check your inbox.", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    val msg = sendTask.exception?.message ?: "Failed to send verification email"
+                    runOnUiThread {
+                        Toast.makeText(this, "$msg", Toast.LENGTH_LONG).show()
+                    }
+                    Log.w(TAG, "sendVerificationEmail failed: ${sendTask.exception}")
+                }
+            }
     }
 
     private fun validateInputs(
@@ -296,65 +297,20 @@ class RegisterActivity : AppCompatActivity() {
             Toast.makeText(this, "Please select a profile picture", Toast.LENGTH_SHORT).show()
             return false
         }
-        // Mobile validation moved to registration click; here we only ensure it's not empty
         return true
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun registerUser(
-        email: String,
-        password: String,
-        fullName: String,
-        dob: String,
-        mobileNo: String
-    ) {
-        // Log parameters to avoid 'never used' warnings and aid debugging
-        Log.d(TAG, "registerUser called with email=$email fullName=$fullName dob=$dob mobile=$mobileNo")
+    // Rest of existing upload/save/delete logic — unchanged except registerUser removal
 
-        // Create auth first to get a stable user id used in the upload path
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener(this) { task ->
-                if (task.isSuccessful) {
-                    val user_id = auth.currentUser?.uid ?: run {
-                        Toast.makeText(this, "Registration failed: unable to get user id", Toast.LENGTH_SHORT).show()
-                        return@addOnCompleteListener
-                    }
-
-                    // Upload image using the created user id; if upload or DB write fails we will rollback
-                    uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
-                        override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
-                            // After successful upload, write to database
-                            saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
-                        }
-
-                        override fun onFailure(message: String) {
-                            // Upload failed -> delete created user and inform
-                            runOnUiThread {
-                                Toast.makeText(this@RegisterActivity, "Upload failed: $message. Rolling back user creation.", Toast.LENGTH_LONG).show()
-                            }
-                            rollbackDeleteUser()
-                        }
-                    })
-                } else {
-                    val err = task.exception?.message ?: "Unknown error"
-                    Toast.makeText(this, "Registration failed: $err", Toast.LENGTH_SHORT).show()
-                }
-            }
-    }
-
-    // Upload callback interface (now includes returned uploadedPath if worker returns it)
     private interface UploadCallback {
         fun onSuccess(downloadUrl: String, uploadedPath: String?)
         fun onFailure(message: String)
     }
 
-    // Delete callback for worker deletion
     private interface DeleteCallback {
         fun onComplete(success: Boolean)
     }
 
-    // Upload profile image to the user's HTTP worker instead of Firebase Storage.
-    // This function accepts an UploadCallback to continue the transactional flow.
     private fun uploadProfileImage(
         user_id: String,
         email: String,
@@ -363,7 +319,6 @@ class RegisterActivity : AppCompatActivity() {
         mobileNo: String,
         callback: UploadCallback
     ) {
-        // Use parameters in a debug log to avoid 'parameter never used' warnings and aid debugging
         Log.d(TAG, "uploadProfileImage called for user=$user_id email=$email fullName=$fullName dob=$dob mobile=$mobileNo")
 
         val uri = selectedImageUri
@@ -372,7 +327,6 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        // Read bytes from the selected URI
         val inputStream = contentResolver.openInputStream(uri)
         if (inputStream == null) {
             callback.onFailure("Failed to read selected image")
@@ -386,10 +340,8 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        // Determine filename (fall back to user_id.jpg) and ensure non-null String for Java interop
         val safeFilename: String = (queryFileName(uri) ?: "$user_id.jpg")
 
-        // Build multipart request
         val client = OkHttpClient()
         val mediaType = (contentResolver.getType(uri) ?: "image/jpeg").toMediaTypeOrNull()
 
@@ -405,7 +357,6 @@ class RegisterActivity : AppCompatActivity() {
             .post(multipartBody)
             .build()
 
-        // Show a simple progress toast
         runOnUiThread { Toast.makeText(this@RegisterActivity.applicationContext, "Uploading profile image...", Toast.LENGTH_SHORT).show() }
 
         client.newCall(request).enqueue(object : Callback {
@@ -417,8 +368,6 @@ class RegisterActivity : AppCompatActivity() {
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     val bodyStrSafe = try { it.body?.string()?.trim() ?: "" } catch (_: Exception) { "" }
-
-                    // Debug logging and toast of worker response
                     Log.d(TAG, "upload response code=${it.code} body=$bodyStrSafe")
                     runOnUiThread { Toast.makeText(this@RegisterActivity, "Worker response: ${if (bodyStrSafe.isEmpty()) "<empty>" else bodyStrSafe}", Toast.LENGTH_LONG).show() }
 
@@ -433,7 +382,6 @@ class RegisterActivity : AppCompatActivity() {
                         return
                     }
 
-                    // Try to extract a URL if the worker returned JSON and also the returned path if present
                     var downloadUrl: String?
                     var returnedPath: String? = null
                     try {
@@ -452,7 +400,6 @@ class RegisterActivity : AppCompatActivity() {
                             downloadUrl = bodyStrSafe
                         }
                     } catch (_: Exception) {
-                        // ignore JSON parse errors; fallback to the raw body
                         downloadUrl = bodyStrSafe
                     }
 
@@ -461,14 +408,12 @@ class RegisterActivity : AppCompatActivity() {
                         return
                     }
 
-                    // Return both the download URL and any path the worker returned
                     callback.onSuccess(downloadUrl, returnedPath)
                 }
             }
         })
     }
 
-    // Save to database and rollback on failure: delete uploaded file and delete user
     private fun saveUserToDatabaseWithRollback(
         user_id: String,
         email: String,
@@ -491,36 +436,30 @@ class RegisterActivity : AppCompatActivity() {
                 }
             }
             .addOnFailureListener { dbEx ->
-                // DB write failed: attempt to remove uploaded file and delete user
                 runOnUiThread {
                     Toast.makeText(this, "Failed to save user data: ${dbEx.message}. Rolling back...", Toast.LENGTH_LONG).show()
                 }
 
-                // Determine deletion path: prefer returned uploadedPath; else try to derive from the URL
                 val pathToDelete = when {
                     !uploadedPath.isNullOrBlank() -> uploadedPath
                     profilePhotoUrl.contains("/") -> "$user_id/${profilePhotoUrl.substringAfterLast('/')}"
-                    else -> "$user_id/${profilePhotoUrl}"
+                    else -> "$user_id/$profilePhotoUrl"
                 }
 
                 Log.d(TAG, "Attempting to delete uploaded file at path: $pathToDelete")
 
-                // Attempt to delete uploaded file from worker with retries
                 deleteUploadedFileWithRetry(pathToDelete, 3, object : DeleteCallback {
                     override fun onComplete(success: Boolean) {
                         Log.d(TAG, "deleteUploadedFile completed success=$success")
-                        // Regardless of file deletion success, delete the created auth user
                         rollbackDeleteUser()
                     }
                 })
             }
     }
 
-    // Delete with exponential backoff retries (attemptsLeft times)
     private fun deleteUploadedFileWithRetry(path: String, attemptsLeft: Int, callback: DeleteCallback) {
         val client = OkHttpClient()
 
-        // Build a form body with 'path' as form-data (multipart)
         val multipartBody = MultipartBody.Builder()
             .addFormDataPart("path", path)
             .build()
@@ -528,14 +467,13 @@ class RegisterActivity : AppCompatActivity() {
         val request = Request.Builder()
             .url("https://file-upload-worker.genzopia.workers.dev/")
             .addHeader("x-api-key", BuildConfig.FILE_UPLOAD_API_KEY)
-            .delete(multipartBody) // send DELETE with body containing form-data
+            .delete(multipartBody)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.d(TAG, "delete request failed: ${e.message}; attemptsLeft=$attemptsLeft")
                 if (attemptsLeft > 1) {
-                    // schedule retry with exponential backoff (ms)
                     val delay = (1000L * Math.pow(2.0, (3 - attemptsLeft).toDouble())).toLong()
                     Handler(Looper.getMainLooper()).postDelayed({
                         deleteUploadedFileWithRetry(path, attemptsLeft - 1, callback)
@@ -566,30 +504,61 @@ class RegisterActivity : AppCompatActivity() {
         })
     }
 
-    // Delete the currently signed-in Firebase user (created during registration) and sign out.
     private fun rollbackDeleteUser() {
         val current = auth.currentUser
-        if (current == null) {
-            Log.d(TAG, "rollbackDeleteUser: current user null")
-            return
+        // Try to delete the created Firebase user if present
+        if (current != null) {
+            current.delete()
+                .addOnCompleteListener {
+                    // sign out locally
+                    auth.signOut()
+                    runOnUiThread {
+                        // Reset UI so user can restart verification/signup flow
+                        try { binding.imgEmailVerified.visibility = View.GONE } catch (_: Exception) {}
+                        try { binding.btnVerifyEmail.visibility = View.VISIBLE } catch (_: Exception) {}
+                        try {
+                            binding.btnVerifyEmail.isEnabled = true
+                            binding.btnVerifyEmail.text = "Verify"
+                        } catch (_: Exception) {}
+                        binding.btnRegister.isEnabled = false
+
+                        Toast.makeText(this, "Rolled back registration (user deleted)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .addOnFailureListener { delEx ->
+                    // Even if delete failed, sign out and reset UI so the user can retry
+                    auth.signOut()
+                    runOnUiThread {
+                        try { binding.imgEmailVerified.visibility = View.GONE } catch (_: Exception) {}
+                        try { binding.btnVerifyEmail.visibility = View.VISIBLE } catch (_: Exception) {}
+                        try {
+                            binding.btnVerifyEmail.isEnabled = true
+                            binding.btnVerifyEmail.text = "Verify"
+                        } catch (_: Exception) {}
+                        binding.btnRegister.isEnabled = false
+
+                        Toast.makeText(this, "Rollback: failed to delete user: ${delEx.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+        } else {
+            // No current user — just ensure UI is reset
+            auth.signOut()
+            runOnUiThread {
+                try { binding.imgEmailVerified.visibility = View.GONE } catch (_: Exception) {}
+                try { binding.btnVerifyEmail.visibility = View.VISIBLE } catch (_: Exception) {}
+                try {
+                    binding.btnVerifyEmail.isEnabled = true
+                    binding.btnVerifyEmail.text = "Verify"
+                } catch (_: Exception) {}
+                binding.btnRegister.isEnabled = false
+
+                Log.d(TAG, "rollbackDeleteUser: current user null")
+            }
         }
-        current.delete()
-            .addOnCompleteListener {
-                // sign out locally
-                auth.signOut()
-                runOnUiThread {
-                    Toast.makeText(this, "Rolled back registration (user deleted)", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addOnFailureListener { delEx ->
-                runOnUiThread {
-                    Toast.makeText(this, "Rollback: failed to delete user: ${delEx.message}", Toast.LENGTH_LONG).show()
-                }
-            }
     }
 
+
     private fun queryFileName(uri: Uri): String? {
-        // Try to resolve display name from content resolver; return null if not found
         var name: String? = null
         try {
             val cursor = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -603,21 +572,18 @@ class RegisterActivity : AppCompatActivity() {
         return name
     }
 
-    // Resolve a theme color attribute by name (falls back to textColorPrimary and then a given fallback resource)
     private fun resolveThemeColor(attrName: String, fallbackResId: Int): Int {
         val typed = android.util.TypedValue()
         val attrId = resources.getIdentifier(attrName, "attr", packageName)
         if (attrId != 0 && theme.resolveAttribute(attrId, typed, true)) {
             return if (typed.resourceId != 0) androidx.core.content.ContextCompat.getColor(this, typed.resourceId) else typed.data
         }
-        // Fallback to android:textColorPrimary if available
         if (theme.resolveAttribute(android.R.attr.textColorPrimary, typed, true)) {
             return if (typed.resourceId != 0) androidx.core.content.ContextCompat.getColor(this, typed.resourceId) else typed.data
         }
         return androidx.core.content.ContextCompat.getColor(this, fallbackResId)
     }
 
-    // Debug helper: dump CCP internal fields and methods to logcat to help tailor recolor logic
     private fun dumpCcpInternalStructure() {
         try {
             val ccp = binding.ccp
@@ -644,6 +610,5 @@ class RegisterActivity : AppCompatActivity() {
             Log.w(TAG, "Failed to dump CCP internals: ${e.message}")
         }
     }
-
 
 }
