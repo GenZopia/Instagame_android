@@ -12,7 +12,6 @@ import android.widget.Toast
 import android.text.InputFilter
 import android.text.InputType
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.genzopia.Instagame.BuildConfig
 import com.genzopia.Instagame.MainActivity
@@ -30,6 +29,7 @@ import okhttp3.Callback
 import okhttp3.Response
 import java.io.IOException
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 class RegisterActivity : AppCompatActivity() {
     private val TAG = "RegisterActivity"
@@ -124,25 +124,44 @@ class RegisterActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please verify using the same email first (press VERIFY)", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (!current.isEmailVerified) {
-                Toast.makeText(this, "Please verify your email first (open the verification link).", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
 
-            // Use the signed-in & verified user to proceed with uploading image + saving DB
-            val user_id = current.uid
-            uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
-                override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
-                    saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
+            // Reload the current user to ensure we have the latest verification state
+            current.reload().addOnCompleteListener { reloadTask ->
+                if (!reloadTask.isSuccessful) {
+                    Log.w(TAG, "user.reload failed: ${reloadTask.exception}")
+                    Toast.makeText(this, "Failed to verify user status. Please try again.", Toast.LENGTH_LONG).show()
+                    return@addOnCompleteListener
                 }
 
-                override fun onFailure(message: String) {
-                    runOnUiThread {
-                        Toast.makeText(this@RegisterActivity, "Upload failed: $message. Rolling back user creation.", Toast.LENGTH_LONG).show()
+                if (!current.isEmailVerified) {
+                    Toast.makeText(this, "Please verify your email first (open the verification link).", Toast.LENGTH_LONG).show()
+                    return@addOnCompleteListener
+                }
+
+                // Use the signed-in & verified user to proceed with uploading image + saving DB
+                val user_id = current.uid
+                // Disable register UI while uploading to prevent double-submit
+                runOnUiThread {
+                    binding.btnRegister.isEnabled = false
+                    binding.btnVerifyEmail.isEnabled = false
+                }
+
+                uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
+                    override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
+                        saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
                     }
-                    rollbackDeleteUser()
-                }
-            })
+
+                    override fun onFailure(message: String) {
+                        runOnUiThread {
+                            Toast.makeText(this@RegisterActivity, "Upload failed: $message. Rolling back user creation.", Toast.LENGTH_LONG).show()
+                            // Re-enable register UI so user can try again
+                            binding.btnRegister.isEnabled = true
+                            binding.btnVerifyEmail.isEnabled = true
+                        }
+                        rollbackDeleteUser()
+                    }
+                })
+            }
         }
 
         // If user returns to the screen and is already signed in, refresh status
@@ -342,10 +361,16 @@ class RegisterActivity : AppCompatActivity() {
 
         val safeFilename: String = (queryFileName(uri) ?: "$user_id.jpg")
 
-        val client = OkHttpClient()
+        val client = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
+            .build()
         val mediaType = (contentResolver.getType(uri) ?: "image/jpeg").toMediaTypeOrNull()
 
         val multipartBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
             .addFormDataPart("file", safeFilename, fileBytes.toRequestBody(mediaType))
             .addFormDataPart("name", safeFilename)
             .addFormDataPart("path", "$user_id/$safeFilename")
@@ -362,6 +387,11 @@ class RegisterActivity : AppCompatActivity() {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.d(TAG, "upload failed: ${e.message}")
+                // Ensure UI is re-enabled on failure
+                runOnUiThread {
+                    binding.btnRegister.isEnabled = true
+                    binding.btnVerifyEmail.isEnabled = true
+                }
                 callback.onFailure(e.message ?: "Network error")
             }
 
@@ -373,11 +403,20 @@ class RegisterActivity : AppCompatActivity() {
 
                     if (!it.isSuccessful) {
                         val errMsg = "${it.code} ${bodyStrSafe}"
+                        // Re-enable UI so user can retry
+                        runOnUiThread {
+                            binding.btnRegister.isEnabled = true
+                            binding.btnVerifyEmail.isEnabled = true
+                        }
                         callback.onFailure(errMsg)
                         return
                     }
 
                     if (bodyStrSafe.isEmpty()) {
+                        runOnUiThread {
+                            binding.btnRegister.isEnabled = true
+                            binding.btnVerifyEmail.isEnabled = true
+                        }
                         callback.onFailure("Upload succeeded but returned empty URL")
                         return
                     }
@@ -404,6 +443,10 @@ class RegisterActivity : AppCompatActivity() {
                     }
 
                     if (downloadUrl.isNullOrEmpty()) {
+                        runOnUiThread {
+                            binding.btnRegister.isEnabled = true
+                            binding.btnVerifyEmail.isEnabled = true
+                        }
                         callback.onFailure("Upload returned invalid URL")
                         return
                     }
@@ -442,7 +485,7 @@ class RegisterActivity : AppCompatActivity() {
 
                 val pathToDelete = when {
                     !uploadedPath.isNullOrBlank() -> uploadedPath
-                    profilePhotoUrl.contains("/") -> "$user_id/${profilePhotoUrl.substringAfterLast('/')}"
+                    profilePhotoUrl.contains("/") -> "$user_id/${profilePhotoUrl.substringAfterLast('/') }"
                     else -> "$user_id/$profilePhotoUrl"
                 }
 
@@ -461,6 +504,7 @@ class RegisterActivity : AppCompatActivity() {
         val client = OkHttpClient()
 
         val multipartBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
             .addFormDataPart("path", path)
             .build()
 
