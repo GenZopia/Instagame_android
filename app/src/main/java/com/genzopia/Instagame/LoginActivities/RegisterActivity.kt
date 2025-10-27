@@ -2,6 +2,7 @@ package com.genzopia.Instagame.LoginActivities
 
 import android.app.DatePickerDialog
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -12,7 +13,9 @@ import android.widget.Toast
 import android.text.InputFilter
 import android.text.InputType
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.TakePicture
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import com.genzopia.Instagame.BuildConfig
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.databinding.ActivityRegisterBinding
@@ -27,11 +30,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Response
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-class RegisterActivity : AppCompatActivity() {
+class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener {
     private val TAG = "RegisterActivity"
 
     private lateinit var binding: ActivityRegisterBinding
@@ -40,6 +45,7 @@ class RegisterActivity : AppCompatActivity() {
     private var selectedImageUri: Uri? = null
     // Keep original register button text so we can restore it after loading
     private var registerBtnOriginalText: CharSequence? = null
+    private var cameraTempUri: Uri? = null
 
     // State for email verification flow
     private var emailVerified = false
@@ -52,6 +58,17 @@ class RegisterActivity : AppCompatActivity() {
             selectedImageUri = it
             binding.profilePicture.setImageURI(it)
             binding.avatarPlus.visibility = View.GONE
+        }
+    }
+
+    // Take picture contract: will save to provided Uri and return success boolean
+    private val takePicture = registerForActivityResult(TakePicture()) { success: Boolean ->
+        if (success && cameraTempUri != null) {
+            selectedImageUri = cameraTempUri
+            binding.profilePicture.setImageURI(cameraTempUri)
+            binding.avatarPlus.visibility = View.GONE
+        } else {
+            Log.d(TAG, "takePicture canceled or failed")
         }
     }
 
@@ -79,6 +96,10 @@ class RegisterActivity : AppCompatActivity() {
 
         binding.profilePicture.setOnClickListener { getContent.launch("image/*") }
         binding.avatarPlus.setOnClickListener { getContent.launch("image/*") }
+        binding.btnChooseAvatar.setOnClickListener {
+            val sheet = AvatarBottomSheetFragment()
+            sheet.show(supportFragmentManager, "avatarPicker")
+        }
 
         try {
             binding.txtDOB.inputType = InputType.TYPE_NULL
@@ -697,4 +718,51 @@ class RegisterActivity : AppCompatActivity() {
         }
     }
 
-}
+    // AvatarBottomSheetFragment.Listener implementation
+    override fun onAvatarSelected(resId: Int) {
+        try {
+            val uri = drawableResToCacheUri(resId)
+            if (uri != null) {
+                selectedImageUri = uri
+                runOnUiThread { binding.profilePicture.setImageURI(uri); binding.avatarPlus.visibility = View.GONE }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "onAvatarSelected failed: ${e.message}")
+        }
+    }
+
+    override fun onChooseFromGallery() {
+        getContent.launch("image/*")
+    }
+
+    override fun onTakePhoto() {
+        // create temp file in cache and launch camera
+        try {
+            val avatarsDir = File(cacheDir, "avatars").apply { if (!exists()) mkdirs() }
+            val file = File.createTempFile("avatar_${System.currentTimeMillis()}", ".jpg", avatarsDir)
+            cameraTempUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            cameraTempUri?.let { uri ->
+                takePicture.launch(uri)
+            } ?: run {
+                Log.w(TAG, "cameraTempUri was null after FileProvider.getUriForFile")
+                Toast.makeText(this, "Failed to prepare camera capture", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create temp file for camera: ${e.message}")
+            Toast.makeText(this, "Failed to open camera", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Helper to write a drawable resource to cache and return a content:// URI via FileProvider
+    private fun drawableResToCacheUri(@Suppress("UNUSED_PARAMETER") resId: Int): Uri? {
+        return try {
+            val bmp = BitmapFactory.decodeResource(resources, resId)
+            val avatarsDir = File(cacheDir, "avatars").apply { if (!exists()) mkdirs() }
+            val file = File(avatarsDir, "avatar_${resId}_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(file).use { out -> bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }
+            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        } catch (e: Exception) {
+            Log.w(TAG, "drawableResToCacheUri failed: ${e.message}")
+            null
+        }
+    }}
