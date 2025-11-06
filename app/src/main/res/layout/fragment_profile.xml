@@ -115,12 +115,12 @@
             </LinearLayout>
 
             <!-- lightweight divider between stats (subtle) -->
-            <View
-                android:layout_width="1dp"
-                android:layout_height="50dp"
+<!--            <View-->
+<!--                android:layout_width="1dp"-->
+<!--                android:layout_height="50dp"-->
 
-                android:layout_marginEnd="6dp"
-                android:background="@color/border_light" />
+<!--                android:layout_marginEnd="6dp"-->
+<!--                android:background="@color/border_light" />-->
 
             <!-- Followers column -->
             <LinearLayout
@@ -149,11 +149,11 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-            <View
-                android:layout_width="1dp"
-                android:layout_height="50dp"
-                android:layout_marginEnd="6dp"
-                android:background="@color/border_light" />
+<!--            <View-->
+<!--                android:layout_width="1dp"-->
+<!--                android:layout_height="50dp"-->
+<!--                android:layout_marginEnd="6dp"-->
+<!--                android:background="@color/border_light" />-->
 
             <!-- Following column -->
             <LinearLayout
@@ -196,7 +196,6 @@
             android:elevation="0dp"
             android:focusable="true"
             android:fontFamily="@font/inter_medium"
-            android:foreground="?android:attr/selectableItemBackground"
             android:hapticFeedbackEnabled="true"
             android:stateListAnimator="@null"
             android:text="Edit Profile"
@@ -207,6 +206,7 @@
             app:layout_constraintTop_toBottomOf="@+id/profileImage"
             app:rippleColor="@color/instagram_orange"
             app:strokeColor="@color/instagram_orange"
+            android:foreground="?android:attr/selectableItemBackground"
             app:strokeWidth="1dp" />
 
         <com.google.android.material.button.MaterialButton
