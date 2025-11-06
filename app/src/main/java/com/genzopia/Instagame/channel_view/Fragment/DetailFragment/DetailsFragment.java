@@ -121,7 +121,7 @@ public class DetailsFragment extends Fragment {
                     linkList.add(new LinkItem("Total Videos", String.valueOf(videoCount)));
                     linkList.add(new LinkItem("Total Games", String.valueOf(gameCount)));
                     
-                    Log.d("DetailsFragment", "Loaded details for developer: " + fullName);
+                    Log.d("DetailsFragment", "Loaded details for developer: " + fullName+dateOfBirth);
                 } else {
                     Log.d("DetailsFragment", "Developer not found: " + developerId);
                     linkList.add(new LinkItem("Error", "Developer not found"));
