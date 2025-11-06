@@ -1,10 +1,10 @@
 package com.genzopia.Instagame.ui.profile;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,6 +38,7 @@ public class ProfileFragment extends Fragment {
     private SharedPreferences sharedPreferences;
     private CircleImageView profileImage;
     private TextView usernameTop, bio, website;
+    private TextView phoneText;
     private TextView postsCount, followersCount, followingCount;
     private MaterialButton editProfileBtn;
     private ImageView menuIcon, videos_ff, games_ff, details_ff;
@@ -64,7 +65,8 @@ public class ProfileFragment extends Fragment {
         usernameTop = view.findViewById(R.id.usernameTop);
         bio = view.findViewById(R.id.bio);
         website = view.findViewById(R.id.website);
-        
+
+
         // Stats section
         postsCount = view.findViewById(R.id.postsCount);
         followersCount = view.findViewById(R.id.followersCount);
@@ -74,7 +76,6 @@ public class ProfileFragment extends Fragment {
         editProfileBtn = view.findViewById(R.id.editProfileBtn);
         menuIcon = view.findViewById(R.id.menuIcon);
         
-
 
         // Initialize Firebase Auth and SharedPreferences
         auth = FirebaseAuth.getInstance();
@@ -89,36 +90,40 @@ public class ProfileFragment extends Fragment {
         gamesFragment = new GamesFragment();
         videosFragment = new VideosFragment();
         detailsFragment = new DetailsFragment();
+
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) return;
         String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
 
         gamesFragment.setDeveloperId(userId);
         videosFragment.setDeveloperId(userId);
         detailsFragment.setDeveloperId(userId);
 
-        getActivity().getSupportFragmentManager().beginTransaction()
-                .add(R.id.contentGridPlaceholder, gamesFragment)
-                .add(R.id.contentGridPlaceholder, videosFragment)
-                .add(R.id.contentGridPlaceholder, detailsFragment)
-                .hide(videosFragment)
-                .hide(detailsFragment)
-                .commit();
+        if (getActivity() != null) {
+            getActivity().getSupportFragmentManager().beginTransaction()
+                    .add(R.id.contentGridPlaceholder, gamesFragment)
+                    .add(R.id.contentGridPlaceholder, videosFragment)
+                    .add(R.id.contentGridPlaceholder, detailsFragment)
+                    .hide(videosFragment)
+                    .hide(detailsFragment)
+                    .commit();
 
-        videos_ff.setAlpha(0.5f);
-        games_ff.setAlpha(0.5f);
-        details_ff.setAlpha(0.5f);
+            videos_ff.setAlpha(0.5f);
+            games_ff.setAlpha(0.5f);
+            details_ff.setAlpha(0.5f);
 
-        // Hide all fragments
-        getActivity().getSupportFragmentManager().beginTransaction()
-                .hide(videosFragment)
-                .hide(gamesFragment)
-                .hide(detailsFragment)
-                .commit();
+            // Hide all fragments
+            getActivity().getSupportFragmentManager().beginTransaction()
+                    .hide(videosFragment)
+                    .hide(gamesFragment)
+                    .hide(detailsFragment)
+                    .commit();
 
-        getActivity().getSupportFragmentManager().beginTransaction()
-                .show(videosFragment)
-                .commit();
+            getActivity().getSupportFragmentManager().beginTransaction()
+                    .show(videosFragment)
+                    .commit();
 
-        videos_ff.setAlpha(1.0f);
+            videos_ff.setAlpha(1.0f);
+        }
     }
 
     private void switchTab(String tab) {
@@ -128,32 +133,34 @@ public class ProfileFragment extends Fragment {
         details_ff.setAlpha(0.5f);
 
         // Hide all fragments
-        getActivity().getSupportFragmentManager().beginTransaction()
-                .hide(videosFragment)
-                .hide(gamesFragment)
-                .hide(detailsFragment)
-                .commit();
+        if (getActivity() != null) {
+            getActivity().getSupportFragmentManager().beginTransaction()
+                    .hide(videosFragment)
+                    .hide(gamesFragment)
+                    .hide(detailsFragment)
+                    .commit();
 
-        // Activate selected tab and show corresponding fragment
-        switch (tab) {
-            case "Games":
-                games_ff.setAlpha(1.0f);
-                getActivity().getSupportFragmentManager().beginTransaction()
-                        .show(gamesFragment)
-                        .commit();
-                break;
-            case "Videos":
-                videos_ff.setAlpha(1.0f);
-                getActivity().getSupportFragmentManager().beginTransaction()
-                        .show(videosFragment)
-                        .commit();
-                break;
-            case "Details":
-                details_ff.setAlpha(1.0f);
-                getActivity().getSupportFragmentManager().beginTransaction()
-                        .show(detailsFragment)
-                        .commit();
-                break;
+            // Activate selected tab and show corresponding fragment
+            switch (tab) {
+                case "Games":
+                    games_ff.setAlpha(1.0f);
+                    getActivity().getSupportFragmentManager().beginTransaction()
+                            .show(gamesFragment)
+                            .commit();
+                    break;
+                case "Videos":
+                    videos_ff.setAlpha(1.0f);
+                    getActivity().getSupportFragmentManager().beginTransaction()
+                            .show(videosFragment)
+                            .commit();
+                    break;
+                case "Details":
+                    details_ff.setAlpha(1.0f);
+                    getActivity().getSupportFragmentManager().beginTransaction()
+                            .show(detailsFragment)
+                            .commit();
+                    break;
+            }
         }
     }
 
@@ -161,8 +168,9 @@ public class ProfileFragment extends Fragment {
         profileImage.setOnClickListener(v -> openFullScreenImage());
         
         editProfileBtn.setOnClickListener(v -> {
-            // TODO: Implement edit profile functionality
-            Toast.makeText(getContext(), "Edit Profile coming soon!", Toast.LENGTH_SHORT).show();
+            // Open EditProfileActivity to allow editing full name, bio, website, and phone
+            Intent intent = new Intent(getActivity(), EditProfileActivity.class);
+            startActivity(intent);
         });
 
         menuIcon.setOnClickListener(v -> showProfileMenu());
@@ -175,9 +183,10 @@ public class ProfileFragment extends Fragment {
 
     private void fetchUserData() {
         String email = sharedPreferences.getString("email", "");
-        if (email == null || email.isEmpty()) return;
+        if (TextUtils.isEmpty(email)) return;
 
         // Get current user ID from Firebase Auth
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) return;
         String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         userRef = FirebaseDatabase.getInstance().getReference()
                 .child("users").child(userId);
@@ -234,8 +243,6 @@ public class ProfileFragment extends Fragment {
     }
 
     private void showProfileMenu() {
-        // Show a bottom sheet or popup menu with options
-        String[] options = {"Settings", "Archive", "Your Activity", "QR Code", "Saved", "Close Friends", "Logout"};
         // TODO: Implement menu UI and handle option selection
         logout(); // Temporary: directly calling logout for now
     }

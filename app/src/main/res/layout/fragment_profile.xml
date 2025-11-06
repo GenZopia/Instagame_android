@@ -264,6 +264,9 @@
             android:textColor="@color/instagram_orange"
             android:fontFamily="@font/inter_bold"
             android:paddingLeft="2dp" />
+
+        <!-- Phone number (optional) - shown when available -->
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- lightweight divider under profile area (clean separation, non-boxy) -->
