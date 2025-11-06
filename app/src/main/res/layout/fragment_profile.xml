@@ -292,7 +292,7 @@
         android:layout_marginEnd="8dp">
 
         <ImageView
-            android:id="@+id/tabPosts"
+            android:id="@+id/videos_ff"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:src="@drawable/ic_grid"
@@ -301,7 +301,7 @@
             app:tint="?android:attr/textColorPrimary" />
 
         <ImageView
-            android:id="@+id/tabReels"
+            android:id="@+id/games_ff"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:src="@drawable/ic_reels"
@@ -311,7 +311,7 @@
             android:layout_marginStart="28dp" />
 
         <ImageView
-            android:id="@+id/tabTagged"
+            android:id="@+id/details_ff"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:src="@drawable/ic_tagged"

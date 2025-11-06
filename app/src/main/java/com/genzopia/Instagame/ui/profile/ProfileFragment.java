@@ -17,6 +17,9 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
+import com.genzopia.Instagame.channel_view.Fragment.DetailFragment.DetailsFragment;
+import com.genzopia.Instagame.channel_view.Fragment.GamesFragment.GamesFragment;
+import com.genzopia.Instagame.channel_view.Fragment.VideosFragment.VideosFragment;
 import com.google.android.material.button.MaterialButton;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
@@ -37,15 +40,19 @@ public class ProfileFragment extends Fragment {
     private TextView usernameTop, bio, website;
     private TextView postsCount, followersCount, followingCount;
     private MaterialButton editProfileBtn;
-    private ImageView menuIcon, tabPosts, tabReels, tabTagged;
+    private ImageView menuIcon, videos_ff, games_ff, details_ff;
     private DatabaseReference userRef;
     private ValueEventListener userListener;
+    private GamesFragment gamesFragment;
+    private VideosFragment videosFragment;
+    private DetailsFragment detailsFragment;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_profile, container, false);
         initializeViews(view);
+        initializeFragments(view);
         setupClickListeners();
         fetchUserData();
         return view;
@@ -67,14 +74,87 @@ public class ProfileFragment extends Fragment {
         editProfileBtn = view.findViewById(R.id.editProfileBtn);
         menuIcon = view.findViewById(R.id.menuIcon);
         
-        // Tabs
-        tabPosts = view.findViewById(R.id.tabPosts);
-        tabReels = view.findViewById(R.id.tabReels);
-        tabTagged = view.findViewById(R.id.tabTagged);
+
 
         // Initialize Firebase Auth and SharedPreferences
         auth = FirebaseAuth.getInstance();
         sharedPreferences = requireContext().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE);
+    }
+
+    private void initializeFragments(View view) {
+        videos_ff = view.findViewById(R.id.videos_ff);
+        games_ff = view.findViewById(R.id.games_ff);
+        details_ff = view.findViewById(R.id.details_ff);
+
+        gamesFragment = new GamesFragment();
+        videosFragment = new VideosFragment();
+        detailsFragment = new DetailsFragment();
+        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+
+        gamesFragment.setDeveloperId(userId);
+        videosFragment.setDeveloperId(userId);
+        detailsFragment.setDeveloperId(userId);
+
+        getActivity().getSupportFragmentManager().beginTransaction()
+                .add(R.id.contentGridPlaceholder, gamesFragment)
+                .add(R.id.contentGridPlaceholder, videosFragment)
+                .add(R.id.contentGridPlaceholder, detailsFragment)
+                .hide(videosFragment)
+                .hide(detailsFragment)
+                .commit();
+
+        videos_ff.setAlpha(0.5f);
+        games_ff.setAlpha(0.5f);
+        details_ff.setAlpha(0.5f);
+
+        // Hide all fragments
+        getActivity().getSupportFragmentManager().beginTransaction()
+                .hide(videosFragment)
+                .hide(gamesFragment)
+                .hide(detailsFragment)
+                .commit();
+
+        getActivity().getSupportFragmentManager().beginTransaction()
+                .show(videosFragment)
+                .commit();
+
+        videos_ff.setAlpha(1.0f);
+    }
+
+    private void switchTab(String tab) {
+        // Reset all tabs to inactive state
+        videos_ff.setAlpha(0.5f);
+        games_ff.setAlpha(0.5f);
+        details_ff.setAlpha(0.5f);
+
+        // Hide all fragments
+        getActivity().getSupportFragmentManager().beginTransaction()
+                .hide(videosFragment)
+                .hide(gamesFragment)
+                .hide(detailsFragment)
+                .commit();
+
+        // Activate selected tab and show corresponding fragment
+        switch (tab) {
+            case "Games":
+                games_ff.setAlpha(1.0f);
+                getActivity().getSupportFragmentManager().beginTransaction()
+                        .show(gamesFragment)
+                        .commit();
+                break;
+            case "Videos":
+                videos_ff.setAlpha(1.0f);
+                getActivity().getSupportFragmentManager().beginTransaction()
+                        .show(videosFragment)
+                        .commit();
+                break;
+            case "Details":
+                details_ff.setAlpha(1.0f);
+                getActivity().getSupportFragmentManager().beginTransaction()
+                        .show(detailsFragment)
+                        .commit();
+                break;
+        }
     }
 
     private void setupClickListeners() {
@@ -88,9 +168,9 @@ public class ProfileFragment extends Fragment {
         menuIcon.setOnClickListener(v -> showProfileMenu());
 
         // Tab click listeners
-        tabPosts.setOnClickListener(v -> switchTab("posts"));
-        tabReels.setOnClickListener(v -> switchTab("reels"));
-        tabTagged.setOnClickListener(v -> switchTab("tagged"));
+        videos_ff.setOnClickListener(v -> switchTab("Videos"));
+        games_ff.setOnClickListener(v -> switchTab("Games"));
+        details_ff.setOnClickListener(v -> switchTab("Details"));
     }
 
     private void fetchUserData() {
@@ -160,28 +240,6 @@ public class ProfileFragment extends Fragment {
         logout(); // Temporary: directly calling logout for now
     }
 
-    private void switchTab(String tab) {
-        // Reset all tabs to inactive state
-        tabPosts.setAlpha(0.5f);
-        tabReels.setAlpha(0.5f);
-        tabTagged.setAlpha(0.5f);
-
-        // Activate selected tab
-        switch (tab) {
-            case "posts":
-                tabPosts.setAlpha(1.0f);
-                // TODO: Show posts grid
-                break;
-            case "reels":
-                tabReels.setAlpha(1.0f);
-                // TODO: Show reels grid
-                break;
-            case "tagged":
-                tabTagged.setAlpha(1.0f);
-                // TODO: Show tagged posts grid
-                break;
-        }
-    }
 
     private void logout() {
         clearSharedPreferences();
