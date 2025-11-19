@@ -31,6 +31,7 @@
     <color name="text_primary_dark">#FFFFFF</color>
     <color name="text_secondary_dark">#EBEBF5</color>
     <color name="border_dark">#38383A</color>
+    <color name="border_text_view_primary">#464646</color>
     <color name="divider_dark">#1C1C1E</color>
 
     <!-- Button colors -->

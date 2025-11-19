@@ -49,7 +49,7 @@ public class SplashActivity extends AppCompatActivity {
         final int rawId = isNight ? R.raw.game_logo_dark_theme : R.raw.game_logo_white_theme;
         String html = "<!DOCTYPE html>\n" +
                 "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
-                "<style>html,body{height:100%;margin:0;background:transparent;}#anim{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}#anim>div{max-width:100vw;max-height:100vh;}</style>" +
+                "<style>html,body{height:100%;margin:0;padding:0;background:transparent;overflow:hidden;}#anim{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}#anim>div{width:80vw;height:80vh;max-width:500px;max-height:500px;}</style>" +
                 "</head><body>" +
                 "<div id=\"anim\"></div>" +
                 "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js\"></script>" +

@@ -9,6 +9,8 @@
         android:id="@+id/web_splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:foregroundGravity="center"
+        android:gravity="center"
         android:layout_centerInParent="true"/>
 
 </RelativeLayout>

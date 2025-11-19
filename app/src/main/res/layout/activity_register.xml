@@ -2,6 +2,7 @@
 <!-- Wrap content in a FrameLayout so the top progress bar can be fixed while the rest scrolls -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -29,8 +30,8 @@
             <!-- Premium avatar placeholder: two rings + center photo -->
             <FrameLayout
                 android:id="@+id/avatarFrame"
-                android:layout_width="176dp"
-                android:layout_height="176dp"
+                android:layout_width="160dp"
+                android:layout_height="160dp"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintEnd_toEndOf="parent">
@@ -69,6 +70,7 @@
             <!-- Choose avatar button below avatar frame -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnChooseAvatar"
+                style="@style/Widget.Instagram.Button.Outlined"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -78,7 +80,7 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:cornerRadius="8dp"
-                app:backgroundTint="@color/primaryColor" />
+                 />
 
             <!-- Full Name -->
             <com.google.android.material.textfield.TextInputLayout
@@ -98,6 +100,7 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/txtFullName"
+                    android:background="@drawable/outlined_box_background"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="textPersonName" />
@@ -120,6 +123,8 @@
                 android:layout_marginEnd="28dp">
 
                 <LinearLayout
+                    android:background="@drawable/outlined_box_background"
+                    android:addStatesFromChildren="true"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
@@ -149,8 +154,8 @@
                         android:layout_width="1dp"
                         android:layout_height="32dp"
                         android:layout_marginEnd="8dp"
-                        android:background="?attr/colorOnSurface"
-                        android:alpha="0.12" />
+                        android:background="@color/border_text_view_primary"
+                      />
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/txtMobileNumber"
@@ -184,6 +189,7 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/txtDOB"
+                    android:background="@drawable/outlined_box_background"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="date" />
@@ -197,6 +203,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/email_address"
                 app:boxStrokeColor="@color/primaryColor"
+
                 app:boxStrokeWidth="1dp"
                 app:layout_constraintTop_toBottomOf="@id/dob"
                 app:layout_constraintStart_toStartOf="parent"
@@ -207,27 +214,49 @@
 
                 <!-- Horizontal layout: email edittext (weight=1), verify button, small tick image -->
                 <LinearLayout
+
+                    android:addStatesFromChildren="true"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp">
+                    android:paddingTop="1dp"
+                    >
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/txtRegisterEmailAddress"
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/txtRegisterLayoutEmail"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:hint="Email Address"
-                        android:inputType="textEmailAddress"
-                        android:imeOptions="actionNext" />
+                        android:layout_height="wrap_content"
+                        android:hint="@string/full_name"
+                        app:boxStrokeColor="@color/primaryColor"
+                        app:boxStrokeWidth="1dp"
+                        app:layout_constraintTop_toBottomOf="@id/btnChooseAvatar"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                       android:layout_marginEnd="8dp"
 
+                       >
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/txtRegisterEmailAddress"
+                            android:background="@drawable/outlined_box_background"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textPersonName" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@color/border_text_view_primary"
+                         />
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnVerifyEmail"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
+
                         android:text="Verify"
                         android:textAllCaps="false"
                         app:cornerRadius="8dp"
@@ -265,6 +294,7 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/txtRegisterPass"
+                    android:background="@drawable/outlined_box_background"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="textPassword" />
@@ -289,6 +319,7 @@
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/txtRegisterConfirmPass"
                     android:layout_width="match_parent"
+                    android:background="@drawable/outlined_box_background"
                     android:layout_height="wrap_content"
                     android:inputType="textPassword" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -301,6 +332,7 @@
                 android:layout_marginStart="28dp"
                 android:layout_marginTop="20dp"
                 android:layout_marginEnd="28dp"
+
                 android:text="@string/sign_up"
                 app:cornerRadius="12dp"
                 app:layout_constraintEnd_toEndOf="parent"
