@@ -91,38 +91,55 @@ public class VideoPreloadManager {
     }
 
     /**
-     * Preload videos in range: current (FIRST), then +3 ahead, then -3 behind
-     * IMPORTANT: Current video is preloaded with HIGHEST PRIORITY
+     * Preload videos in range: current (FIRST PRIORITY), then alternating ahead/behind
+     * CRITICAL: This method ensures videos are preloaded for BOTH forward and backward scrolling
      */
     private void preloadVideosAround(int position) {
         preloadExecutor.execute(() -> {
             try {
+                Log.d(TAG, "Starting preload sequence for position: " + position);
+
                 // HIGHEST PRIORITY: Preload current position FIRST and IMMEDIATELY
-                preloadAt(position);
+                // This is critical for both forward and backward scroll
+                if (position >= 0 && position < reelItems.size()) {
+                    preloadAt(position);
+                    Thread.sleep(5); // Minimal delay - let this start buffering
+                }
 
-                // Then preload next 3 videos (ahead)
+                // PRIORITY 2: Preload videos AHEAD (forward direction)
                 for (int i = 1; i <= PRELOAD_RANGE; i++) {
-                    if (Thread.currentThread().isInterrupted()) break;
+                    if (Thread.currentThread().isInterrupted()) {
+                        Log.d(TAG, "Preload interrupted");
+                        return;
+                    }
                     if (position + i < reelItems.size()) {
+                        Log.d(TAG, "Preloading ahead: position " + (position + i));
                         preloadAt(position + i);
-                        Thread.sleep(10); // Very short delay
+                        Thread.sleep(10);
                     }
                 }
 
-                // Then preload previous videos (behind)
+                // PRIORITY 3: Preload videos BEHIND (backward direction)
+                // This is crucial for smooth backward scrolling
                 for (int i = 1; i <= PRELOAD_RANGE; i++) {
-                    if (Thread.currentThread().isInterrupted()) break;
+                    if (Thread.currentThread().isInterrupted()) {
+                        Log.d(TAG, "Preload interrupted");
+                        return;
+                    }
                     if (position - i >= 0) {
+                        Log.d(TAG, "Preloading behind: position " + (position - i));
                         preloadAt(position - i);
-                        Thread.sleep(10); // Very short delay
+                        Thread.sleep(10);
                     }
                 }
 
-                Log.d(TAG, "Preload batch completed for position: " + position);
+                Log.d(TAG, "✓ Preload sequence complete for position: " + position);
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                Log.d(TAG, "Preload interrupted");
+                Log.d(TAG, "Preload sequence interrupted");
+            } catch (Exception e) {
+                Log.e(TAG, "Error in preload sequence: " + e.getMessage(), e);
             }
         });
     }
@@ -250,15 +267,40 @@ public class VideoPreloadManager {
 
     /**
      * Get preloaded and paused player - ready to attach to PlayerView
+     * Production-ready: Includes validation and logging
      */
     public ExoPlayer getPreloadedPlayer(String videoId) {
         PreloadedPlayerData data = playerCache.get(videoId);
-        if (data != null && data.player != null) {
-            Log.d(TAG, "✓ Returning READY preloaded player for: " + videoId);
-            return data.player;
+
+        if (data == null) {
+            Log.w(TAG, "✗ NO preloaded player found for: " + videoId + " (will load on demand)");
+            return null;
         }
-        Log.w(TAG, "✗ NO preloaded player found for: " + videoId + " (will load on demand)");
-        return null;
+
+        ExoPlayer player = data.player;
+        if (player == null) {
+            Log.w(TAG, "✗ Cached player is null for: " + videoId);
+            return null;
+        }
+
+        // Validate player is in a usable state
+        try {
+            int playbackState = player.getPlaybackState();
+            long duration = player.getDuration();
+
+            if (playbackState == Player.STATE_READY && duration > 0) {
+                Log.d(TAG, "✓ Returning READY preloaded player for: " + videoId +
+                      " (duration: " + duration + "ms)");
+                return player;
+            } else {
+                Log.w(TAG, "⚠ Preloaded player not ready for: " + videoId +
+                      " (state: " + playbackState + ", duration: " + duration + ")");
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error validating preloaded player for: " + videoId + ", error: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

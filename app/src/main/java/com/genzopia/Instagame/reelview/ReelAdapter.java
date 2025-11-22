@@ -55,6 +55,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     // Video preload manager for Instagram-like smooth transitions
     private VideoPreloadManager videoPreloadManager;
 
+    // CRITICAL: Playback position cache - preserves video progress for backward scroll
+    // Maps videoId -> playback position in milliseconds
+    private java.util.Map<String, Long> playbackPositionCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // Track which videos are currently playing or paused (not reloading)
+    private java.util.Set<String> activeVideoIds = java.util.Collections.newSetFromMap(
+            new java.util.concurrent.ConcurrentHashMap<>());
+
     // Follow state management
     private java.util.Map<String, Boolean> followStates = new java.util.concurrent.ConcurrentHashMap<>();
     private java.util.Map<String, java.util.List<ReelViewHolder>> developerViewHolders = new java.util.concurrent.ConcurrentHashMap<>();
@@ -134,134 +142,395 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Don't auto-play here, let the scroll listener handle it
     }
 
+    /**
+     * Play video at given position with intelligent preload detection.
+     * Production-ready: Handles forward/backward scroll, race conditions, and fallback loading.
+     */
     public void playVideoAtPosition(int position) {
-        if (position < 0 || position >= reelItems.size()) return;
-        if (currentPlayingPosition == position) return;
+        if (position < 0 || position >= reelItems.size()) {
+            Log.w("ReelAdapter", "Invalid position: " + position);
+            return;
+        }
+
+        // Skip if already playing this position
+        if (currentPlayingPosition == position) {
+            Log.d("ReelAdapter", "Already playing position: " + position);
+            return;
+        }
+
+        // Pause any currently playing video
         pauseCurrentVideo();
 
+        // Get the ViewHolder for this position
         ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
-        if (holder == null) return;
+        if (holder == null) {
+            Log.w("ReelAdapter", "ViewHolder not found for position: " + position);
+            return;
+        }
 
         ReelItem item = reelItems.get(position);
         String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
 
+        // Handle unavailable videos
         if (videoUri == null || videoUri.isEmpty() || videoUri.equals(item.getVideoId())) {
             holder.playerView.setVisibility(View.INVISIBLE);
             holder.tvTitle.setText("Video unavailable");
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             isPausedByHold = false;
+            Log.w("ReelAdapter", "Video unavailable at position: " + position);
             return;
         }
 
         holder.playerView.setVisibility(View.VISIBLE);
-        Log.d("ReelAdapter", "Playing video at position: " + position);
+        Log.d("ReelAdapter", "Starting playback at position: " + position + ", videoId: " + item.getVideoId());
 
-        // CRITICAL: Check if we have a preloaded player ready to use
+        // Step 1: Try to use preloaded player (with validation)
         ExoPlayer preloadedPlayer = videoPreloadManager.getPreloadedPlayer(item.getVideoId());
 
-        if (preloadedPlayer != null) {
-            // ✓ EXCELLENT! Use preloaded player - it's already buffered and ready
-            // This is the Instagram-like experience with NO BLACK SCREEN
-            Log.d("ReelAdapter", "✓ Using PRELOADED player for: " + item.getVideoId());
+        if (preloadedPlayer != null && isPlayerReadyForPlayback(preloadedPlayer)) {
+            Log.d("ReelAdapter", "✓ Using PRELOADED & READY player for: " + item.getVideoId());
+            playWithPreloadedPlayer(holder, preloadedPlayer, position, item);
+            return;
+        }
 
-            // Release old shared player only if it's different from preloaded
+        // Step 2: Fallback - Load on demand with proper error handling
+        if (preloadedPlayer != null) {
+            Log.w("ReelAdapter", "⚠ Preloaded player not ready yet, using fallback for: " + item.getVideoId());
+        } else {
+            Log.w("ReelAdapter", "⚠ No preloaded player found, loading on demand: " + item.getVideoId());
+        }
+
+        playWithOnDemandLoading(holder, videoUri, position, item);
+    }
+
+    /**
+     * Check if player is truly ready for immediate playback
+     */
+    private boolean isPlayerReadyForPlayback(ExoPlayer player) {
+        try {
+            // Player must be in STATE_READY and have valid duration
+            return player != null
+                    && player.getPlaybackState() == Player.STATE_READY
+                    && player.getDuration() > 0;
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error checking player state: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Play video using preloaded player (fast path)
+     * Production-ready: Preserves playback position for backward scroll
+     */
+    private void playWithPreloadedPlayer(ReelViewHolder holder, ExoPlayer preloadedPlayer,
+                                        int position, ReelItem item) {
+        try {
+            String videoId = item.getVideoId();
+
+            // Save current playback position before switching
+            if (sharedPlayer != null && currentPlayingPosition >= 0 && currentPlayingPosition < reelItems.size()) {
+                try {
+                    ReelItem currentItem = reelItems.get(currentPlayingPosition);
+                    if (currentItem != null && currentItem.getVideoId() != null) {
+                        long currentPosition = sharedPlayer.getCurrentPosition();
+                        playbackPositionCache.put(currentItem.getVideoId(), currentPosition);
+                        Log.d("ReelAdapter", "Saved playback position for " + currentItem.getVideoId() +
+                              ": " + currentPosition + "ms");
+                    }
+                } catch (Exception e) {
+                    Log.e("ReelAdapter", "Error saving playback position: " + e.getMessage());
+                }
+            }
+
+            // Release old shared player if it's different
             if (sharedPlayer != null && sharedPlayer != preloadedPlayer) {
                 try {
                     sharedPlayer.release();
+                    Log.d("ReelAdapter", "Released old shared player");
                 } catch (Exception e) {
-                    Log.e("ReelAdapter", "Error releasing old player", e);
+                    Log.e("ReelAdapter", "Error releasing old player: " + e.getMessage());
                 }
             }
 
-            // Switch to preloaded player
+            // Use preloaded player as new shared player
             sharedPlayer = preloadedPlayer;
 
-            // Attach and play
+            // Attach player to view
             holder.playerView.setPlayer(sharedPlayer);
+
+            // CRITICAL FIX: Restore playback position if video was previously played
+            Long savedPosition = playbackPositionCache.get(videoId);
+            if (savedPosition != null && savedPosition > 0) {
+                // Video was previously played - resume from saved position
+                sharedPlayer.seekTo(savedPosition);
+                activeVideoIds.add(videoId);
+                Log.d("ReelAdapter", "✓ Resuming video " + videoId +
+                      " from saved position: " + savedPosition + "ms (backward scroll)");
+            } else {
+                // First time playing this video - start from beginning
+                sharedPlayer.seekTo(0);
+                activeVideoIds.add(videoId);
+                Log.d("ReelAdapter", "✓ Starting video " + videoId + " from beginning (new play)");
+            }
+
+            // Start playback
             sharedPlayer.setPlayWhenReady(true);
+
+            // Update tracking
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             isPausedByHold = false;
+
+            // Start UI progress updates
             holder.startProgressUpdates();
 
-        } else {
-            // Fallback: Load on demand (should rarely happen with proper preloading)
-            Log.w("ReelAdapter", "⚠ No preloaded player, loading on demand: " + item.getVideoId());
+            // Add listener for tracking
+            attachPlayerListener(item);
 
-            // Create fresh player for on-demand playback
-            if (sharedPlayer != null) {
+            Log.d("ReelAdapter", "✓ Playing with preloaded player at position: " + position);
+
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error playing with preloaded player: " + e.getMessage(), e);
+            // Fallback to on-demand if error occurs
+            playWithOnDemandLoading(holder, item.getVideoUrl(), position, item);
+        }
+    }
+
+    /**
+     * Play video by loading on demand (fallback path)
+     * Production-ready: Also preserves playback position
+     */
+    private void playWithOnDemandLoading(ReelViewHolder holder, String videoUri,
+                                        int position, ReelItem item) {
+        try {
+            String videoId = item.getVideoId();
+
+            // Save current playback position before switching
+            if (sharedPlayer != null && currentPlayingPosition >= 0 && currentPlayingPosition < reelItems.size()) {
                 try {
-                    sharedPlayer.release();
+                    ReelItem currentItem = reelItems.get(currentPlayingPosition);
+                    if (currentItem != null && currentItem.getVideoId() != null) {
+                        long currentPosition = sharedPlayer.getCurrentPosition();
+                        playbackPositionCache.put(currentItem.getVideoId(), currentPosition);
+                        Log.d("ReelAdapter", "Saved playback position for " + currentItem.getVideoId() +
+                              ": " + currentPosition + "ms");
+                    }
                 } catch (Exception e) {
-                    Log.e("ReelAdapter", "Error releasing old player", e);
+                    Log.e("ReelAdapter", "Error saving playback position: " + e.getMessage());
                 }
             }
 
+            // Release old player
+            if (sharedPlayer != null) {
+                try {
+                    sharedPlayer.release();
+                    Log.d("ReelAdapter", "Released old player for on-demand loading");
+                } catch (Exception e) {
+                    Log.e("ReelAdapter", "Error releasing old player: " + e.getMessage());
+                }
+            }
+
+            // Create fresh player
             sharedPlayer = new ExoPlayer.Builder(context).build();
             sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
             sharedPlayer.setPlayWhenReady(false);
 
+            // Prepare media source
             DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
             MediaItem mediaItem = MediaItem.fromUri(videoUri);
-            MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-            sharedPlayer.setMediaSource(hlsSource);
+
+            // Try HLS first, fall back to progressive if needed
+            MediaSource mediaSource = createMediaSourceForUrl(videoUri, mediaItem, dataSourceFactory);
+
+            sharedPlayer.setMediaSource(mediaSource);
             sharedPlayer.prepare();
 
+            // Attach to view
             holder.playerView.setPlayer(sharedPlayer);
-            sharedPlayer.setPlayWhenReady(true);
+
+            // CRITICAL FIX: Restore playback position if video was previously played
+            Long savedPosition = playbackPositionCache.get(videoId);
+            if (savedPosition != null && savedPosition > 0) {
+                // Video was previously played - resume from saved position
+                sharedPlayer.seekTo(savedPosition);
+                activeVideoIds.add(videoId);
+                Log.d("ReelAdapter", "✓ Resuming video " + videoId +
+                      " from saved position: " + savedPosition + "ms (on-demand, backward scroll)");
+            } else {
+                // First time playing this video - start from beginning
+                sharedPlayer.seekTo(0);
+                activeVideoIds.add(videoId);
+                Log.d("ReelAdapter", "✓ Starting video " + videoId + " from beginning (on-demand, new play)");
+            }
+
+            // Update tracking
             currentPlayingViewHolder = holder;
             currentPlayingPosition = position;
             isPausedByHold = false;
-            holder.startProgressUpdates();
-        }
 
-        // Add listener for error handling and view tracking
-        sharedPlayer.addListener(new Player.Listener() {
-            boolean triedFallback = false;
-            @Override
-            public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
-                if (!triedFallback && preloadedPlayer == null) {
-                    triedFallback = true;
-                    Log.e("ReelAdapter", "Player error, attempting fallback: " + error.getMessage());
-                    DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
-                    MediaItem mediaItem = MediaItem.fromUri(videoUri);
-                    MediaSource mp4Source = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-                    sharedPlayer.setMediaSource(mp4Source);
-                    sharedPlayer.prepare();
-                    sharedPlayer.setPlayWhenReady(true);
-                }
+            // Start UI progress updates
+            holder.startProgressUpdates();
+
+            // Add listener with error handling and retry logic
+            attachPlayerListenerWithErrorHandling(item, videoUri);
+
+            // Set to play (will start when STATE_READY)
+            sharedPlayer.setPlayWhenReady(true);
+
+            Log.d("ReelAdapter", "Started on-demand loading at position: " + position);
+
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Critical error in on-demand loading: " + e.getMessage(), e);
+            // Mark video as unavailable
+            holder.playerView.setVisibility(View.INVISIBLE);
+            holder.tvTitle.setText("Video unavailable");
+        }
+    }
+
+    /**
+     * Create appropriate media source based on URL format
+     */
+    private MediaSource createMediaSourceForUrl(String videoUri, MediaItem mediaItem,
+                                               DefaultDataSourceFactory dataSourceFactory) {
+        try {
+            String urlLower = videoUri.toLowerCase();
+
+            // HLS format
+            if (urlLower.contains(".m3u8") || urlLower.contains("hls")) {
+                Log.d("ReelAdapter", "Creating HLS media source");
+                return new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
             }
-            
-            @Override
-            public void onPlaybackStateChanged(int playbackState) {
-                if (playbackState == Player.STATE_READY) {
-                    if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
-                        ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
+
+            // Progressive format (MP4, etc)
+            Log.d("ReelAdapter", "Creating progressive media source");
+            return new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error creating media source: " + e.getMessage());
+            // Default to progressive
+            return new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+        }
+    }
+
+    /**
+     * Attach standard listener for playback tracking
+     */
+    private void attachPlayerListener(ReelItem item) {
+        try {
+            sharedPlayer.addListener(new Player.Listener() {
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                            try {
+                                ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
+                            } catch (Exception e) {
+                                Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
+                            }
+                        }
                     }
                 }
-            }
-            
-            @Override
-            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-                if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
-                    ViewCountManager.checkAndIncrementViewCount(
-                        item.getVideoId(),
-                        sharedPlayer.getCurrentPosition(),
-                        sharedPlayer.getDuration()
-                    );
-                }
-            }
-        });
 
-        holder.playerView.setPlayer(sharedPlayer);
-        currentPlayingViewHolder = holder;
-        currentPlayingPosition = position;
-        isPausedByHold = false;
-        holder.startProgressUpdates();
+                @Override
+                public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                    if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                        try {
+                            ViewCountManager.checkAndIncrementViewCount(
+                                    item.getVideoId(),
+                                    sharedPlayer.getCurrentPosition(),
+                                    sharedPlayer.getDuration()
+                            );
+                        } catch (Exception e) {
+                            Log.e("ReelAdapter", "Error checking view count: " + e.getMessage());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error attaching player listener: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Attach listener with error handling and fallback retry
+     */
+    private void attachPlayerListenerWithErrorHandling(ReelItem item, String videoUri) {
+        try {
+            sharedPlayer.addListener(new Player.Listener() {
+                private boolean triedFallback = false;
+
+                @Override
+                public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+                    Log.e("ReelAdapter", "Player error: " + error.getMessage());
+
+                    if (!triedFallback) {
+                        triedFallback = true;
+                        try {
+                            Log.w("ReelAdapter", "Attempting fallback to progressive format");
+                            DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+                            MediaItem mediaItem = MediaItem.fromUri(videoUri);
+                            MediaSource fallbackSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                                    .createMediaSource(mediaItem);
+                            sharedPlayer.setMediaSource(fallbackSource);
+                            sharedPlayer.prepare();
+                            sharedPlayer.setPlayWhenReady(true);
+                            Log.d("ReelAdapter", "Fallback initiated");
+                        } catch (Exception e) {
+                            Log.e("ReelAdapter", "Fallback also failed: " + e.getMessage());
+                        }
+                    }
+                }
+
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                            try {
+                                ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
+                            } catch (Exception e) {
+                                Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
+                            }
+                        }
+                    }
+                }
+
+                @Override
+                public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                    if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                        try {
+                            ViewCountManager.checkAndIncrementViewCount(
+                                    item.getVideoId(),
+                                    sharedPlayer.getCurrentPosition(),
+                                    sharedPlayer.getDuration()
+                            );
+                        } catch (Exception e) {
+                            Log.e("ReelAdapter", "Error checking view count: " + e.getMessage());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error attaching error-handling listener: " + e.getMessage());
+        }
     }
 
     private void pauseCurrentVideo() {
+        // Save position before pausing
+        if (sharedPlayer != null && currentPlayingPosition >= 0 && currentPlayingPosition < reelItems.size()) {
+            try {
+                ReelItem item = reelItems.get(currentPlayingPosition);
+                if (item != null && item.getVideoId() != null) {
+                    long currentPosition = sharedPlayer.getCurrentPosition();
+                    playbackPositionCache.put(item.getVideoId(), currentPosition);
+                    Log.d("ReelAdapter", "Saved playback position on pause for " + item.getVideoId() +
+                          ": " + currentPosition + "ms");
+                }
+            } catch (Exception e) {
+                Log.e("ReelAdapter", "Error saving position on pause: " + e.getMessage());
+            }
+        }
+
         if (sharedPlayer != null) {
             sharedPlayer.setPlayWhenReady(false);
         }
@@ -292,29 +561,122 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
     }
 
+    /**
+     * Ensures only the first visible video plays, while pausing all others.
+     * This is the primary entry point for video playback synchronization.
+     *
+     * @see #pauseOtherVisibleVideos(int)
+     */
     public void ensureOnlyCurrentVideoPlays() {
-        // Pause all videos except the current one
-        if (recyclerView.getLayoutManager() != null) {
-            int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
-            if (firstVisible >= 0 && firstVisible < getItemCount()) {
-                if (currentPlayingPosition != firstVisible) {
-                    Log.d("ReelAdapter", "ensureOnlyCurrentVideoPlays: Playing and pausing video at position " + firstVisible);
-                    playVideoAtPosition(firstVisible);
+        if (recyclerView.getLayoutManager() == null) {
+            Log.w("ReelAdapter", "LayoutManager is null in ensureOnlyCurrentVideoPlays");
+            return;
+        }
 
-                    // CRITICAL: Pause after a small delay to ensure video starts playing first
-                    // This gives the video time to load and transition smoothly
-                    new android.os.Handler().postDelayed(() -> {
-                        if (sharedPlayer != null && sharedPlayer.isPlaying()) {
-                            Log.d("ReelAdapter", "Pausing video after initial play");
-                            sharedPlayer.setPlayWhenReady(false);
+        int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager())
+                .findFirstVisibleItemPosition();
+
+        if (firstVisible < 0 || firstVisible >= getItemCount()) {
+            Log.w("ReelAdapter", "Invalid firstVisible position: " + firstVisible);
+            return;
+        }
+
+        // Only proceed if we're switching to a different video
+        if (currentPlayingPosition == firstVisible) {
+            Log.d("ReelAdapter", "Already playing video at position " + firstVisible);
+            return;
+        }
+
+        Log.d("ReelAdapter", "ensureOnlyCurrentVideoPlays: Switching from position " +
+              currentPlayingPosition + " to position " + firstVisible);
+
+        // Step 1: Pause all other visible videos first (BEFORE playing the new one)
+        pauseOtherVisibleVideos(firstVisible);
+
+        // Step 2: Play the video at the first visible position
+        playVideoAtPosition(firstVisible);
+    }
+
+    /**
+     * Pauses and detaches players for all visible ViewHolders except the one at keepPosition.
+     * This ensures clean separation between videos - no two videos should have attached players.
+     *
+     * @param keepPosition The adapter position of the video to keep playing
+     */
+    private void pauseOtherVisibleVideos(int keepPosition) {
+        if (recyclerView.getLayoutManager() == null) {
+            Log.w("ReelAdapter", "LayoutManager is null in pauseOtherVisibleVideos");
+            return;
+        }
+
+        androidx.recyclerview.widget.LinearLayoutManager layoutManager =
+                (androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager();
+
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+
+        if (firstVisible < 0 || lastVisible < 0) {
+            Log.w("ReelAdapter", "Invalid visible range: first=" + firstVisible + ", last=" + lastVisible);
+            return;
+        }
+
+        Log.d("ReelAdapter", "pauseOtherVisibleVideos: Pausing all except position " + keepPosition +
+              " (visible range: " + firstVisible + " to " + lastVisible + ")");
+
+        for (int pos = firstVisible; pos <= lastVisible; pos++) {
+            if (pos < 0 || pos >= getItemCount()) {
+                continue;
+            }
+
+            // Skip the position we want to keep playing
+            if (pos == keepPosition) {
+                Log.d("ReelAdapter", "Skipping position " + pos + " (target video)");
+                continue;
+            }
+
+            RecyclerView.ViewHolder viewHolder = recyclerView.findViewHolderForAdapterPosition(pos);
+            if (viewHolder instanceof ReelViewHolder) {
+                ReelViewHolder reelViewHolder = (ReelViewHolder) viewHolder;
+                Log.d("ReelAdapter", "Pausing video at position " + pos);
+
+                try {
+                    // Stop progress updates to prevent unnecessary UI updates
+                    reelViewHolder.stopProgressUpdates();
+
+                    // If this ViewHolder has a player attached, pause and detach it
+                    if (reelViewHolder.playerView != null) {
+                        Player player = reelViewHolder.playerView.getPlayer();
+                        if (player != null) {
+                            try {
+                                player.setPlayWhenReady(false);
+                                Log.d("ReelAdapter", "Paused player at position " + pos);
+                            } catch (Exception e) {
+                                Log.e("ReelAdapter", "Error pausing player at position " + pos, e);
+                            }
                         }
-                    }, 500); // Pause after 500ms of playback
+
+                        // Detach the player from the PlayerView to prevent multiple attachments
+                        // This is crucial for clean playback transitions
+                        try {
+                            reelViewHolder.playerView.setPlayer(null);
+                            Log.d("ReelAdapter", "Detached player from PlayerView at position " + pos);
+                        } catch (Exception e) {
+                            Log.e("ReelAdapter", "Error detaching player at position " + pos, e);
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("ReelAdapter", "Error pausing video at position " + pos, e);
                 }
             }
         }
+
+        Log.d("ReelAdapter", "pauseOtherVisibleVideos: Complete");
     }
 
     public void releaseAllPlayers() {
+        // Save current playback position before release
+        saveCurrentPlaybackPosition();
+
         pauseCurrentVideo();
         if (sharedPlayer != null) {
             sharedPlayer.release();
@@ -330,6 +692,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Clear follow state cache
         followStates.clear();
         developerViewHolders.clear();
+
+        // DO NOT clear playback position cache - preserve it across sessions
+        Log.d("ReelAdapter", "Playback position cache size: " + playbackPositionCache.size());
     }
     
     /**
@@ -339,6 +704,53 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         if (videoPreloadManager != null && position >= 0 && position < reelItems.size()) {
             videoPreloadManager.updateCurrentPosition(position);
         }
+    }
+
+    /**
+     * Save current playback position before switching videos
+     * Production-ready: Ensures position is preserved
+     */
+    private void saveCurrentPlaybackPosition() {
+        if (sharedPlayer != null && currentPlayingPosition >= 0 && currentPlayingPosition < reelItems.size()) {
+            try {
+                ReelItem item = reelItems.get(currentPlayingPosition);
+                if (item != null && item.getVideoId() != null) {
+                    long currentPosition = sharedPlayer.getCurrentPosition();
+                    if (currentPosition > 0) {
+                        playbackPositionCache.put(item.getVideoId(), currentPosition);
+                        Log.d("ReelAdapter", "Saved final playback position for " + item.getVideoId() +
+                              ": " + currentPosition + "ms");
+                    }
+                }
+            } catch (Exception e) {
+                Log.e("ReelAdapter", "Error saving playback position on release: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Clear playback position cache - useful when user wants fresh start
+     */
+    public void clearPlaybackPositionCache() {
+        playbackPositionCache.clear();
+        activeVideoIds.clear();
+        Log.d("ReelAdapter", "Cleared playback position cache");
+    }
+
+    /**
+     * Get cached playback position for a video
+     */
+    public Long getPlaybackPosition(String videoId) {
+        return playbackPositionCache.get(videoId);
+    }
+
+    /**
+     * Remove position cache for specific video
+     */
+    public void clearPlaybackPosition(String videoId) {
+        playbackPositionCache.remove(videoId);
+        activeVideoIds.remove(videoId);
+        Log.d("ReelAdapter", "Cleared playback position for: " + videoId);
     }
 
     // Follow state management methods
@@ -417,27 +829,70 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         });
     }
 
+    /**
+     * Handle scroll state changes - optimized for both forward and backward scrolling.
+     * Production-ready: Ensures preload happens before playback, works reliably in both directions.
+     */
     public void handleScrollStateChange(int newState) {
+        if (recyclerView.getLayoutManager() == null) {
+            Log.w("ReelAdapter", "LayoutManager is null in handleScrollStateChange");
+            return;
+        }
+
+        androidx.recyclerview.widget.LinearLayoutManager layoutManager =
+                (androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager();
+
+        int firstVisible = layoutManager.findFirstVisibleItemPosition();
+
+        if (firstVisible < 0 || firstVisible >= getItemCount()) {
+            Log.w("ReelAdapter", "Invalid firstVisible position: " + firstVisible);
+            return;
+        }
+
+        String scrollDirection = "UNKNOWN";
+
         if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-            // When scrolling stops, find the first visible item and play it
-            if (recyclerView.getLayoutManager() != null) {
-                int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
-                if (firstVisible >= 0 && firstVisible < getItemCount()) {
-                    // Update preload manager with current position
-                    updatePreloadManagerPosition(firstVisible);
-                    // Only play if it's different from current position
-                    if (currentPlayingPosition != firstVisible) {
-                        playVideoAtPosition(firstVisible);
-                    }
+            // Scrolling has stopped - time to play the video
+            determineScrollDirection(firstVisible);
+            scrollDirection = currentPlayingPosition < firstVisible ? "FORWARD" : "BACKWARD";
+
+            Log.d("ReelAdapter", "SCROLL_STATE_IDLE: Direction=" + scrollDirection +
+                  ", currentPlaying=" + currentPlayingPosition + ", firstVisible=" + firstVisible);
+
+            // Step 1: Update preload manager position (triggers background preload)
+            updatePreloadManagerPosition(firstVisible);
+
+            // Step 2: WAIT briefly for preload to buffer the video
+            // This is critical for smooth playback, especially on backward scroll
+            new android.os.Handler().postDelayed(() -> {
+                if (currentPlayingPosition != firstVisible) {
+                    Log.d("ReelAdapter", "After preload delay: Playing video at position " + firstVisible);
+                    playVideoAtPosition(firstVisible);
+                } else {
+                    Log.d("ReelAdapter", "Already playing position: " + firstVisible);
                 }
-            }
+            }, 300); // 300ms delay for preload to start buffering
+
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-            // Update preload during dragging
-            if (recyclerView.getLayoutManager() != null) {
-                int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
-                if (firstVisible >= 0 && firstVisible < getItemCount()) {
-                    updatePreloadManagerPosition(firstVisible);
-                }
+            // User is dragging - update preload in background but don't play yet
+            Log.d("ReelAdapter", "SCROLL_STATE_DRAGGING: firstVisible=" + firstVisible);
+            updatePreloadManagerPosition(firstVisible);
+
+        } else if (newState == RecyclerView.SCROLL_STATE_SETTLING) {
+            // Snap-settling state - just log for debugging
+            Log.d("ReelAdapter", "SCROLL_STATE_SETTLING: firstVisible=" + firstVisible);
+        }
+    }
+
+    /**
+     * Determine scroll direction to help debug scroll issues
+     */
+    private void determineScrollDirection(int newPosition) {
+        if (currentPlayingPosition >= 0) {
+            if (newPosition > currentPlayingPosition) {
+                Log.d("ReelAdapter", "Scroll direction: FORWARD (from " + currentPlayingPosition + " to " + newPosition + ")");
+            } else if (newPosition < currentPlayingPosition) {
+                Log.d("ReelAdapter", "Scroll direction: BACKWARD (from " + currentPlayingPosition + " to " + newPosition + ")");
             }
         }
     }
