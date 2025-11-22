@@ -112,9 +112,20 @@ public class DashboardFragment extends Fragment {
                         reelAdapter.notifyItemRangeInserted(oldSize, reels.size());
                         // Preload follow states for new reels
                         reelAdapter.preloadFollowStates();
-                        // If this is the initial load, play the first video
-                        if (oldSize == 0 && reels.size() > 0) {
-                            reelView.post(() -> reelAdapter.ensureOnlyCurrentVideoPlays());
+
+                        // CRITICAL FIX: Trigger initial preload IMMEDIATELY at position 0
+                        if (oldSize == 0) {
+                            Log.d("DashboardFragment", "INITIAL LOAD: Starting preload at position 0");
+                            reelAdapter.updatePreloadManagerPosition(0);
+
+                            // WAIT FOR PRELOAD TO COMPLETE, THEN PLAY
+                            // Use a delay to give preload time to buffer the first video
+                            reelView.postDelayed(() -> {
+                                Log.d("DashboardFragment", "After preload delay: Playing first video");
+                                if (isAdded()) {
+                                    reelAdapter.ensureOnlyCurrentVideoPlays();
+                                }
+                            }, 2500); // Wait 2.5 seconds for first video to preload and buffer
                         }
                     }
                     isLoadingMore = false;

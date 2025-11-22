@@ -23,9 +23,9 @@ import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.webgl_gameloading.Game_mode;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
 import com.genzopia.Instagame.utils.ViewCountManager;
+import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
@@ -47,11 +47,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     private Context context;
     private List<ReelItem> reelItems;
     private RecyclerView recyclerView;
-    private SimpleExoPlayer sharedPlayer;
+    private ExoPlayer sharedPlayer;
     private ReelViewHolder currentPlayingViewHolder = null;
     private int currentPlayingPosition = -1;
     private boolean isPausedByHold = false;
     
+    // Video preload manager for Instagram-like smooth transitions
+    private VideoPreloadManager videoPreloadManager;
+
     // Follow state management
     private java.util.Map<String, Boolean> followStates = new java.util.concurrent.ConcurrentHashMap<>();
     private java.util.Map<String, java.util.List<ReelViewHolder>> developerViewHolders = new java.util.concurrent.ConcurrentHashMap<>();
@@ -61,12 +64,18 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         this.reelItems = reelItems;
         this.recyclerView = recyclerView;
         initializePlayer();
+        initializeVideoPreloadManager();
     }
 
     private void initializePlayer() {
-        sharedPlayer = new SimpleExoPlayer.Builder(context).build();
+        sharedPlayer = new ExoPlayer.Builder(context).build();
         sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
         sharedPlayer.setPlayWhenReady(false);
+    }
+
+    private void initializeVideoPreloadManager() {
+        videoPreloadManager = new VideoPreloadManager(context);
+        videoPreloadManager.setReelItems(reelItems);
     }
 
     @NonNull
@@ -129,10 +138,13 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         if (position < 0 || position >= reelItems.size()) return;
         if (currentPlayingPosition == position) return;
         pauseCurrentVideo();
+
         ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
         if (holder == null) return;
+
         ReelItem item = reelItems.get(position);
         String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
+
         if (videoUri == null || videoUri.isEmpty() || videoUri.equals(item.getVideoId())) {
             holder.playerView.setVisibility(View.INVISIBLE);
             holder.tvTitle.setText("Video unavailable");
@@ -141,20 +153,79 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             isPausedByHold = false;
             return;
         }
+
         holder.playerView.setVisibility(View.VISIBLE);
-        Log.e("test5557","videouri="+videoUri+"   laodingurl="+MediaItem.fromUri(videoUri));
-        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
-        MediaItem mediaItem = MediaItem.fromUri(videoUri);
-        MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-        sharedPlayer.setMediaSource(hlsSource);
-        sharedPlayer.prepare();
-        sharedPlayer.setPlayWhenReady(true);
+        Log.d("ReelAdapter", "Playing video at position: " + position);
+
+        // CRITICAL: Check if we have a preloaded player ready to use
+        ExoPlayer preloadedPlayer = videoPreloadManager.getPreloadedPlayer(item.getVideoId());
+
+        if (preloadedPlayer != null) {
+            // ✓ EXCELLENT! Use preloaded player - it's already buffered and ready
+            // This is the Instagram-like experience with NO BLACK SCREEN
+            Log.d("ReelAdapter", "✓ Using PRELOADED player for: " + item.getVideoId());
+
+            // Release old shared player only if it's different from preloaded
+            if (sharedPlayer != null && sharedPlayer != preloadedPlayer) {
+                try {
+                    sharedPlayer.release();
+                } catch (Exception e) {
+                    Log.e("ReelAdapter", "Error releasing old player", e);
+                }
+            }
+
+            // Switch to preloaded player
+            sharedPlayer = preloadedPlayer;
+
+            // Attach and play
+            holder.playerView.setPlayer(sharedPlayer);
+            sharedPlayer.setPlayWhenReady(true);
+            currentPlayingViewHolder = holder;
+            currentPlayingPosition = position;
+            isPausedByHold = false;
+            holder.startProgressUpdates();
+
+        } else {
+            // Fallback: Load on demand (should rarely happen with proper preloading)
+            Log.w("ReelAdapter", "⚠ No preloaded player, loading on demand: " + item.getVideoId());
+
+            // Create fresh player for on-demand playback
+            if (sharedPlayer != null) {
+                try {
+                    sharedPlayer.release();
+                } catch (Exception e) {
+                    Log.e("ReelAdapter", "Error releasing old player", e);
+                }
+            }
+
+            sharedPlayer = new ExoPlayer.Builder(context).build();
+            sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
+            sharedPlayer.setPlayWhenReady(false);
+
+            DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+            MediaItem mediaItem = MediaItem.fromUri(videoUri);
+            MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+            sharedPlayer.setMediaSource(hlsSource);
+            sharedPlayer.prepare();
+
+            holder.playerView.setPlayer(sharedPlayer);
+            sharedPlayer.setPlayWhenReady(true);
+            currentPlayingViewHolder = holder;
+            currentPlayingPosition = position;
+            isPausedByHold = false;
+            holder.startProgressUpdates();
+        }
+
+        // Add listener for error handling and view tracking
         sharedPlayer.addListener(new Player.Listener() {
             boolean triedFallback = false;
             @Override
-            public void onPlayerError(PlaybackException error) {
-                if (!triedFallback) {
+            public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+                if (!triedFallback && preloadedPlayer == null) {
                     triedFallback = true;
+                    Log.e("ReelAdapter", "Player error, attempting fallback: " + error.getMessage());
+                    DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+                    MediaItem mediaItem = MediaItem.fromUri(videoUri);
                     MediaSource mp4Source = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
                     sharedPlayer.setMediaSource(mp4Source);
                     sharedPlayer.prepare();
@@ -165,7 +236,6 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_READY) {
-                    // Store video duration for view tracking
                     if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
                         ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
                     }
@@ -174,7 +244,6 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             
             @Override
             public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-                // Track view count when video reaches 60%
                 if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
                     ViewCountManager.checkAndIncrementViewCount(
                         item.getVideoId(),
@@ -184,6 +253,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
             }
         });
+
         holder.playerView.setPlayer(sharedPlayer);
         currentPlayingViewHolder = holder;
         currentPlayingPosition = position;
@@ -228,7 +298,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
             if (firstVisible >= 0 && firstVisible < getItemCount()) {
                 if (currentPlayingPosition != firstVisible) {
+                    Log.d("ReelAdapter", "ensureOnlyCurrentVideoPlays: Playing and pausing video at position " + firstVisible);
                     playVideoAtPosition(firstVisible);
+
+                    // CRITICAL: Pause after a small delay to ensure video starts playing first
+                    // This gives the video time to load and transition smoothly
+                    new android.os.Handler().postDelayed(() -> {
+                        if (sharedPlayer != null && sharedPlayer.isPlaying()) {
+                            Log.d("ReelAdapter", "Pausing video after initial play");
+                            sharedPlayer.setPlayWhenReady(false);
+                        }
+                    }, 500); // Pause after 500ms of playback
                 }
             }
         }
@@ -241,11 +321,26 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             sharedPlayer = null;
         }
         
+        // Release video preload manager
+        if (videoPreloadManager != null) {
+            videoPreloadManager.shutdown();
+            videoPreloadManager = null;
+        }
+
         // Clear follow state cache
         followStates.clear();
         developerViewHolders.clear();
     }
     
+    /**
+     * Update the preload manager with the current scroll position
+     */
+    public void updatePreloadManagerPosition(int position) {
+        if (videoPreloadManager != null && position >= 0 && position < reelItems.size()) {
+            videoPreloadManager.updateCurrentPosition(position);
+        }
+    }
+
     // Follow state management methods
     private void registerViewHolderForDeveloper(String developerId, ReelViewHolder holder) {
         if (developerId == null) return;
@@ -328,6 +423,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             if (recyclerView.getLayoutManager() != null) {
                 int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
                 if (firstVisible >= 0 && firstVisible < getItemCount()) {
+                    // Update preload manager with current position
+                    updatePreloadManagerPosition(firstVisible);
                     // Only play if it's different from current position
                     if (currentPlayingPosition != firstVisible) {
                         playVideoAtPosition(firstVisible);
@@ -335,8 +432,13 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
             }
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-            // Don't pause video when scrolling starts, let it continue playing
-            // Only pause when the view is completely out of view
+            // Update preload during dragging
+            if (recyclerView.getLayoutManager() != null) {
+                int firstVisible = ((androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager()).findFirstVisibleItemPosition();
+                if (firstVisible >= 0 && firstVisible < getItemCount()) {
+                    updatePreloadManagerPosition(firstVisible);
+                }
+            }
         }
     }
     
