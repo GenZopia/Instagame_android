@@ -27,7 +27,8 @@ A modern Android social media app for gaming content creators, featuring Instagr
 | Language | Kotlin & Java |
 | Min SDK | 24 (Android 7.0) |
 | Target SDK | 36 |
-| Backend | Firebase (Auth, Realtime Database, Firestore, Storage) |
+| Backend | Firebase (Auth, Realtime Database, Firestore) |
+| File Storage | Custom Cloudflare Workers (see Storage section below) |
 | Video Player | ExoPlayer 2.19.1 |
 | Image Loading | Glide 4.12.0 |
 | Camera | CameraX 1.4.2 |
@@ -157,8 +158,13 @@ gradle/
    - Enable Authentication methods (Email/Password, Google)
    - Set up Realtime Database and Storage rules
 
-3. **API Key Configuration**
-   Add to `gradle.properties`:
+3. **Storage Configuration** (See [Storage Architecture](#-storage-architecture) section)
+   
+   This project uses custom Cloudflare Workers for file storage. You need to either:
+   - Set up your own Cloudflare Workers + R2 storage, OR
+   - Replace with Firebase Storage or another storage solution
+   
+   Add your API key to `gradle.properties`:
    ```properties
    file_upload_api_key=YOUR_API_KEY_HERE
    ```
@@ -186,6 +192,48 @@ gradle/
 - **Reels** - Discover all videos in TikTok-style feed
 - **Post** - Record or upload new videos
 - **Profile** - Your profile, videos, games, and settings
+
+---
+
+## ☁️ Storage Architecture
+
+This project uses **custom Cloudflare Workers** for file storage instead of Firebase Storage. You'll need to set up your own storage solution to run this project.
+
+### Current Cloudflare Workers
+
+| Worker | URL | Auth | Purpose | Used In |
+|--------|-----|------|---------|---------|
+| **file-upload-worker** | `file-upload-worker.genzopia.workers.dev` | 🔐 API Key | Profile photo upload/delete | `RegisterActivity.kt` |
+| **file-uploader** | `file-uploader.genzopia.workers.dev` | ❌ Open | Video file uploads | `FileUploader.java` |
+| **video-signer** | `video-signer.genzopia.workers.dev` | ❌ Open | Generate signed video URLs | `ReelRepository.java`, `HomeFragment.java`, `DashboardFragment.java`, `VideoDetailActivity.java`, `VideoAdapter.java` |
+| **link-signer** | `link-signer.genzopia.workers.dev` | ❌ Open | Generate signed game URLs | `Game_mode.java` |
+
+### Files That Use Storage
+
+| File | Storage Usage |
+|------|---------------|
+| `LoginActivities/RegisterActivity.kt` | Profile photo upload (requires API key) |
+| `Post/FileUploader.java` | Video uploads to cloud storage |
+| `reelview/ReelRepository.java` | Fetches signed video URLs for playback |
+| `ui/home/HomeFragment.java` | Fetches signed video URLs for home feed |
+| `ui/dashboard/DashboardFragment.java` | Fetches signed video URLs for reels |
+| `channel_view/VideoDetailActivity.java` | Fetches signed video URL for detail view |
+| `channel_view/Fragment/VideosFragment/VideoAdapter.java` | Fetches signed video URLs in channel |
+| `webgl_gameloading/Game_mode.java` | Fetches signed game URLs |
+
+### To Configure Your Own Storage
+
+**Option 1: Use Firebase Storage**
+- Replace Cloudflare Worker URLs with Firebase Storage upload/download logic
+- Update `RegisterActivity.kt` to use `FirebaseStorage.getInstance()`
+- Update `FileUploader.java` to upload to Firebase Storage
+- Generate download URLs using Firebase's `getDownloadUrl()`
+
+**Option 2: Set Up Your Own Cloudflare Workers**
+- Create Cloudflare Workers with R2 storage bucket
+- Deploy workers for file upload and URL signing
+- Update the worker URLs in the code
+- Set your API key in `gradle.properties`
 
 ---
 
