@@ -14,6 +14,21 @@
         app:surface_type="texture_view"
         app:resize_mode="zoom"/>
 
+    <!-- Thumbnail ImageView - Shows first frame while video loads (no black screen) -->
+    <!-- CRITICAL: Must be AFTER player_view in XML so it renders on top (z-order) -->
+    <ImageView
+        android:id="@+id/thumbnail_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="Video thumbnail"
+        android:visibility="visible"
+        android:background="@color/black"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
     <!-- Three-dot menu button -->
     <ImageView
         android:id="@+id/threeDotMenu"

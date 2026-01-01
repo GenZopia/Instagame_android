@@ -3,6 +3,7 @@ package com.genzopia.Instagame.reelview;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.util.Log;
 import android.view.GestureDetector;
@@ -19,6 +20,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestBuilder;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
+import androidx.annotation.Nullable;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.webgl_gameloading.Game_mode;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
@@ -55,6 +60,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     
     // Video preload manager for Instagram-like smooth transitions
     private VideoPreloadManager videoPreloadManager;
+    
+    // Thumbnail manager for eliminating black screens
+    private ThumbnailManager thumbnailManager;
     
     // OPTIMIZATION: Reusable Handler instance (avoid creating new handlers repeatedly)
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -107,6 +115,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         this.recyclerView = recyclerView;
         initializePlayer();
         initializeVideoPreloadManager();
+        initializeThumbnailManager();
     }
 
     private void initializePlayer() {
@@ -118,6 +127,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     private void initializeVideoPreloadManager() {
         videoPreloadManager = new VideoPreloadManager(context);
         videoPreloadManager.setReelItems(reelItems);
+    }
+    
+    private void initializeThumbnailManager() {
+        thumbnailManager = new ThumbnailManager(context);
+        // Pre-generate thumbnails for all reel items
+        thumbnailManager.preloadThumbnails(reelItems);
     }
 
     @NonNull
@@ -143,6 +158,16 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         super.onViewRecycled(holder);
         if (currentPlayingViewHolder == holder) {
             pauseCurrentVideo();
+        }
+        
+        // CRITICAL FIX: Clear thumbnail when ViewHolder is recycled to prevent wrong thumbnail
+        if (holder.thumbnailView != null) {
+            Glide.with(context).clear(holder.thumbnailView);
+            holder.thumbnailView.setImageDrawable(null);
+            // Reset to visible with black background for next use (not GONE)
+            holder.thumbnailView.setVisibility(View.VISIBLE);
+            holder.thumbnailView.setAlpha(1f);
+            holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK);
         }
         
         // Unregister this ViewHolder from follow state management
@@ -215,6 +240,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Handle unavailable videos
         if (videoUri == null || videoUri.isEmpty() || videoUri.equals(item.getVideoId())) {
             holder.playerView.setVisibility(View.INVISIBLE);
+            // Keep thumbnail visible with black background for unavailable videos
+            if (holder.thumbnailView != null) {
+                holder.thumbnailView.setVisibility(View.VISIBLE);
+                holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK);
+            }
             holder.tvTitle.setText("Video unavailable");
             currentPlayingViewHolder = holder;
             previousPlayingPosition = currentPlayingPosition;
@@ -225,16 +255,36 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
 
         holder.playerView.setVisibility(View.VISIBLE);
+        
+        // CRITICAL: Ensure thumbnail view is visible while video loads
+        if (holder.thumbnailView != null) {
+            holder.thumbnailView.setVisibility(View.VISIBLE);
+            holder.thumbnailView.setAlpha(1f);
+            holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK); // Immediate black placeholder
+        }
         Log.d("ReelAdapter", "Starting playback at position: " + position + ", videoId: " + item.getVideoId());
 
-        // OPTIMIZATION: Try to reuse cached player for backward scroll
+        // OPTIMIZATION FOR BACKWARD SCROLL: Check cached player first for backward scroll
         ExoPlayer cachedPlayer = playerCache.get(item.getVideoId());
-        if (cachedPlayer != null && isPlayerReadyForPlayback(cachedPlayer) && isBackwardScroll) {
+        if (isBackwardScroll && cachedPlayer != null && isPlayerReadyForPlayback(cachedPlayer)) {
             Log.d("ReelAdapter", "✓✓✓ REUSING CACHED PLAYER (backward scroll) for: " + item.getVideoId());
             playWithCachedPlayer(holder, cachedPlayer, position, item);
             previousPlayingPosition = currentPlayingPosition;
             currentPlayingPosition = position;
             return;
+        }
+
+        // OPTIMIZATION FOR BACKWARD SCROLL: Also check preloaded player for backward scroll
+        // This ensures backward scroll is as fast as forward scroll
+        if (isBackwardScroll) {
+            ExoPlayer preloadedPlayerBackward = videoPreloadManager.getPreloadedPlayer(item.getVideoId());
+            if (preloadedPlayerBackward != null && isPlayerReadyForPlayback(preloadedPlayerBackward)) {
+                Log.d("ReelAdapter", "✓ Using PRELOADED player for BACKWARD scroll: " + item.getVideoId());
+                playWithPreloadedPlayer(holder, preloadedPlayerBackward, position, item);
+                previousPlayingPosition = currentPlayingPosition;
+                currentPlayingPosition = position;
+                return;
+            }
         }
 
         // Save current player to cache before switching
@@ -251,7 +301,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             }
         }
 
-        // Step 1: Try to use preloaded player (with validation)
+        // Step 1: Try to use preloaded player (with validation) - for forward scroll or fallback
         ExoPlayer preloadedPlayer = videoPreloadManager.getPreloadedPlayer(item.getVideoId());
 
         if (preloadedPlayer != null && isPlayerReadyForPlayback(preloadedPlayer)) {
@@ -387,6 +437,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 Log.d("ReelAdapter", "▶️ Started audio for cached player");
             }
 
+            // CRITICAL: Don't hide thumbnail here - let onRenderedFirstFrame handle it
+            // This prevents black screen flash between thumbnail and video
+
             // Update tracking
             currentPlayingViewHolder = holder;
             isPausedByHold = false;
@@ -394,8 +447,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Start UI progress updates
             holder.startProgressUpdates();
 
-            // Add listener for tracking
-            attachPlayerListener(item);
+            // Add listener for tracking (hides thumbnail when first frame is rendered)
+            attachPlayerListenerWithThumbnailHide(holder, item);
 
             Log.d("ReelAdapter", "✓✓✓ CACHED PLAYBACK ACTIVE (backward scroll optimized!) - " + videoId);
 
@@ -495,11 +548,18 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             currentPlayingViewHolder = holder;
             isPausedByHold = false;
 
+            // CRITICAL: Don't hide thumbnail here - let onRenderedFirstFrame handle it
+            // This prevents black screen flash between thumbnail and video
+
+            // Update tracking
+            currentPlayingViewHolder = holder;
+            isPausedByHold = false;
+
             // Start UI progress updates
             holder.startProgressUpdates();
 
-            // Add listener for tracking
-            attachPlayerListener(item);
+            // Add listener for tracking (hides thumbnail when first frame is rendered)
+            attachPlayerListenerWithThumbnailHide(holder, item);
 
             Log.d("ReelAdapter", "✓ Playing with preloaded player at position: " + position);
 
@@ -589,6 +649,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Start UI progress updates
             holder.startProgressUpdates();
 
+            // Add listener for thumbnail hiding (when first frame is rendered)
+            attachPlayerListenerWithThumbnailHide(holder, item);
+            
             // Add listener with error handling and retry logic
             attachPlayerListenerWithErrorHandling(item, videoUri);
 
@@ -633,11 +696,25 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
      * Attach standard listener for playback tracking
      */
     private void attachPlayerListener(ReelItem item) {
+        attachPlayerListenerWithThumbnailHide(currentPlayingViewHolder, item);
+    }
+    
+    /**
+     * Attach listener with thumbnail hide support - hides thumbnail when video starts playing
+     * CRITICAL FIX: Uses onRenderedFirstFrame to hide thumbnail only after first frame is actually rendered
+     * This eliminates the black screen flash between thumbnail and video
+     */
+    private void attachPlayerListenerWithThumbnailHide(ReelViewHolder holder, ReelItem item) {
         try {
             sharedPlayer.addListener(new Player.Listener() {
+                private boolean thumbnailHidden = false;
+                
                 @Override
                 public void onPlaybackStateChanged(int playbackState) {
                     if (playbackState == Player.STATE_READY) {
+                        // Don't hide thumbnail here - wait for first frame to be rendered
+                        // This prevents black screen flash
+                        
                         if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
                             try {
                                 ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
@@ -645,6 +722,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                                 Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
                             }
                         }
+                    }
+                }
+                
+                @Override
+                public void onRenderedFirstFrame() {
+                    // CRITICAL: Hide thumbnail only after first frame is actually rendered
+                    // This eliminates the black screen flash
+                    if (!thumbnailHidden && holder != null && holder.thumbnailView != null) {
+                        thumbnailHidden = true;
+                        // Hide immediately when first frame is rendered (no delay needed)
+                        // The fade animation will handle smooth transition
+                        hideThumbnail(holder);
+                        Log.d("ReelAdapter", "First frame rendered, hiding thumbnail with fade");
                     }
                 }
 
@@ -668,6 +758,92 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
     }
 
+    /**
+     * Show thumbnail for video (eliminates black screen while loading)
+     * CRITICAL: Must pass the correct holder to avoid wrong thumbnail issue
+     */
+    private void showThumbnail(ReelItem reelItem, ReelViewHolder holder) {
+        if (thumbnailManager == null || reelItem == null || holder == null) {
+            return;
+        }
+        
+        String videoId = reelItem.getVideoId();
+        String videoUrl = reelItem.getVideoUrl();
+        
+        if (videoId == null || videoUrl == null || videoUrl.isEmpty() || videoUrl.equals(videoId)) {
+            // Hide thumbnail if no valid URL
+            if (holder.thumbnailView != null) {
+                holder.thumbnailView.setVisibility(View.GONE);
+            }
+            return;
+        }
+        
+        if (holder.thumbnailView == null) {
+            return;
+        }
+        
+        // CRITICAL FIX: Clear previous thumbnail image to prevent wrong thumbnail showing
+        // This is essential for RecyclerView recycling - clears image from previous video
+        Glide.with(context).clear(holder.thumbnailView);
+        holder.thumbnailView.setImageDrawable(null);
+        
+        // CRITICAL: Make thumbnail visible IMMEDIATELY before loading (prevents black screen)
+        // Set a black background as placeholder while thumbnail loads
+        holder.thumbnailView.setVisibility(View.VISIBLE);
+        holder.thumbnailView.setAlpha(1f); // Ensure fully opaque
+        holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK); // Black placeholder
+        
+        // Use Glide to load thumbnail (uses disk cache automatically)
+        RequestBuilder<Bitmap> request = thumbnailManager.getThumbnailRequest(videoUrl);
+        if (request != null) {
+            request.listener(new RequestListener<Bitmap>() {
+                @Override
+                public boolean onLoadFailed(@Nullable com.bumptech.glide.load.engine.GlideException e, Object model, Target<Bitmap> target, boolean isFirstResource) {
+                    // On failure, keep thumbnail visible with black background (better than hiding)
+                    Log.w("ReelAdapter", "Thumbnail load failed for: " + videoId);
+                    if (holder.thumbnailView != null) {
+                        holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK);
+                    }
+                    return false; // Let Glide handle the error
+                }
+
+                @Override
+                public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target, com.bumptech.glide.load.DataSource dataSource, boolean isFirstResource) {
+                    // Remove black background when thumbnail loads successfully
+                    if (holder.thumbnailView != null) {
+                        holder.thumbnailView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                    }
+                    Log.d("ReelAdapter", "Thumbnail loaded successfully for: " + videoId);
+                    return false; // Let Glide handle the resource
+                }
+            }).into(holder.thumbnailView);
+            Log.d("ReelAdapter", "Requesting thumbnail for videoId: " + videoId + ", url: " + videoUrl);
+        } else {
+            // If Glide request creation failed, keep black background visible
+            Log.w("ReelAdapter", "Failed to create thumbnail request for: " + videoId);
+            holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK);
+        }
+    }
+    
+    /**
+     * Hide thumbnail when video starts playing
+     * Uses fade out animation for smooth transition - eliminates black screen flash
+     */
+    private void hideThumbnail(ReelViewHolder holder) {
+        if (holder != null && holder.thumbnailView != null) {
+            // Use fade out animation for smoother transition
+            holder.thumbnailView.animate()
+                    .alpha(0f)
+                    .setDuration(100) // 100ms fade out
+                    .withEndAction(() -> {
+                        holder.thumbnailView.setVisibility(View.GONE);
+                        holder.thumbnailView.setAlpha(1f); // Reset alpha for next use
+                    })
+                    .start();
+            Log.d("ReelAdapter", "Hiding thumbnail (fade out) for: " + holder.currentVideoId);
+        }
+    }
+    
     /**
      * Attach listener with error handling and fallback retry
      */
@@ -1103,7 +1279,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         if (newState == RecyclerView.SCROLL_STATE_IDLE) {
             // Scrolling has stopped - time to play the video
             determineScrollDirection(firstVisible);
-            String scrollDirection = currentPlayingPosition < firstVisible ? "FORWARD" : "BACKWARD";
+            boolean isBackward = currentPlayingPosition > firstVisible;
+            String scrollDirection = isBackward ? "BACKWARD" : "FORWARD";
 
             Log.d("ReelAdapter", "SCROLL_STATE_IDLE: Direction=" + scrollDirection +
                   ", currentPlaying=" + currentPlayingPosition + ", firstVisible=" + firstVisible);
@@ -1111,15 +1288,18 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // OPTIMIZATION: Update preload immediately (no delay)
             updatePreloadManagerPosition(firstVisible);
 
-            // OPTIMIZATION: Reduced delay from 300ms to 100ms for faster playback
-            // Preload manager now works asynchronously without blocking
+            // OPTIMIZATION FOR BACKWARD SCROLL: Shorter delay for backward scroll (cached players are faster)
+            // Forward scroll: 100ms (preload needs time)
+            // Backward scroll: 50ms (cached players are instant)
+            int delay = isBackward ? 50 : 100;
+            
             debounceRunnable = () -> {
                 if (currentPlayingPosition != firstVisible) {
-                    Log.d("ReelAdapter", "Playing video at position " + firstVisible);
+                    Log.d("ReelAdapter", "Playing video at position " + firstVisible + " (direction: " + scrollDirection + ")");
                     playVideoAtPosition(firstVisible);
                 }
             };
-            mainHandler.postDelayed(debounceRunnable, 100); // Reduced from 300ms
+            mainHandler.postDelayed(debounceRunnable, delay);
 
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
             // OPTIMIZATION: Debounce preload updates during dragging to reduce excessive calls
@@ -1200,6 +1380,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
     public class ReelViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
+        ImageView thumbnailView; // Thumbnail overlay (shown while video loads)
         TextView tvTitle, tvLikes;
         TextView tvGameName;
         CircleImageView profile_image;
@@ -1232,6 +1413,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         public ReelViewHolder(@NonNull View itemView) {
             super(itemView);
             playerView = itemView.findViewById(R.id.player_view);
+            thumbnailView = itemView.findViewById(R.id.thumbnail_view);
+            
+            // CRITICAL: Initialize thumbnail view - make it visible initially with black background
+            if (thumbnailView != null) {
+                thumbnailView.setVisibility(View.VISIBLE);
+                thumbnailView.setAlpha(1f);
+                thumbnailView.setBackgroundColor(android.graphics.Color.BLACK); // Black placeholder
+            }
+            
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvLikes = itemView.findViewById(R.id.tv_likes);
 
@@ -1405,6 +1595,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             
             // Clear any previous player attachment
             playerView.setPlayer(null);
+            
+            // CRITICAL: Ensure thumbnail view is visible immediately (before async loading)
+            if (thumbnailView != null) {
+                thumbnailView.setVisibility(View.VISIBLE);
+                thumbnailView.setAlpha(1f);
+                thumbnailView.setBackgroundColor(android.graphics.Color.BLACK); // Immediate black placeholder
+            }
+            
+            // OPTIMIZATION: Show thumbnail while video loads (eliminates black screen)
+            // CRITICAL: Pass 'this' holder directly to ensure correct thumbnail for this video
+            showThumbnail(reelItem, this);
             
             // Reset progress line and set pivot point
             progressLine.setScaleX(0f);

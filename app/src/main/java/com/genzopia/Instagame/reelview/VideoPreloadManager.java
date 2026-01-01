@@ -28,8 +28,8 @@ import java.util.concurrent.Executors;
  */
 public class VideoPreloadManager {
     private static final String TAG = "VideoPreloadManager";
-    private static final int PRELOAD_RANGE = 3; // Videos to preload ahead/behind
-    private static final int MAX_CACHED_VIDEOS = 7; // 1 current + 3 before + 3 after
+    private static final int PRELOAD_RANGE = 4; // Videos to preload ahead/behind (increased from 3 for better backward scroll)
+    private static final int MAX_CACHED_VIDEOS = 9; // 1 current + 4 before + 4 after (increased to match PRELOAD_RANGE)
 
     private final Context context;
     private final ExecutorService preloadExecutor;
@@ -94,6 +94,7 @@ public class VideoPreloadManager {
      * Preload videos in range: current (FIRST PRIORITY), then alternating ahead/behind
      * CRITICAL: This method ensures videos are preloaded for BOTH forward and backward scrolling
      * OPTIMIZED: Removed Thread.sleep() - preloads execute asynchronously without blocking
+     * OPTIMIZED FOR BACKWARD SCROLL: Backward preloading now has EQUAL priority to forward
      */
     private void preloadVideosAround(int position) {
         preloadExecutor.execute(() -> {
@@ -106,33 +107,30 @@ public class VideoPreloadManager {
                     preloadAt(position);
                 }
 
-                // PRIORITY 2: Preload videos AHEAD (forward direction) - submit all at once
+                // OPTIMIZATION FOR BACKWARD SCROLL: Preload forward AND backward in parallel
+                // This ensures backward videos are ready just as fast as forward videos
                 for (int i = 1; i <= PRELOAD_RANGE; i++) {
                     if (Thread.currentThread().isInterrupted()) {
                         Log.d(TAG, "Preload interrupted");
                         return;
                     }
+                    
+                    // Preload forward (ahead) - PRIORITY 2A
                     if (position + i < reelItems.size()) {
-                        final int targetPos = position + i;
+                        final int targetPosForward = position + i;
                         preloadExecutor.execute(() -> {
-                            Log.d(TAG, "Preloading ahead: position " + targetPos);
-                            preloadAt(targetPos);
+                            Log.d(TAG, "Preloading ahead: position " + targetPosForward);
+                            preloadAt(targetPosForward);
                         });
                     }
-                }
-
-                // PRIORITY 3: Preload videos BEHIND (backward direction) - submit all at once
-                // This is crucial for smooth backward scrolling
-                for (int i = 1; i <= PRELOAD_RANGE; i++) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        Log.d(TAG, "Preload interrupted");
-                        return;
-                    }
+                    
+                    // Preload backward (behind) - PRIORITY 2B (NOW EQUAL PRIORITY!)
+                    // This is crucial for smooth backward scrolling
                     if (position - i >= 0) {
-                        final int targetPos = position - i;
+                        final int targetPosBackward = position - i;
                         preloadExecutor.execute(() -> {
-                            Log.d(TAG, "Preloading behind: position " + targetPos);
-                            preloadAt(targetPos);
+                            Log.d(TAG, "Preloading behind: position " + targetPosBackward);
+                            preloadAt(targetPosBackward);
                         });
                     }
                 }
