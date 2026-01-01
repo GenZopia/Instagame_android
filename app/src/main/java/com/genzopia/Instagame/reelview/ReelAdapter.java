@@ -55,6 +55,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     
     // Video preload manager for Instagram-like smooth transitions
     private VideoPreloadManager videoPreloadManager;
+    
+    // OPTIMIZATION: Reusable Handler instance (avoid creating new handlers repeatedly)
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    
+    // OPTIMIZATION: Debounce scroll events to prevent excessive preload calls
+    private android.os.Handler debounceHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable debounceRunnable;
+    private int lastScrollPosition = -1;
 
     // ===== CRITICAL OPTIMIZATION: Player Cache for Smooth Backward Scroll =====
     // Maps videoId → ExoPlayer (enables fast reuse instead of recreation)
@@ -89,6 +97,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     // Follow state management
     private java.util.Map<String, Boolean> followStates = new java.util.concurrent.ConcurrentHashMap<>();
     private java.util.Map<String, java.util.List<ReelViewHolder>> developerViewHolders = new java.util.concurrent.ConcurrentHashMap<>();
+    
+    // OPTIMIZATION: Cache profile image URLs to avoid redundant Firebase queries
+    private java.util.Map<String, String> profileImageUrlCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ReelAdapter(Context context, List<ReelItem> reelItems, RecyclerView recyclerView) {
         this.context = context;
@@ -301,12 +312,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
             }
 
-            // Add small delay to ensure audio stops completely
-            try {
-                Thread.sleep(50);  // 50ms delay for audio to stop
-            } catch (InterruptedException e) {
-                Log.e("ReelAdapter", "Sleep interrupted: " + e.getMessage());
-            }
+            // OPTIMIZED: Removed Thread.sleep() - volume muting happens immediately
+            // Audio will stop asynchronously, no blocking delay needed
 
         } catch (Exception e) {
             Log.e("ReelAdapter", "Error in pauseAllCachedPlayers: " + e.getMessage());
@@ -927,6 +934,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         // Clear follow state cache
         followStates.clear();
         developerViewHolders.clear();
+        
+        // OPTIMIZATION: Clear profile image cache on release (can be kept for session persistence if desired)
+        // profileImageUrlCache.clear(); // Uncomment if you want to clear cache on release
 
         // DO NOT clear playback position cache - preserve it across sessions
         Log.d("ReelAdapter", "Playback position cache size: " + playbackPositionCache.size());
@@ -1067,6 +1077,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     /**
      * Handle scroll state changes - optimized for both forward and backward scrolling.
      * Production-ready: Ensures preload happens before playback, works reliably in both directions.
+     * OPTIMIZED: Added debouncing and reduced delays for faster response
      */
     public void handleScrollStateChange(int newState) {
         if (recyclerView.getLayoutManager() == null) {
@@ -1084,38 +1095,44 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             return;
         }
 
-        String scrollDirection = "UNKNOWN";
+        // OPTIMIZATION: Cancel previous debounce runnable
+        if (debounceRunnable != null) {
+            debounceHandler.removeCallbacks(debounceRunnable);
+        }
 
         if (newState == RecyclerView.SCROLL_STATE_IDLE) {
             // Scrolling has stopped - time to play the video
             determineScrollDirection(firstVisible);
-            scrollDirection = currentPlayingPosition < firstVisible ? "FORWARD" : "BACKWARD";
+            String scrollDirection = currentPlayingPosition < firstVisible ? "FORWARD" : "BACKWARD";
 
             Log.d("ReelAdapter", "SCROLL_STATE_IDLE: Direction=" + scrollDirection +
                   ", currentPlaying=" + currentPlayingPosition + ", firstVisible=" + firstVisible);
 
-            // Step 1: Update preload manager position (triggers background preload)
+            // OPTIMIZATION: Update preload immediately (no delay)
             updatePreloadManagerPosition(firstVisible);
 
-            // Step 2: WAIT briefly for preload to buffer the video
-            // This is critical for smooth playback, especially on backward scroll
-            new android.os.Handler().postDelayed(() -> {
+            // OPTIMIZATION: Reduced delay from 300ms to 100ms for faster playback
+            // Preload manager now works asynchronously without blocking
+            debounceRunnable = () -> {
                 if (currentPlayingPosition != firstVisible) {
-                    Log.d("ReelAdapter", "After preload delay: Playing video at position " + firstVisible);
+                    Log.d("ReelAdapter", "Playing video at position " + firstVisible);
                     playVideoAtPosition(firstVisible);
-                } else {
-                    Log.d("ReelAdapter", "Already playing position: " + firstVisible);
                 }
-            }, 300); // 300ms delay for preload to start buffering
+            };
+            mainHandler.postDelayed(debounceRunnable, 100); // Reduced from 300ms
 
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-            // User is dragging - update preload in background but don't play yet
-            Log.d("ReelAdapter", "SCROLL_STATE_DRAGGING: firstVisible=" + firstVisible);
-            updatePreloadManagerPosition(firstVisible);
+            // OPTIMIZATION: Debounce preload updates during dragging to reduce excessive calls
+            if (firstVisible != lastScrollPosition) {
+                lastScrollPosition = firstVisible;
+                Log.d("ReelAdapter", "SCROLL_STATE_DRAGGING: firstVisible=" + firstVisible);
+                debounceRunnable = () -> updatePreloadManagerPosition(firstVisible);
+                debounceHandler.postDelayed(debounceRunnable, 150); // Debounce preload updates
+            }
 
         } else if (newState == RecyclerView.SCROLL_STATE_SETTLING) {
-            // Snap-settling state - just log for debugging
-            Log.d("ReelAdapter", "SCROLL_STATE_SETTLING: firstVisible=" + firstVisible);
+            // Snap-settling state - update preload immediately
+            updatePreloadManagerPosition(firstVisible);
         }
     }
 
@@ -1433,6 +1450,23 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 return;
             }
             
+            // OPTIMIZATION: Check cache first to avoid redundant Firebase queries
+            String cachedUrl = profileImageUrlCache.get(userId);
+            if (cachedUrl != null) {
+                if (cachedUrl.isEmpty()) {
+                    // Cached as empty/null - use default image
+                    profile_image.setImageResource(R.drawable.demo_user);
+                } else {
+                    // Load from cache
+                    Glide.with(context)
+                            .load(cachedUrl)
+                            .placeholder(R.drawable.demo_user)
+                            .error(R.drawable.demo_user)
+                            .into(profile_image);
+                }
+                return;
+            }
+            
             // Reference to the user's data in Firebase
             DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(userId);
             
@@ -1441,6 +1475,10 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     if (snapshot.exists()) {
                         String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                        
+                        // OPTIMIZATION: Cache the URL (even if empty) to avoid future queries
+                        String urlToCache = (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) ? profilePhotoUrl : "";
+                        profileImageUrlCache.put(userId, urlToCache);
                         
                         if (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) {
                             // Load the profile image using Glide
@@ -1454,6 +1492,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                             profile_image.setImageResource(R.drawable.demo_user);
                         }
                     } else {
+                        // OPTIMIZATION: Cache empty URL for non-existent users
+                        profileImageUrlCache.put(userId, "");
                         // Set default image if user doesn't exist
                         profile_image.setImageResource(R.drawable.demo_user);
                     }
@@ -1462,6 +1502,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 @Override
                 public void onCancelled(@NonNull DatabaseError error) {
                     Log.e("ReelAdapter", "Error loading profile image: " + error.getMessage());
+                    // OPTIMIZATION: Cache empty URL on error to prevent repeated failed queries
+                    profileImageUrlCache.put(userId, "");
                     // Set default image on error
                     profile_image.setImageResource(R.drawable.demo_user);
                 }
@@ -1815,25 +1857,34 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
         void startProgressUpdates() {
             stopProgressUpdates();
-            progressHandler = new android.os.Handler();
+            // OPTIMIZATION: Reuse Handler instance - create only once per ViewHolder
+            if (progressHandler == null) {
+                progressHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+            }
             progressRunnable = new Runnable() {
+                private long lastViewCountCheck = 0;
+                
                 @Override
                 public void run() {
                     if (sharedPlayer != null && sharedPlayer.getDuration() > 0) {
                         float progress = (float) sharedPlayer.getCurrentPosition() / sharedPlayer.getDuration();
                         progressLine.setScaleX(progress);
                         
-                        // Check for view count increment every 500ms
-                        if (currentVideoId != null && sharedPlayer.getCurrentPosition() % 500 < 100) {
+                        // OPTIMIZATION: Check view count every 500ms using timestamp instead of modulo
+                        long currentTime = System.currentTimeMillis();
+                        if (currentVideoId != null && (currentTime - lastViewCountCheck) >= 500) {
                             ViewCountManager.checkAndIncrementViewCount(
                                 currentVideoId,
                                 sharedPlayer.getCurrentPosition(),
                                 sharedPlayer.getDuration()
                             );
+                            lastViewCountCheck = currentTime;
                         }
                     }
                     if (progressHandler != null) {
-                        progressHandler.postDelayed(this, 100); // Update every 100ms
+                        // OPTIMIZATION: Increased interval from 100ms to 150ms for better performance
+                        // Still smooth enough for progress bar, reduces CPU usage by 33%
+                        progressHandler.postDelayed(this, 150);
                     }
                 }
             };
@@ -1841,11 +1892,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
 
         void stopProgressUpdates() {
-            if (progressHandler != null) {
-                progressHandler.removeCallbacksAndMessages(null);
-                progressHandler = null;
+            if (progressHandler != null && progressRunnable != null) {
+                progressHandler.removeCallbacks(progressRunnable);
             }
             progressRunnable = null;
+            // OPTIMIZATION: Keep progressHandler instance for reuse (don't set to null)
         }
 
         class CustomGestureListener extends GestureDetector.SimpleOnGestureListener {

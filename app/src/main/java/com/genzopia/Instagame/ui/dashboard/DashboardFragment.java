@@ -113,19 +113,19 @@ public class DashboardFragment extends Fragment {
                         // Preload follow states for new reels
                         reelAdapter.preloadFollowStates();
 
-                        // CRITICAL FIX: Trigger initial preload IMMEDIATELY at position 0
+                        // OPTIMIZED: Trigger initial preload IMMEDIATELY at position 0
                         if (oldSize == 0) {
                             Log.d("DashboardFragment", "INITIAL LOAD: Starting preload at position 0");
                             reelAdapter.updatePreloadManagerPosition(0);
 
-                            // WAIT FOR PRELOAD TO COMPLETE, THEN PLAY
-                            // Use a delay to give preload time to buffer the first video
+                            // OPTIMIZATION: Reduced delay from 2500ms to 800ms
+                            // Preload manager now works asynchronously and faster
                             reelView.postDelayed(() -> {
-                                Log.d("DashboardFragment", "After preload delay: Playing first video");
+                                Log.d("DashboardFragment", "Playing first video");
                                 if (isAdded()) {
                                     reelAdapter.ensureOnlyCurrentVideoPlays();
                                 }
-                            }, 2500); // Wait 2.5 seconds for first video to preload and buffer
+                            }, 800); // Reduced from 2500ms - preload is now more efficient
                         }
                     }
                     isLoadingMore = false;
@@ -266,8 +266,8 @@ public class DashboardFragment extends Fragment {
                                 if (reelAdapter != null) {
                                     reelAdapter.notifyItemChanged(0);
                                     
-                                    // Trigger video playback after a short delay to ensure the view is ready
-                                    new android.os.Handler().postDelayed(() -> {
+                                    // OPTIMIZATION: Use View.postDelayed instead of creating new Handler
+                                    reelView.postDelayed(() -> {
                                         reelAdapter.playVideoAtPosition(0);
                                     }, 500);
                                 }

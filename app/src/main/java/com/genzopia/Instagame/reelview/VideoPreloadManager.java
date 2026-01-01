@@ -93,6 +93,7 @@ public class VideoPreloadManager {
     /**
      * Preload videos in range: current (FIRST PRIORITY), then alternating ahead/behind
      * CRITICAL: This method ensures videos are preloaded for BOTH forward and backward scrolling
+     * OPTIMIZED: Removed Thread.sleep() - preloads execute asynchronously without blocking
      */
     private void preloadVideosAround(int position) {
         preloadExecutor.execute(() -> {
@@ -103,23 +104,24 @@ public class VideoPreloadManager {
                 // This is critical for both forward and backward scroll
                 if (position >= 0 && position < reelItems.size()) {
                     preloadAt(position);
-                    Thread.sleep(5); // Minimal delay - let this start buffering
                 }
 
-                // PRIORITY 2: Preload videos AHEAD (forward direction)
+                // PRIORITY 2: Preload videos AHEAD (forward direction) - submit all at once
                 for (int i = 1; i <= PRELOAD_RANGE; i++) {
                     if (Thread.currentThread().isInterrupted()) {
                         Log.d(TAG, "Preload interrupted");
                         return;
                     }
                     if (position + i < reelItems.size()) {
-                        Log.d(TAG, "Preloading ahead: position " + (position + i));
-                        preloadAt(position + i);
-                        Thread.sleep(10);
+                        final int targetPos = position + i;
+                        preloadExecutor.execute(() -> {
+                            Log.d(TAG, "Preloading ahead: position " + targetPos);
+                            preloadAt(targetPos);
+                        });
                     }
                 }
 
-                // PRIORITY 3: Preload videos BEHIND (backward direction)
+                // PRIORITY 3: Preload videos BEHIND (backward direction) - submit all at once
                 // This is crucial for smooth backward scrolling
                 for (int i = 1; i <= PRELOAD_RANGE; i++) {
                     if (Thread.currentThread().isInterrupted()) {
@@ -127,17 +129,16 @@ public class VideoPreloadManager {
                         return;
                     }
                     if (position - i >= 0) {
-                        Log.d(TAG, "Preloading behind: position " + (position - i));
-                        preloadAt(position - i);
-                        Thread.sleep(10);
+                        final int targetPos = position - i;
+                        preloadExecutor.execute(() -> {
+                            Log.d(TAG, "Preloading behind: position " + targetPos);
+                            preloadAt(targetPos);
+                        });
                     }
                 }
 
-                Log.d(TAG, "✓ Preload sequence complete for position: " + position);
+                Log.d(TAG, "✓ Preload sequence queued for position: " + position);
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                Log.d(TAG, "Preload sequence interrupted");
             } catch (Exception e) {
                 Log.e(TAG, "Error in preload sequence: " + e.getMessage(), e);
             }
@@ -232,13 +233,13 @@ public class VideoPreloadManager {
             }
         });
 
-        // Set a timeout in case the player never reaches STATE_READY
+        // OPTIMIZATION: Reduced timeout from 15s to 10s - faster cleanup of failed preloads
         mainHandler.postDelayed(() -> {
             if (!playerCache.containsKey(videoId)) {
                 Log.w(TAG, "Timeout waiting for player STATE_READY: " + videoId);
                 mainHandler.post(player::release);
             }
-        }, 15000); // 15 second timeout
+        }, 10000); // 10 second timeout (reduced from 15s)
     }
 
     /**

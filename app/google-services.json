@@ -1,0 +1,77 @@
+{
+  "project_info": {
+    "project_number": "531675723135",
+    "firebase_url": "https://instagame-452906-default-rtdb.firebaseio.com",
+    "project_id": "instagame-452906",
+    "storage_bucket": "instagame-452906.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:531675723135:android:069503d1e030d057ed564a",
+        "android_client_info": {
+          "package_name": "com.genzopia.Instagame"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "531675723135-f6liqmrhipre5r8ktdag2613932b75s5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.genzopia.Instagame",
+            "certificate_hash": "62041b5dfea03cd25b80bd6e2639e70e7eb38f0e"
+          }
+        },
+        {
+          "client_id": "531675723135-jrdpbvc43t6r9ds47jh0qmn89kjhiqp5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIYRYGDzSg4P6alDubCpr-bvxHQL2-hBU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "531675723135-jrdpbvc43t6r9ds47jh0qmn89kjhiqp5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:531675723135:android:22c8df6fdb2bbc49ed564a",
+        "android_client_info": {
+          "package_name": "com.genzopia.genzcrop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "531675723135-jrdpbvc43t6r9ds47jh0qmn89kjhiqp5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIYRYGDzSg4P6alDubCpr-bvxHQL2-hBU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "531675723135-jrdpbvc43t6r9ds47jh0qmn89kjhiqp5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
