@@ -15,10 +15,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SnapHelper;
 
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.BuildConfig;
 import com.genzopia.Instagame.databinding.FragmentDashboardBinding;
 import com.genzopia.Instagame.reelview.ReelAdapter;
 import com.genzopia.Instagame.reelview.ReelItem;
 import com.genzopia.Instagame.reelview.ReelRepository;
+import com.genzopia.Instagame.reelview.PerformanceBenchmark;
 import com.genzopia.Instagame.vertical_recylerview_custom.TempStorage;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -95,6 +97,18 @@ public class DashboardFragment extends Fragment {
 
         // Check if there's a specific video to play
         checkForSpecificVideoToPlay();
+        
+        // PERFORMANCE VALIDATION: Run benchmark in debug builds
+        if (BuildConfig.DEBUG) {
+            // Run performance benchmark after initial load (delayed to avoid interference)
+            reelView.postDelayed(() -> {
+                if (isAdded() && reelAdapter != null) {
+                    Log.d("DashboardFragment", "Running performance benchmark...");
+                    PerformanceBenchmark.BenchmarkResults results = reelAdapter.runPerformanceBenchmark();
+                    Log.i("DashboardFragment", "Performance benchmark completed: " + results.toString());
+                }
+            }, 5000); // Run after 5 seconds to allow initial loading to complete
+        }
 
         return root;
     }

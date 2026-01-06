@@ -37,6 +37,10 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
+import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
+import com.google.android.exoplayer2.mediacodec.MediaCodecUtil;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -64,6 +68,13 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     // Thumbnail manager for eliminating black screens
     private ThumbnailManager thumbnailManager;
     
+    // Performance monitoring system
+    private ReelPerformanceMonitor performanceMonitor;
+    
+    // LAG PREVENTION: Comprehensive lag prevention system
+    private LagPreventionSystem lagPreventionSystem;
+    private AdaptivePerformanceManager adaptivePerformanceManager;
+    
     // OPTIMIZATION: Reusable Handler instance (avoid creating new handlers repeatedly)
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     
@@ -74,25 +85,9 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
     // ===== CRITICAL OPTIMIZATION: Player Cache for Smooth Backward Scroll =====
     // Maps videoId → ExoPlayer (enables fast reuse instead of recreation)
-    private java.util.Map<String, ExoPlayer> playerCache = new java.util.LinkedHashMap<String, ExoPlayer>(15, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(java.util.Map.Entry eldest) {
-            // LRU eviction: remove oldest when exceeding max size
-            if (size() > 15) {
-                ExoPlayer cachedPlayer = (ExoPlayer) eldest.getValue();
-                if (cachedPlayer != null && cachedPlayer != sharedPlayer) {  // Don't release currently playing player
-                    try {
-                        cachedPlayer.release();
-                        Log.d("ReelAdapter", "LRU evicted cached player for: " + eldest.getKey());
-                    } catch (Exception e) {
-                        Log.e("ReelAdapter", "Error releasing LRU player", e);
-                    }
-                }
-                return true;
-            }
-            return false;
-        }
-    };
+    // EMULATOR OPTIMIZATION: Reduced cache size for memory-limited environments
+    private final int PLAYER_CACHE_SIZE;
+    private java.util.Map<String, ExoPlayer> playerCache;
 
     // CRITICAL: Playback position cache - preserves video progress for backward scroll
     // Maps videoId -> playback position in milliseconds
@@ -113,15 +108,99 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         this.context = context;
         this.reelItems = reelItems;
         this.recyclerView = recyclerView;
+        
+        // DEVICE PERFORMANCE DETECTION: Optimize based on device capabilities
+        DevicePerformanceDetector.PerformanceLevel devicePerformance = DevicePerformanceDetector.detectPerformanceLevel(context);
+        boolean isEmulator = isRunningOnEmulator();
+        boolean isLowEndDevice = DevicePerformanceDetector.isLowEndDevice(context);
+        
+        // ADAPTIVE CACHE SIZING: Based on device performance and emulator status
+        if (isEmulator) {
+            this.PLAYER_CACHE_SIZE = 1; // Minimal for emulators
+        } else if (isLowEndDevice) {
+            this.PLAYER_CACHE_SIZE = 3; // Small cache for low-end devices
+        } else if (devicePerformance == DevicePerformanceDetector.PerformanceLevel.MID_RANGE) {
+            this.PLAYER_CACHE_SIZE = 8; // Medium cache for mid-range devices
+        } else {
+            this.PLAYER_CACHE_SIZE = 15; // Large cache for high-end devices
+        }
+        
+        // Initialize player cache with adaptive size
+        this.playerCache = new java.util.LinkedHashMap<String, ExoPlayer>(PLAYER_CACHE_SIZE, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(java.util.Map.Entry eldest) {
+                // LRU eviction: remove oldest when exceeding max size
+                if (size() > PLAYER_CACHE_SIZE) {
+                    ExoPlayer cachedPlayer = (ExoPlayer) eldest.getValue();
+                    if (cachedPlayer != null && cachedPlayer != sharedPlayer) {  // Don't release currently playing player
+                        try {
+                            // Detach lag prevention before releasing
+                            if (lagPreventionSystem != null) {
+                                lagPreventionSystem.detachFromPlayer(cachedPlayer);
+                            }
+                            cachedPlayer.release();
+                            Log.d("ReelAdapter", "LRU evicted cached player for: " + eldest.getKey());
+                        } catch (Exception e) {
+                            Log.e("ReelAdapter", "Error releasing LRU player", e);
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            }
+        };
+        
+        Log.i("ReelAdapter", String.format("Initialized for %s device (emulator: %s) with cache size: %d", 
+              devicePerformance.name(), isEmulator, PLAYER_CACHE_SIZE));
+        
         initializePlayer();
         initializeVideoPreloadManager();
         initializeThumbnailManager();
+        initializePerformanceMonitor();
+        initializeLagPrevention();
     }
 
     private void initializePlayer() {
-        sharedPlayer = new ExoPlayer.Builder(context).build();
+        // DEVICE PERFORMANCE DETECTION: Use adaptive configuration
+        boolean isEmulator = isRunningOnEmulator();
+        boolean isLowEndDevice = DevicePerformanceDetector.isLowEndDevice(context);
+        
+        if (isEmulator || isLowEndDevice) {
+            Log.i("ReelAdapter", "Low-performance device detected - using optimized codec configuration");
+            DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                .setMediaCodecSelector(new SoftwareCodecSelector());
+            
+            // Use adaptive performance manager for optimized settings
+            if (adaptivePerformanceManager == null) {
+                adaptivePerformanceManager = new AdaptivePerformanceManager(context);
+            }
+            
+            sharedPlayer = new ExoPlayer.Builder(context)
+                .setRenderersFactory(renderersFactory)
+                .setLoadControl(adaptivePerformanceManager.createOptimizedLoadControl())
+                .setTrackSelector(adaptivePerformanceManager.createAdaptiveTrackSelector())
+                .build();
+        } else {
+            Log.i("ReelAdapter", "High-performance device detected - using hardware codec configuration");
+            
+            // Use adaptive performance manager even for high-end devices
+            if (adaptivePerformanceManager == null) {
+                adaptivePerformanceManager = new AdaptivePerformanceManager(context);
+            }
+            
+            sharedPlayer = new ExoPlayer.Builder(context)
+                .setLoadControl(adaptivePerformanceManager.createOptimizedLoadControl())
+                .setTrackSelector(adaptivePerformanceManager.createAdaptiveTrackSelector())
+                .build();
+        }
+        
         sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
         sharedPlayer.setPlayWhenReady(false);
+        
+        // Attach lag prevention system
+        if (lagPreventionSystem != null) {
+            lagPreventionSystem.attachToPlayer(sharedPlayer);
+        }
     }
 
     private void initializeVideoPreloadManager() {
@@ -133,6 +212,48 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         thumbnailManager = new ThumbnailManager(context);
         // Pre-generate thumbnails for all reel items
         thumbnailManager.preloadThumbnails(reelItems);
+    }
+    
+    private void initializePerformanceMonitor() {
+        performanceMonitor = new ReelPerformanceMonitor();
+        Log.d("ReelAdapter", "Performance monitoring initialized");
+    }
+    
+    private void initializeLagPrevention() {
+        // Initialize lag prevention system with callback
+        lagPreventionSystem = new LagPreventionSystem(context, new LagPreventionSystem.LagPreventionCallback() {
+            @Override
+            public void onLagDetected(String reason) {
+                Log.w("ReelAdapter", "Lag detected: " + reason);
+                // Show subtle indicator to user (optional)
+                mainHandler.post(() -> {
+                    // Could show a toast or update UI indicator
+                    // Toast.makeText(context, "Optimizing video quality...", Toast.LENGTH_SHORT).show();
+                });
+            }
+            
+            @Override
+            public void onPerformanceOptimized(String optimization) {
+                Log.i("ReelAdapter", "Performance optimized: " + optimization);
+                // Update preload manager with new settings
+                if (videoPreloadManager != null && adaptivePerformanceManager != null) {
+                    // The preload manager will automatically use the new adaptive settings
+                    videoPreloadManager.updateAdaptiveSettings(adaptivePerformanceManager);
+                }
+            }
+            
+            @Override
+            public void onEmergencyModeActivated() {
+                Log.w("ReelAdapter", "Emergency performance mode activated");
+                mainHandler.post(() -> {
+                    // Notify user that quality has been reduced for smooth playback
+                    android.widget.Toast.makeText(context, "Video quality reduced for smooth playback", 
+                                                android.widget.Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+        
+        Log.d("ReelAdapter", "Lag prevention system initialized");
     }
 
     @NonNull
@@ -213,10 +334,33 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             return;
         }
 
+        // CRITICAL FIX: Debounce rapid position changes to prevent ViewHolder sync issues
+        if (debounceRunnable != null) {
+            debounceHandler.removeCallbacks(debounceRunnable);
+        }
+        
+        debounceRunnable = () -> playVideoAtPositionInternal(position);
+        debounceHandler.postDelayed(debounceRunnable, 50); // 50ms debounce
+    }
+    
+    private void playVideoAtPositionInternal(int position) {
+        if (position < 0 || position >= reelItems.size()) {
+            Log.w("ReelAdapter", "Invalid position in internal method: " + position);
+            return;
+        }
+
         // Skip if already playing this position
         if (currentPlayingPosition == position) {
             Log.d("ReelAdapter", "Already playing position: " + position);
             return;
+        }
+
+        ReelItem item = reelItems.get(position);
+        String videoId = item.getVideoId();
+        
+        // PERFORMANCE MONITORING: Start tracking video transition
+        if (performanceMonitor != null && videoId != null) {
+            performanceMonitor.startVideoTransition(videoId);
         }
 
         // CRITICAL FIX: Pause ALL cached players to prevent multiple audio
@@ -227,14 +371,23 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         Log.d("ReelAdapter", "Scroll direction: " + (isBackwardScroll ? "BACKWARD" : "FORWARD") +
               " (from " + currentPlayingPosition + " to " + position + ")");
 
-        // Get the ViewHolder for this position
-        ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
+        // CRITICAL FIX: Enhanced ViewHolder availability checking with retry mechanism
+        ReelViewHolder holder = findViewHolderWithRetry(position, 3);
         if (holder == null) {
-            Log.w("ReelAdapter", "ViewHolder not found for position: " + position);
+            Log.w("ReelAdapter", "ViewHolder not found for position after retries: " + position);
+            // PERFORMANCE MONITORING: Record error
+            if (performanceMonitor != null && videoId != null) {
+                performanceMonitor.recordError("playVideoAtPosition", "ViewHolder not found for position: " + position, null);
+            }
+            return;
+        }
+        
+        // CRITICAL FIX: Verify ViewHolder is still valid and attached
+        if (holder.getAdapterPosition() != position) {
+            Log.w("ReelAdapter", "ViewHolder position mismatch: expected " + position + ", got " + holder.getAdapterPosition());
             return;
         }
 
-        ReelItem item = reelItems.get(position);
         String videoUri = item.getVideoUrl() != null ? item.getVideoUrl() : item.getVideoId();
 
         // Handle unavailable videos
@@ -268,9 +421,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         ExoPlayer cachedPlayer = playerCache.get(item.getVideoId());
         if (isBackwardScroll && cachedPlayer != null && isPlayerReadyForPlayback(cachedPlayer)) {
             Log.d("ReelAdapter", "✓✓✓ REUSING CACHED PLAYER (backward scroll) for: " + item.getVideoId());
+            // PERFORMANCE MONITORING: Record cache hit
+            if (performanceMonitor != null) {
+                performanceMonitor.recordCacheHit();
+            }
             playWithCachedPlayer(holder, cachedPlayer, position, item);
             previousPlayingPosition = currentPlayingPosition;
             currentPlayingPosition = position;
+            // PERFORMANCE MONITORING: End transition tracking
+            if (performanceMonitor != null && videoId != null) {
+                performanceMonitor.endVideoTransition(videoId, true);
+            }
             return;
         }
 
@@ -280,9 +441,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             ExoPlayer preloadedPlayerBackward = videoPreloadManager.getPreloadedPlayer(item.getVideoId());
             if (preloadedPlayerBackward != null && isPlayerReadyForPlayback(preloadedPlayerBackward)) {
                 Log.d("ReelAdapter", "✓ Using PRELOADED player for BACKWARD scroll: " + item.getVideoId());
+                // PERFORMANCE MONITORING: Record cache hit for preloaded player
+                if (performanceMonitor != null) {
+                    performanceMonitor.recordCacheHit();
+                }
                 playWithPreloadedPlayer(holder, preloadedPlayerBackward, position, item);
                 previousPlayingPosition = currentPlayingPosition;
                 currentPlayingPosition = position;
+                // PERFORMANCE MONITORING: End transition tracking
+                if (performanceMonitor != null && videoId != null) {
+                    performanceMonitor.endVideoTransition(videoId, true);
+                }
                 return;
             }
         }
@@ -306,9 +475,17 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
         if (preloadedPlayer != null && isPlayerReadyForPlayback(preloadedPlayer)) {
             Log.d("ReelAdapter", "✓ Using PRELOADED & READY player for: " + item.getVideoId());
+            // PERFORMANCE MONITORING: Record cache hit for preloaded player
+            if (performanceMonitor != null) {
+                performanceMonitor.recordCacheHit();
+            }
             playWithPreloadedPlayer(holder, preloadedPlayer, position, item);
             previousPlayingPosition = currentPlayingPosition;
             currentPlayingPosition = position;
+            // PERFORMANCE MONITORING: End transition tracking
+            if (performanceMonitor != null && videoId != null) {
+                performanceMonitor.endVideoTransition(videoId, true);
+            }
             return;
         }
 
@@ -319,9 +496,45 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             Log.w("ReelAdapter", "⚠ No preloaded player found, loading on demand: " + item.getVideoId());
         }
 
+        // PERFORMANCE MONITORING: Record cache miss for on-demand loading
+        if (performanceMonitor != null) {
+            performanceMonitor.recordCacheMiss();
+        }
+
         playWithOnDemandLoading(holder, videoUri, position, item);
         previousPlayingPosition = currentPlayingPosition;
         currentPlayingPosition = position;
+        // PERFORMANCE MONITORING: End transition tracking (on-demand loading)
+        if (performanceMonitor != null && videoId != null) {
+            performanceMonitor.endVideoTransition(videoId, false);
+        }
+    }
+
+    /**
+     * CRITICAL FIX: Find ViewHolder with retry mechanism to handle rapid scroll scenarios
+     * This prevents ViewHolder synchronization issues during fast scrolling
+     */
+    private ReelViewHolder findViewHolderWithRetry(int position, int maxRetries) {
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(position);
+            if (holder != null) {
+                // Verify the ViewHolder is properly attached and positioned
+                if (holder.itemView.getParent() != null && holder.getAdapterPosition() == position) {
+                    return holder;
+                }
+            }
+            
+            // Short delay before retry to allow RecyclerView to settle
+            if (attempt < maxRetries - 1) {
+                try {
+                    Thread.sleep(10); // 10ms delay
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -799,6 +1012,10 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             request.listener(new RequestListener<Bitmap>() {
                 @Override
                 public boolean onLoadFailed(@Nullable com.bumptech.glide.load.engine.GlideException e, Object model, Target<Bitmap> target, boolean isFirstResource) {
+                    // PERFORMANCE MONITORING: Record thumbnail cache miss
+                    if (performanceMonitor != null) {
+                        performanceMonitor.recordThumbnailCacheMiss();
+                    }
                     // On failure, keep thumbnail visible with black background (better than hiding)
                     Log.w("ReelAdapter", "Thumbnail load failed for: " + videoId);
                     if (holder.thumbnailView != null) {
@@ -809,6 +1026,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
                 @Override
                 public boolean onResourceReady(Bitmap resource, Object model, Target<Bitmap> target, com.bumptech.glide.load.DataSource dataSource, boolean isFirstResource) {
+                    // PERFORMANCE MONITORING: Record thumbnail cache hit/miss based on data source
+                    if (performanceMonitor != null) {
+                        if (dataSource == com.bumptech.glide.load.DataSource.MEMORY_CACHE || 
+                            dataSource == com.bumptech.glide.load.DataSource.RESOURCE_DISK_CACHE) {
+                            performanceMonitor.recordThumbnailCacheHit();
+                        } else {
+                            performanceMonitor.recordThumbnailCacheMiss();
+                        }
+                    }
                     // Remove black background when thumbnail loads successfully
                     if (holder.thumbnailView != null) {
                         holder.thumbnailView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
@@ -855,22 +1081,117 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 @Override
                 public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
                     Log.e("ReelAdapter", "Player error: " + error.getMessage());
+                    
+                    // PERFORMANCE MONITORING: Record error
+                    if (performanceMonitor != null) {
+                        performanceMonitor.recordError("ExoPlayer", error.getMessage(), error);
+                    }
 
-                    if (!triedFallback) {
+                    // Enhanced error handling for different error types
+                    if (isCodecError(error)) {
+                        Log.w("ReelAdapter", "Codec error detected, attempting codec-specific fallback");
+                        handleCodecError(item, videoUri, triedFallback);
+                    } else if (!triedFallback) {
                         triedFallback = true;
+                        attemptStandardFallback(videoUri);
+                    } else {
+                        Log.e("ReelAdapter", "All fallback attempts failed for: " + item.getVideoId());
+                        // Show error state to user instead of black screen
+                        showVideoErrorState(item);
+                    }
+                }
+                
+                private boolean isCodecError(com.google.android.exoplayer2.PlaybackException error) {
+                    String errorMessage = error.getMessage();
+                    return errorMessage != null && (
+                        errorMessage.contains("Decoder init failed") ||
+                        errorMessage.contains("MediaCodec") ||
+                        errorMessage.contains("codec") ||
+                        errorMessage.contains("goldfish") ||
+                        error.errorCode == com.google.android.exoplayer2.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                    );
+                }
+                
+                private void handleCodecError(ReelItem item, String videoUri, boolean triedFallback) {
+                    if (!triedFallback) {
+                        Log.i("ReelAdapter", "Attempting software codec fallback for: " + item.getVideoId());
+                        
                         try {
-                            Log.w("ReelAdapter", "Attempting fallback to progressive format");
+                            // Create a software-only player configuration for emulator compatibility
+                            sharedPlayer.release(); // Release the failed hardware player
+                            
+                            // Create new player with software codec selector
+                            DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                                .setMediaCodecSelector(new SoftwareCodecSelector());
+                            
+                            sharedPlayer = new ExoPlayer.Builder(context)
+                                .setVideoScalingMode(com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                                .setRenderersFactory(renderersFactory)
+                                .build();
+                            
                             DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
                             MediaItem mediaItem = MediaItem.fromUri(videoUri);
+                            
+                            // Use progressive source with software decoding
                             MediaSource fallbackSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
-                                    .createMediaSource(mediaItem);
+                                .createMediaSource(mediaItem);
+                            
                             sharedPlayer.setMediaSource(fallbackSource);
                             sharedPlayer.prepare();
                             sharedPlayer.setPlayWhenReady(true);
-                            Log.d("ReelAdapter", "Fallback initiated");
+                            
+                            // Attach to current player view
+                            if (currentPlayingViewHolder != null && currentPlayingViewHolder.playerView != null) {
+                                currentPlayingViewHolder.playerView.setPlayer(sharedPlayer);
+                            }
+                            
+                            Log.d("ReelAdapter", "Software codec fallback initiated for: " + item.getVideoId());
                         } catch (Exception e) {
-                            Log.e("ReelAdapter", "Fallback also failed: " + e.getMessage());
+                            Log.e("ReelAdapter", "Software codec fallback failed: " + e.getMessage());
+                            showVideoErrorState(item);
                         }
+                    } else {
+                        Log.w("ReelAdapter", "Software codec fallback already attempted, showing error state");
+                        showVideoErrorState(item);
+                    }
+                }
+                
+                private void attemptStandardFallback(String videoUri) {
+                    try {
+                        Log.w("ReelAdapter", "Attempting standard fallback to progressive format");
+                        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+                        MediaItem mediaItem = MediaItem.fromUri(videoUri);
+                        MediaSource fallbackSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                        sharedPlayer.setMediaSource(fallbackSource);
+                        sharedPlayer.prepare();
+                        sharedPlayer.setPlayWhenReady(true);
+                        Log.d("ReelAdapter", "Standard fallback initiated");
+                    } catch (Exception e) {
+                        Log.e("ReelAdapter", "Standard fallback also failed: " + e.getMessage());
+                    }
+                }
+                
+                private void showVideoErrorState(ReelItem item) {
+                    // Instead of showing black screen, show error state with thumbnail
+                    Log.i("ReelAdapter", "Showing error state for video: " + item.getVideoId());
+                    
+                    if (currentPlayingViewHolder != null) {
+                        mainHandler.post(() -> {
+                            try {
+                                // Keep thumbnail visible and show error indicator
+                                if (currentPlayingViewHolder.thumbnailView != null) {
+                                    currentPlayingViewHolder.thumbnailView.setVisibility(View.VISIBLE);
+                                    currentPlayingViewHolder.thumbnailView.setAlpha(1.0f);
+                                }
+                                
+                                // Optionally show a subtle error indicator
+                                // This prevents the jarring black screen experience
+                                
+                            } catch (Exception e) {
+                                Log.e("ReelAdapter", "Error showing error state", e);
+                            }
+                        });
                     }
                 }
 
@@ -1092,6 +1413,10 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                         cachedPlayer.release();
                     } catch (Exception e) {
                         Log.e("ReelAdapter", "Error releasing cached player", e);
+                        // PERFORMANCE MONITORING: Record error
+                        if (performanceMonitor != null) {
+                            performanceMonitor.recordError("releaseAllPlayers", "Error releasing cached player", e);
+                        }
                     }
                 }
             }
@@ -1099,12 +1424,28 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             Log.d("ReelAdapter", "Released and cleared player cache");
         } catch (Exception e) {
             Log.e("ReelAdapter", "Error clearing player cache: " + e.getMessage());
+            // PERFORMANCE MONITORING: Record error
+            if (performanceMonitor != null) {
+                performanceMonitor.recordError("releaseAllPlayers", "Error clearing player cache", e);
+            }
         }
 
         // Release video preload manager
         if (videoPreloadManager != null) {
             videoPreloadManager.shutdown();
             videoPreloadManager = null;
+        }
+        
+        // Release thumbnail manager
+        if (thumbnailManager != null) {
+            thumbnailManager.shutdown();
+            thumbnailManager = null;
+        }
+        
+        // PERFORMANCE MONITORING: Generate final report and shutdown
+        if (performanceMonitor != null) {
+            performanceMonitor.shutdown();
+            performanceMonitor = null;
         }
 
         // Clear follow state cache
@@ -1172,6 +1513,30 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         playbackPositionCache.remove(videoId);
         activeVideoIds.remove(videoId);
         Log.d("ReelAdapter", "Cleared playback position for: " + videoId);
+    }
+    
+    /**
+     * Get performance monitor instance for external access
+     */
+    public ReelPerformanceMonitor getPerformanceMonitor() {
+        return performanceMonitor;
+    }
+    
+    /**
+     * Generate performance report on demand
+     */
+    public void generatePerformanceReport() {
+        if (performanceMonitor != null) {
+            performanceMonitor.generatePerformanceReport();
+        }
+    }
+    
+    /**
+     * Run performance benchmark to validate optimization targets
+     */
+    public PerformanceBenchmark.BenchmarkResults runPerformanceBenchmark() {
+        PerformanceBenchmark benchmark = new PerformanceBenchmark(context, this);
+        return benchmark.runFullBenchmark();
     }
 
     // Follow state management methods
@@ -1277,6 +1642,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
 
         if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+            // PERFORMANCE MONITORING: Stop scroll monitoring
+            if (performanceMonitor != null) {
+                performanceMonitor.stopScrollMonitoring();
+            }
+            
             // Scrolling has stopped - time to play the video
             determineScrollDirection(firstVisible);
             boolean isBackward = currentPlayingPosition > firstVisible;
@@ -1302,6 +1672,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             mainHandler.postDelayed(debounceRunnable, delay);
 
         } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+            // PERFORMANCE MONITORING: Start scroll monitoring
+            if (performanceMonitor != null) {
+                performanceMonitor.startScrollMonitoring();
+            }
+            
             // OPTIMIZATION: Debounce preload updates during dragging to reduce excessive calls
             if (firstVisible != lastScrollPosition) {
                 lastScrollPosition = firstVisible;
@@ -2067,6 +2442,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 
                 @Override
                 public void run() {
+                    // PERFORMANCE MONITORING: Record frame during progress updates
+                    if (performanceMonitor != null) {
+                        performanceMonitor.recordScrollFrame();
+                    }
+                    
                     if (sharedPlayer != null && sharedPlayer.getDuration() > 0) {
                         float progress = (float) sharedPlayer.getCurrentPosition() / sharedPlayer.getDuration();
                         progressLine.setScaleX(progress);
@@ -2207,6 +2587,59 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 bottomSheet.show(activity.getSupportFragmentManager(), "VideoDetailsBottomSheet");
             } else {
                 android.util.Log.w("ReelViewHolder", "Context is not a FragmentActivity");
+            }
+        }
+    }
+    
+    /**
+     * Detect if running on Android emulator
+     * Uses multiple detection methods for reliability
+     */
+    private boolean isRunningOnEmulator() {
+        return (android.os.Build.BRAND.startsWith("generic") && android.os.Build.DEVICE.startsWith("generic"))
+                || android.os.Build.FINGERPRINT.startsWith("generic")
+                || android.os.Build.FINGERPRINT.startsWith("unknown")
+                || android.os.Build.HARDWARE.contains("goldfish")
+                || android.os.Build.HARDWARE.contains("ranchu")
+                || android.os.Build.MODEL.contains("google_sdk")
+                || android.os.Build.MODEL.contains("Emulator")
+                || android.os.Build.MODEL.contains("Android SDK built for x86")
+                || android.os.Build.MANUFACTURER.contains("Genymotion")
+                || android.os.Build.PRODUCT.contains("sdk_google")
+                || android.os.Build.PRODUCT.contains("google_sdk")
+                || android.os.Build.PRODUCT.contains("sdk")
+                || android.os.Build.PRODUCT.contains("sdk_x86")
+                || android.os.Build.PRODUCT.contains("vbox86p")
+                || android.os.Build.PRODUCT.contains("emulator")
+                || android.os.Build.PRODUCT.contains("simulator");
+    }
+
+    /**
+     * Software-only codec selector for emulator compatibility
+     * Forces software decoding when hardware codecs fail
+     */
+    private static class SoftwareCodecSelector implements MediaCodecSelector {
+        @Override
+        public java.util.List<MediaCodecInfo> getDecoderInfos(String mimeType, boolean requiresSecureDecoder, boolean requiresTunnelingDecoder) {
+            try {
+                java.util.List<MediaCodecInfo> allCodecs = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+                java.util.List<MediaCodecInfo> softwareCodecs = new java.util.ArrayList<>();
+                
+                // Prefer software codecs for emulator compatibility
+                for (MediaCodecInfo codecInfo : allCodecs) {
+                    if (codecInfo.name.contains("software") || 
+                        codecInfo.name.contains("google") ||
+                        codecInfo.name.contains("ffmpeg") ||
+                        !codecInfo.hardwareAccelerated) {
+                        softwareCodecs.add(codecInfo);
+                    }
+                }
+                
+                // If no software codecs found, return all codecs as fallback
+                return softwareCodecs.isEmpty() ? allCodecs : softwareCodecs;
+            } catch (MediaCodecUtil.DecoderQueryException e) {
+                Log.e("ReelAdapter", "Error querying decoders, using default selector", e);
+                return new java.util.ArrayList<>();
             }
         }
     }

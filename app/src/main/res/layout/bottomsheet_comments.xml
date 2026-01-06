@@ -67,7 +67,6 @@
             android:layout_weight="1"
             android:orientation="horizontal"
             android:layout_marginStart="8dp"
-            android:background="@drawable/bg_comment_input"
             android:paddingStart="12dp"
             android:paddingEnd="4dp"
             android:paddingTop="6dp"
@@ -79,8 +78,6 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:hint="Add a comment"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary"
                 android:background="@android:color/transparent"/>
 
             <ImageButton
@@ -89,8 +86,8 @@
                 android:layout_height="36dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/ic_send"
-                android:tint="@color/button_primary"
-                android:contentDescription="Send"/>
+                android:contentDescription="Send"
+                app:tint="@color/button_primary" />
         </LinearLayout>
     </LinearLayout>
 

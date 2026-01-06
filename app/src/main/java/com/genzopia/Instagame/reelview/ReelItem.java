@@ -8,6 +8,7 @@ public class ReelItem {
     private String developerId;
     private String gameid;
     private String videoUrl; // New field for signed URL
+    private int videoDuration; // Duration in seconds
 
     public ReelItem(String videoId, String title, String likeCount, String description, String developerId, String gameid) {
         this.videoId = videoId != null ? videoId : "";
@@ -17,6 +18,7 @@ public class ReelItem {
         this.developerId = developerId != null ? developerId : "";
         this.gameid = gameid != null ? gameid : "";
         this.videoUrl = null;
+        this.videoDuration = 30; // Default duration
     }
 
     // Getters
@@ -48,6 +50,10 @@ public class ReelItem {
         return videoUrl;
     }
 
+    public int getVideoDuration() {
+        return videoDuration;
+    }
+
     // Setters
     public void setVideoId(String videoId) {
         this.videoId = videoId;
@@ -75,5 +81,9 @@ public class ReelItem {
 
     public void setVideoUrl(String videoUrl) {
         this.videoUrl = videoUrl;
+    }
+
+    public void setVideoDuration(int videoDuration) {
+        this.videoDuration = videoDuration;
     }
 }

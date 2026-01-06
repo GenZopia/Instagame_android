@@ -12,7 +12,12 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
+import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
+import com.google.android.exoplayer2.mediacodec.MediaCodecUtil;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,14 +33,24 @@ import java.util.concurrent.Executors;
  */
 public class VideoPreloadManager {
     private static final String TAG = "VideoPreloadManager";
-    private static final int PRELOAD_RANGE = 4; // Videos to preload ahead/behind (increased from 3 for better backward scroll)
-    private static final int MAX_CACHED_VIDEOS = 9; // 1 current + 4 before + 4 after (increased to match PRELOAD_RANGE)
+    
+    // EMULATOR OPTIMIZATION: Reduce preload range on emulators to prevent OOM
+    private static final int PRELOAD_RANGE_DEVICE = 4; // Videos to preload ahead/behind on real devices
+    private static final int PRELOAD_RANGE_EMULATOR = 0; // DISABLED on emulators - on-demand only
+    private static final int MAX_CACHED_VIDEOS_DEVICE = 9; // 1 current + 4 before + 4 after
+    private static final int MAX_CACHED_VIDEOS_EMULATOR = 1; // Only current video on emulators
+    
+    // ADAPTIVE SETTINGS: Can be updated based on device performance
+    private int PRELOAD_RANGE;
+    private int MAX_CACHED_VIDEOS;
+    private AdaptivePerformanceManager adaptivePerformanceManager;
 
     private final Context context;
     private final ExecutorService preloadExecutor;
     private final Map<String, PreloadedPlayerData> playerCache;
     private final DefaultDataSourceFactory dataSourceFactory;
     private final Handler mainHandler; // CRITICAL: For Main thread operations
+    private final java.util.Set<String> problematicVideos; // Track videos with codec issues
     private List<ReelItem> reelItems;
     private int currentPosition = -1;
     private volatile boolean isPreloading = false;
@@ -43,6 +58,36 @@ public class VideoPreloadManager {
     public VideoPreloadManager(Context context) {
         this.context = context;
         this.mainHandler = new Handler(Looper.getMainLooper()); // CRITICAL: Main thread handler
+        this.problematicVideos = new java.util.HashSet<>(); // Track codec-problematic videos
+
+        // ADAPTIVE OPTIMIZATION: Use device performance detection for optimal settings
+        boolean isEmulator = isRunningOnEmulator();
+        DevicePerformanceDetector.PerformanceLevel devicePerformance = DevicePerformanceDetector.detectPerformanceLevel(context);
+        
+        if (isEmulator) {
+            this.PRELOAD_RANGE = PRELOAD_RANGE_EMULATOR;
+            this.MAX_CACHED_VIDEOS = MAX_CACHED_VIDEOS_EMULATOR;
+            Log.i(TAG, "Emulator detected - using minimal preload settings (range: " + PRELOAD_RANGE + ", cache: " + MAX_CACHED_VIDEOS + ")");
+        } else {
+            // Adaptive settings based on device performance
+            switch (devicePerformance) {
+                case HIGH_END:
+                    this.PRELOAD_RANGE = PRELOAD_RANGE_DEVICE;
+                    this.MAX_CACHED_VIDEOS = MAX_CACHED_VIDEOS_DEVICE;
+                    break;
+                case MID_RANGE:
+                    this.PRELOAD_RANGE = 2; // Reduced for mid-range
+                    this.MAX_CACHED_VIDEOS = 5; // Reduced cache
+                    break;
+                case LOW_END:
+                default:
+                    this.PRELOAD_RANGE = 1; // Minimal for low-end
+                    this.MAX_CACHED_VIDEOS = 2; // Very small cache
+                    break;
+            }
+            Log.i(TAG, String.format("%s device detected - using adaptive preload settings (range: %d, cache: %d)", 
+                  devicePerformance.name(), PRELOAD_RANGE, MAX_CACHED_VIDEOS));
+        }
 
         // Use 2 threads for faster parallel preloading
         this.preloadExecutor = Executors.newFixedThreadPool(2, r -> {
@@ -80,14 +125,80 @@ public class VideoPreloadManager {
     /**
      * Update preload position - called when user scrolls
      * CRITICAL: This must preload videos IMMEDIATELY for smooth playback
+     * OPTIMIZED: Includes memory pressure detection for emulators
      */
     public void updateCurrentPosition(int position) {
         if (reelItems == null || reelItems.isEmpty()) {
             return;
         }
 
+        // MEMORY OPTIMIZATION: Check memory pressure before preloading
+        if (isMemoryPressureHigh()) {
+            Log.w(TAG, "High memory pressure detected - performing cleanup before preload");
+            performEmergencyCleanup();
+        }
+
         Log.d(TAG, "Updated position to: " + position + ", starting PRIORITY preload...");
         preloadVideosAround(position);
+    }
+    
+    /**
+     * Detect high memory pressure
+     */
+    private boolean isMemoryPressureHigh() {
+        Runtime runtime = Runtime.getRuntime();
+        long maxMemory = runtime.maxMemory();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        
+        // Consider memory pressure high if using more than 85% of max heap
+        double memoryUsagePercent = (double) usedMemory / maxMemory;
+        boolean highPressure = memoryUsagePercent > 0.85;
+        
+        if (highPressure) {
+            Log.w(TAG, String.format("High memory pressure: %.1f%% used (%dMB/%dMB)", 
+                  memoryUsagePercent * 100, usedMemory / (1024 * 1024), maxMemory / (1024 * 1024)));
+        }
+        
+        return highPressure;
+    }
+    
+    /**
+     * Emergency cleanup when memory pressure is high
+     */
+    private void performEmergencyCleanup() {
+        int initialSize = playerCache.size();
+        
+        // Release half of the cached players, keeping only the most recent ones
+        int targetSize = Math.max(1, playerCache.size() / 2);
+        
+        mainHandler.post(() -> {
+            try {
+                java.util.Iterator<Map.Entry<String, PreloadedPlayerData>> iterator = playerCache.entrySet().iterator();
+                int removed = 0;
+                
+                while (iterator.hasNext() && playerCache.size() > targetSize) {
+                    Map.Entry<String, PreloadedPlayerData> entry = iterator.next();
+                    PreloadedPlayerData data = entry.getValue();
+                    
+                    if (data != null && data.player != null) {
+                        data.player.release();
+                        removed++;
+                    }
+                    iterator.remove();
+                }
+                
+                // Force garbage collection
+                System.gc();
+                
+                Log.i(TAG, String.format("Emergency cleanup completed: released %d players (%d → %d)", 
+                      removed, initialSize, playerCache.size()));
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Error during emergency cleanup", e);
+            }
+        });
     }
 
     /**
@@ -147,6 +258,7 @@ public class VideoPreloadManager {
      * Preload a single video at position
      * BLOCKING: This method waits for preparation to complete
      * CRITICAL: All ExoPlayer operations happen on Main thread
+     * EMULATOR OPTIMIZATION: Uses reduced buffer sizes and quality settings
      */
     private void preloadAt(int position) {
         if (position < 0 || position >= reelItems.size()) {
@@ -164,6 +276,12 @@ public class VideoPreloadManager {
 
         String videoId = item.getVideoId();
 
+        // Skip if this video has known codec issues
+        if (problematicVideos.contains(videoId)) {
+            Log.w(TAG, "Skipping problematic video: " + videoId + " (known codec issues)");
+            return;
+        }
+
         // Already cached? Skip
         if (playerCache.containsKey(videoId)) {
             Log.d(TAG, "Video already cached: " + videoId);
@@ -176,8 +294,42 @@ public class VideoPreloadManager {
             // CRITICAL: Create player and prepare on MAIN thread only
             mainHandler.post(() -> {
                 try {
-                    // Create new ExoPlayer for this video
-                    ExoPlayer player = new ExoPlayer.Builder(context).build();
+                    // ADAPTIVE OPTIMIZATION: Use performance-based codec and buffer settings
+                    ExoPlayer player;
+                    boolean isEmulator = isRunningOnEmulator();
+                    boolean isLowEndDevice = DevicePerformanceDetector.isLowEndDevice(context);
+                    
+                    if (isEmulator || isLowEndDevice) {
+                        Log.d(TAG, "Low-performance device detected - creating player with software codec and reduced buffers for: " + videoId);
+                        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                            .setMediaCodecSelector(new SoftwareCodecSelector());
+                        
+                        // Use adaptive performance manager if available
+                        if (adaptivePerformanceManager != null) {
+                            player = new ExoPlayer.Builder(context)
+                                .setRenderersFactory(renderersFactory)
+                                .setLoadControl(adaptivePerformanceManager.createOptimizedLoadControl())
+                                .setTrackSelector(adaptivePerformanceManager.createAdaptiveTrackSelector())
+                                .build();
+                        } else {
+                            player = new ExoPlayer.Builder(context)
+                                .setRenderersFactory(renderersFactory)
+                                .setLoadControl(createEmulatorOptimizedLoadControl())
+                                .build();
+                        }
+                    } else {
+                        Log.d(TAG, "High-performance device detected - creating player with hardware codec for: " + videoId);
+                        
+                        // Use adaptive performance manager if available
+                        if (adaptivePerformanceManager != null) {
+                            player = new ExoPlayer.Builder(context)
+                                .setLoadControl(adaptivePerformanceManager.createOptimizedLoadControl())
+                                .setTrackSelector(adaptivePerformanceManager.createAdaptiveTrackSelector())
+                                .build();
+                        } else {
+                            player = new ExoPlayer.Builder(context).build();
+                        }
+                    }
 
                     // Load media
                     MediaItem mediaItem = MediaItem.fromUri(videoUrl);
@@ -225,8 +377,95 @@ public class VideoPreloadManager {
                 if (!cached) {
                     cached = true;
                     Log.e(TAG, "Player error while preloading: " + error);
-                    mainHandler.post(player::release);
+                    
+                    // Enhanced error handling for codec issues
+                    if (isCodecError(error)) {
+                        Log.w(TAG, "Codec error detected, attempting fallback for: " + videoId);
+                        attemptFallbackPreload(player, videoId, position);
+                    } else {
+                        // For non-codec errors, just release and continue
+                        mainHandler.post(player::release);
+                    }
+                    
                     player.removeListener(this);
+                }
+            }
+            
+            private boolean isCodecError(com.google.android.exoplayer2.PlaybackException error) {
+                String errorMessage = error.getMessage();
+                return errorMessage != null && (
+                    errorMessage.contains("Decoder init failed") ||
+                    errorMessage.contains("MediaCodec") ||
+                    errorMessage.contains("codec") ||
+                    errorMessage.contains("goldfish") ||
+                    error.errorCode == com.google.android.exoplayer2.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                );
+            }
+            
+            private void attemptFallbackPreload(ExoPlayer failedPlayer, String videoId, int position) {
+                try {
+                    Log.i(TAG, "Attempting codec fallback for video: " + videoId);
+                    
+                    // Release the failed player
+                    mainHandler.post(failedPlayer::release);
+                    
+                    // Try with a more compatible configuration
+                    mainHandler.post(() -> {
+                        try {
+                            // Create new player with software-only codec configuration for emulator compatibility
+                            DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                                .setMediaCodecSelector(new SoftwareCodecSelector());
+                            
+                            ExoPlayer fallbackPlayer = new ExoPlayer.Builder(context)
+                                .setVideoScalingMode(com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                                .setRenderersFactory(renderersFactory)
+                                .build();
+                            
+                            // Use progressive source as fallback (more compatible)
+                            String videoUrl = reelItems.get(position).getVideoUrl();
+                            MediaItem mediaItem = MediaItem.fromUri(videoUrl);
+                            MediaSource fallbackSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                            
+                            fallbackPlayer.setMediaSource(fallbackSource);
+                            fallbackPlayer.setPlayWhenReady(false);
+                            fallbackPlayer.prepare();
+                            
+                            // Add listener for fallback attempt
+                            fallbackPlayer.addListener(new Player.Listener() {
+                                private boolean fallbackCached = false;
+                                
+                                @Override
+                                public void onPlaybackStateChanged(int playbackState) {
+                                    if (playbackState == Player.STATE_READY && !fallbackCached) {
+                                        fallbackCached = true;
+                                        Log.i(TAG, "✓ FALLBACK PRELOAD SUCCESS: " + videoId);
+                                        playerCache.put(videoId, new PreloadedPlayerData(fallbackPlayer, position));
+                                        fallbackPlayer.removeListener(this);
+                                    }
+                                }
+                                
+                                @Override
+                                public void onPlayerError(com.google.android.exoplayer2.PlaybackException fallbackError) {
+                                    if (!fallbackCached) {
+                                        fallbackCached = true;
+                                        Log.w(TAG, "✗ FALLBACK ALSO FAILED for: " + videoId + ", error: " + fallbackError.getMessage());
+                                        mainHandler.post(fallbackPlayer::release);
+                                        fallbackPlayer.removeListener(this);
+                                        
+                                        // Mark this video as problematic to avoid repeated attempts
+                                        markVideoAsProblematic(videoId);
+                                    }
+                                }
+                            });
+                            
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error creating fallback player for: " + videoId, e);
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in fallback attempt for: " + videoId, e);
                 }
             }
         });
@@ -261,6 +500,29 @@ public class VideoPreloadManager {
             Log.e(TAG, "Error creating media source, falling back to progressive", e);
             return new ProgressiveMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(mediaItem);
+        }
+    }
+
+    /**
+     * Create emulator-optimized load control with reduced buffer sizes
+     * EMULATOR OPTIMIZATION: Reduces memory usage by limiting buffer sizes
+     */
+    private com.google.android.exoplayer2.LoadControl createEmulatorOptimizedLoadControl() {
+        try {
+            // EMULATOR OPTIMIZATION: Significantly reduced buffer sizes to prevent OOM
+            return new com.google.android.exoplayer2.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    2000,   // minBufferMs: 2 seconds (reduced from default 50s)
+                    5000,   // maxBufferMs: 5 seconds (reduced from default 50s)  
+                    1000,   // bufferForPlaybackMs: 1 second (reduced from default 2.5s)
+                    1000    // bufferForPlaybackAfterRebufferMs: 1 second (reduced from default 5s)
+                )
+                .setTargetBufferBytes(1024 * 1024) // maxBufferBytes: 1MB (reduced from default)
+                .setPrioritizeTimeOverSizeThresholds(true) // Prioritize time-based limits
+                .build();
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating emulator load control, using default", e);
+            return new com.google.android.exoplayer2.DefaultLoadControl();
         }
     }
 
@@ -330,6 +592,66 @@ public class VideoPreloadManager {
     }
 
     /**
+     * Update adaptive settings based on performance manager
+     * CRITICAL: Allows dynamic adjustment of preload settings to prevent lag
+     */
+    public void updateAdaptiveSettings(AdaptivePerformanceManager performanceManager) {
+        if (performanceManager != null) {
+            this.adaptivePerformanceManager = performanceManager;
+            
+            // Update preload range based on current performance
+            int newPreloadRange = performanceManager.getCurrentPreloadRange();
+            if (newPreloadRange != this.PRELOAD_RANGE) {
+                this.PRELOAD_RANGE = newPreloadRange;
+                Log.i(TAG, "Updated preload range to: " + PRELOAD_RANGE);
+            }
+            
+            // Update cache size based on current performance
+            int newCacheSize = performanceManager.getCurrentCacheSize();
+            if (newCacheSize != this.MAX_CACHED_VIDEOS) {
+                this.MAX_CACHED_VIDEOS = newCacheSize;
+                Log.i(TAG, "Updated cache size to: " + MAX_CACHED_VIDEOS);
+                
+                // Clean up excess cached videos if needed
+                if (playerCache.size() > MAX_CACHED_VIDEOS) {
+                    performEmergencyCleanup();
+                }
+            }
+        }
+    }
+
+    /**
+     * Mark a video as having codec issues to avoid repeated failed attempts
+     */
+    private void markVideoAsProblematic(String videoId) {
+        problematicVideos.add(videoId);
+        Log.w(TAG, "Marked video as problematic: " + videoId + " (total problematic: " + problematicVideos.size() + ")");
+    }
+
+    /**
+     * Detect if running on Android emulator
+     * Uses multiple detection methods for reliability
+     */
+    private boolean isRunningOnEmulator() {
+        return (android.os.Build.BRAND.startsWith("generic") && android.os.Build.DEVICE.startsWith("generic"))
+                || android.os.Build.FINGERPRINT.startsWith("generic")
+                || android.os.Build.FINGERPRINT.startsWith("unknown")
+                || android.os.Build.HARDWARE.contains("goldfish")
+                || android.os.Build.HARDWARE.contains("ranchu")
+                || android.os.Build.MODEL.contains("google_sdk")
+                || android.os.Build.MODEL.contains("Emulator")
+                || android.os.Build.MODEL.contains("Android SDK built for x86")
+                || android.os.Build.MANUFACTURER.contains("Genymotion")
+                || android.os.Build.PRODUCT.contains("sdk_google")
+                || android.os.Build.PRODUCT.contains("google_sdk")
+                || android.os.Build.PRODUCT.contains("sdk")
+                || android.os.Build.PRODUCT.contains("sdk_x86")
+                || android.os.Build.PRODUCT.contains("vbox86p")
+                || android.os.Build.PRODUCT.contains("emulator")
+                || android.os.Build.PRODUCT.contains("simulator");
+    }
+
+    /**
      * Data class for preloaded player
      */
     private static class PreloadedPlayerData {
@@ -341,6 +663,36 @@ public class VideoPreloadManager {
             this.player = player;
             this.position = position;
             this.timestamp = System.currentTimeMillis();
+        }
+    }
+    
+    /**
+     * Software-only codec selector for emulator compatibility
+     * Forces software decoding when hardware codecs fail
+     */
+    private static class SoftwareCodecSelector implements MediaCodecSelector {
+        @Override
+        public List<MediaCodecInfo> getDecoderInfos(String mimeType, boolean requiresSecureDecoder, boolean requiresTunnelingDecoder) {
+            try {
+                List<MediaCodecInfo> allCodecs = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+                List<MediaCodecInfo> softwareCodecs = new ArrayList<>();
+                
+                // Prefer software codecs for emulator compatibility
+                for (MediaCodecInfo codecInfo : allCodecs) {
+                    if (codecInfo.name.contains("software") || 
+                        codecInfo.name.contains("google") ||
+                        codecInfo.name.contains("ffmpeg") ||
+                        !codecInfo.hardwareAccelerated) {
+                        softwareCodecs.add(codecInfo);
+                    }
+                }
+                
+                // If no software codecs found, return all codecs as fallback
+                return softwareCodecs.isEmpty() ? allCodecs : softwareCodecs;
+            } catch (MediaCodecUtil.DecoderQueryException e) {
+                Log.e(TAG, "Error querying decoders, using default selector", e);
+                return new ArrayList<>();
+            }
         }
     }
 }

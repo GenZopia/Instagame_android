@@ -1,6 +1,7 @@
 package com.genzopia.Instagame.comments.ui;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -128,7 +129,14 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
 
         ImageButton sendBtn = v.findViewById(R.id.comment_send_btn);
         EditText input = v.findViewById(R.id.comment_input);
-        sendBtn.setOnClickListener(view -> postCommentOptimistic(input));
+        sendBtn.setOnClickListener(view -> {
+            input.setText("");
+            try {
+                postCommentOptimistic(input);
+            }catch (Exception e) {
+                Log.e("exception", "postComment failed", e);
+            }
+        });
 
         View closeBtn = v.findViewById(R.id.comments_close);
         if (closeBtn != null) closeBtn.setOnClickListener(view -> dismiss());
