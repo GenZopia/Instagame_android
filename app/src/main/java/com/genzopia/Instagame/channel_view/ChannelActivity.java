@@ -30,8 +30,6 @@ public class ChannelActivity extends AppCompatActivity {
     private TextView channelName;
     private TextView subscriberCount;
     private ImageView bannerImage;
-    
-    // Fragment management
     private GamesFragment gamesFragment;
     private VideosFragment videosFragment;
     private DetailsFragment detailsFragment;
