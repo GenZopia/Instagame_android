@@ -37,6 +37,7 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
 import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
@@ -915,10 +916,15 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     /**
      * Attach listener with thumbnail hide support - hides thumbnail when video starts playing
      * CRITICAL FIX: Uses onRenderedFirstFrame to hide thumbnail only after first frame is actually rendered
+     * PRODUCTION FIX: Enhanced with ViewHolder validation and fast-scroll handling
      * This eliminates the black screen flash between thumbnail and video
      */
     private void attachPlayerListenerWithThumbnailHide(ReelViewHolder holder, ReelItem item) {
         try {
+            // CRITICAL: Store ViewHolder reference and position for validation
+            final int holderPosition = holder.getAdapterPosition();
+            final String videoId = item.getVideoId();
+            
             sharedPlayer.addListener(new Player.Listener() {
                 private boolean thumbnailHidden = false;
                 
@@ -928,12 +934,16 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                         // Don't hide thumbnail here - wait for first frame to be rendered
                         // This prevents black screen flash
                         
-                        if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
-                            try {
-                                ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
-                            } catch (Exception e) {
-                                Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
+                        // PRODUCTION FIX: Validate ViewHolder is still valid and at correct position
+                        if (isViewHolderValid(holder, holderPosition, videoId)) {
+                            if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                                try {
+                                    ViewCountManager.setVideoDuration(item.getVideoId(), sharedPlayer.getDuration());
+                                } catch (Exception e) {
+                                    Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
+                                }
                             }
+                            Log.d("ReelAdapter", "Video ready for: " + videoId + " at position: " + holderPosition);
                         }
                     }
                 }
@@ -941,19 +951,25 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 @Override
                 public void onRenderedFirstFrame() {
                     // CRITICAL: Hide thumbnail only after first frame is actually rendered
-                    // This eliminates the black screen flash
-                    if (!thumbnailHidden && holder != null && holder.thumbnailView != null) {
+                    // PRODUCTION FIX: Enhanced validation to prevent issues during fast scroll
+                    if (!thumbnailHidden && isViewHolderValid(holder, holderPosition, videoId)) {
                         thumbnailHidden = true;
-                        // Hide immediately when first frame is rendered (no delay needed)
-                        // The fade animation will handle smooth transition
-                        hideThumbnail(holder);
-                        Log.d("ReelAdapter", "First frame rendered, hiding thumbnail with fade");
+                        
+                        // PRODUCTION FIX: Double-check this is still the current playing ViewHolder
+                        if (holder == currentPlayingViewHolder && currentPlayingPosition == holderPosition) {
+                            hideThumbnailSafely(holder, videoId);
+                            Log.d("ReelAdapter", "First frame rendered, hiding thumbnail for: " + videoId);
+                        } else {
+                            Log.w("ReelAdapter", "ViewHolder mismatch during thumbnail hide - skipping for: " + videoId);
+                        }
                     }
                 }
 
                 @Override
                 public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-                    if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
+                    // PRODUCTION FIX: Add validation before processing view count
+                    if (isViewHolderValid(holder, holderPosition, videoId) && 
+                        item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
                         try {
                             ViewCountManager.checkAndIncrementViewCount(
                                     item.getVideoId(),
@@ -968,6 +984,81 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             });
         } catch (Exception e) {
             Log.e("ReelAdapter", "Error attaching player listener: " + e.getMessage());
+        }
+    }
+
+    /**
+     * PRODUCTION FIX: Validate ViewHolder is still valid and at correct position
+     * This prevents thumbnail issues during fast scrolling
+     */
+    private boolean isViewHolderValid(ReelViewHolder holder, int expectedPosition, String expectedVideoId) {
+        if (holder == null) {
+            return false;
+        }
+        
+        // Check if ViewHolder is still at the expected position
+        int currentPosition = holder.getAdapterPosition();
+        if (currentPosition != expectedPosition || currentPosition == RecyclerView.NO_POSITION) {
+            Log.w("ReelAdapter", "ViewHolder position mismatch: expected " + expectedPosition + ", got " + currentPosition);
+            return false;
+        }
+        
+        // Check if the video ID still matches
+        if (expectedVideoId != null && !expectedVideoId.equals(holder.currentVideoId)) {
+            Log.w("ReelAdapter", "ViewHolder video ID mismatch: expected " + expectedVideoId + ", got " + holder.currentVideoId);
+            return false;
+        }
+        
+        // Check if ViewHolder is still attached to RecyclerView
+        if (holder.itemView.getParent() == null) {
+            Log.w("ReelAdapter", "ViewHolder is no longer attached to RecyclerView");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * PRODUCTION FIX: Safe thumbnail hiding with additional validation
+     * Prevents thumbnail hiding issues during fast scrolling
+     */
+    private void hideThumbnailSafely(ReelViewHolder holder, String videoId) {
+        if (holder == null || holder.thumbnailView == null) {
+            return;
+        }
+        
+        // Additional safety check - ensure this is still the current playing ViewHolder
+        if (holder != currentPlayingViewHolder) {
+            Log.w("ReelAdapter", "Skipping thumbnail hide - ViewHolder is no longer current playing holder");
+            return;
+        }
+        
+        try {
+            // Cancel any existing animation to prevent conflicts
+            holder.thumbnailView.animate().cancel();
+            
+            // Use fade out animation for smoother transition
+            holder.thumbnailView.animate()
+                    .alpha(0f)
+                    .setDuration(150) // Slightly longer for smoother transition
+                    .withEndAction(() -> {
+                        // Final validation before hiding
+                        if (holder == currentPlayingViewHolder && holder.thumbnailView != null) {
+                            holder.thumbnailView.setVisibility(View.GONE);
+                            holder.thumbnailView.setAlpha(1f); // Reset alpha for next use
+                            Log.d("ReelAdapter", "Thumbnail successfully hidden for: " + videoId);
+                        }
+                    })
+                    .start();
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error hiding thumbnail safely: " + e.getMessage());
+            // Fallback - hide immediately without animation
+            try {
+                holder.thumbnailView.setVisibility(View.GONE);
+                holder.thumbnailView.setAlpha(1f);
+            } catch (Exception fallbackError) {
+                Log.e("ReelAdapter", "Fallback thumbnail hide also failed: " + fallbackError.getMessage());
+            }
         }
     }
 
@@ -1088,7 +1179,10 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                     }
 
                     // Enhanced error handling for different error types
-                    if (isCodecError(error)) {
+                    if (isHttpError(error)) {
+                        Log.w("ReelAdapter", "HTTP error detected, attempting HTTP-specific fallback");
+                        handleHttpError(error, item, videoUri, triedFallback);
+                    } else if (isCodecError(error)) {
                         Log.w("ReelAdapter", "Codec error detected, attempting codec-specific fallback");
                         handleCodecError(item, videoUri, triedFallback);
                     } else if (!triedFallback) {
@@ -1098,6 +1192,135 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                         Log.e("ReelAdapter", "All fallback attempts failed for: " + item.getVideoId());
                         // Show error state to user instead of black screen
                         showVideoErrorState(item);
+                    }
+                }
+                
+                private boolean isHttpError(com.google.android.exoplayer2.PlaybackException error) {
+                    // Check if this is an HTTP-related error
+                    Throwable cause = error.getCause();
+                    while (cause != null) {
+                        if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
+                            HttpDataSource.InvalidResponseCodeException httpError = 
+                                (HttpDataSource.InvalidResponseCodeException) cause;
+                            int responseCode = httpError.responseCode;
+                            Log.w("ReelAdapter", "HTTP error detected - Response code: " + responseCode);
+                            return true;
+                        }
+                        cause = cause.getCause();
+                    }
+                    
+                    // Also check error message for HTTP-related keywords
+                    String errorMessage = error.getMessage();
+                    return errorMessage != null && (
+                        errorMessage.contains("Response code:") ||
+                        errorMessage.contains("403") ||
+                        errorMessage.contains("404") ||
+                        errorMessage.contains("401") ||
+                        errorMessage.contains("500") ||
+                        errorMessage.contains("HttpDataSource") ||
+                        errorMessage.contains("InvalidResponseCodeException")
+                    );
+                }
+                
+                private void handleHttpError(com.google.android.exoplayer2.PlaybackException error, 
+                                           ReelItem item, String videoUri, boolean triedFallback) {
+                    // Extract HTTP response code if available
+                    int responseCode = extractHttpResponseCode(error);
+                    
+                    Log.w("ReelAdapter", String.format("Handling HTTP error %d for video: %s", 
+                          responseCode, item.getVideoId()));
+                    
+                    switch (responseCode) {
+                        case 403: // Forbidden
+                            Log.w("ReelAdapter", "HTTP 403 Forbidden - Video access denied or URL expired");
+                            handleForbiddenError(item, videoUri, triedFallback);
+                            break;
+                        case 404: // Not Found
+                            Log.w("ReelAdapter", "HTTP 404 Not Found - Video no longer available");
+                            handleNotFoundError(item);
+                            break;
+                        case 401: // Unauthorized
+                            Log.w("ReelAdapter", "HTTP 401 Unauthorized - Authentication required");
+                            handleUnauthorizedError(item, videoUri, triedFallback);
+                            break;
+                        case 500: // Internal Server Error
+                        case 502: // Bad Gateway
+                        case 503: // Service Unavailable
+                            Log.w("ReelAdapter", "HTTP " + responseCode + " Server Error - Retrying later");
+                            handleServerError(item, videoUri, triedFallback);
+                            break;
+                        default:
+                            Log.w("ReelAdapter", "Unknown HTTP error " + responseCode + " - Using standard fallback");
+                            if (!triedFallback) {
+                                attemptStandardFallback(videoUri);
+                            } else {
+                                showVideoErrorState(item);
+                            }
+                            break;
+                    }
+                }
+                
+                private int extractHttpResponseCode(com.google.android.exoplayer2.PlaybackException error) {
+                    // Try to extract response code from the exception chain
+                    Throwable cause = error.getCause();
+                    while (cause != null) {
+                        if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
+                            return ((HttpDataSource.InvalidResponseCodeException) cause).responseCode;
+                        }
+                        cause = cause.getCause();
+                    }
+                    
+                    // Try to parse from error message as fallback
+                    String errorMessage = error.getMessage();
+                    if (errorMessage != null) {
+                        if (errorMessage.contains("403")) return 403;
+                        if (errorMessage.contains("404")) return 404;
+                        if (errorMessage.contains("401")) return 401;
+                        if (errorMessage.contains("500")) return 500;
+                        if (errorMessage.contains("502")) return 502;
+                        if (errorMessage.contains("503")) return 503;
+                    }
+                    
+                    return 0; // Unknown
+                }
+                
+                private void handleForbiddenError(ReelItem item, String videoUri, boolean triedFallback) {
+                    if (!triedFallback) {
+                        Log.i("ReelAdapter", "Attempting fallback for 403 error: " + item.getVideoId());
+                        
+                        // For 403 errors, try a different approach or show error immediately
+                        // Since we don't have alternative URLs, show error state with specific message
+                        showVideoErrorState(item, "Video access denied - content may be restricted");
+                    } else {
+                        showVideoErrorState(item, "Video access denied - content may be restricted");
+                    }
+                }
+                
+                private void handleNotFoundError(ReelItem item) {
+                    Log.w("ReelAdapter", "Video not found (404): " + item.getVideoId());
+                    showVideoErrorState(item, "Video not available - content may have been removed");
+                }
+                
+                private void handleUnauthorizedError(ReelItem item, String videoUri, boolean triedFallback) {
+                    if (!triedFallback) {
+                        Log.i("ReelAdapter", "Attempting authentication refresh for 401 error: " + item.getVideoId());
+                        // Could implement token refresh logic here
+                        attemptStandardFallback(videoUri);
+                    } else {
+                        showVideoErrorState(item, "Authentication required - please log in again");
+                    }
+                }
+                
+                private void handleServerError(ReelItem item, String videoUri, boolean triedFallback) {
+                    if (!triedFallback) {
+                        Log.i("ReelAdapter", "Server error - will retry after delay: " + item.getVideoId());
+                        
+                        // Retry after a short delay for server errors
+                        mainHandler.postDelayed(() -> {
+                            attemptStandardFallback(videoUri);
+                        }, 2000); // 2 second delay
+                    } else {
+                        showVideoErrorState(item, "Server temporarily unavailable - please try again later");
                     }
                 }
                 
@@ -1173,8 +1396,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
                 
                 private void showVideoErrorState(ReelItem item) {
+                    showVideoErrorState(item, "Video playback error - please try again");
+                }
+                
+                private void showVideoErrorState(ReelItem item, String errorMessage) {
                     // Instead of showing black screen, show error state with thumbnail
-                    Log.i("ReelAdapter", "Showing error state for video: " + item.getVideoId());
+                    Log.i("ReelAdapter", "Showing error state for video: " + item.getVideoId() + " - " + errorMessage);
                     
                     if (currentPlayingViewHolder != null) {
                         mainHandler.post(() -> {
@@ -1185,7 +1412,18 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                                     currentPlayingViewHolder.thumbnailView.setAlpha(1.0f);
                                 }
                                 
-                                // Optionally show a subtle error indicator
+                                // Show error message in title area
+                                if (currentPlayingViewHolder.tvTitle != null) {
+                                    currentPlayingViewHolder.tvTitle.setText(errorMessage);
+                                    currentPlayingViewHolder.tvTitle.setTextColor(android.graphics.Color.parseColor("#FF6B6B")); // Light red color
+                                }
+                                
+                                // Hide player view to prevent black screen
+                                if (currentPlayingViewHolder.playerView != null) {
+                                    currentPlayingViewHolder.playerView.setVisibility(View.INVISIBLE);
+                                }
+                                
+                                // Optionally show a subtle error indicator overlay
                                 // This prevents the jarring black screen experience
                                 
                             } catch (Exception e) {
