@@ -283,13 +283,19 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         }
         
         // CRITICAL FIX: Clear thumbnail when ViewHolder is recycled to prevent wrong thumbnail
+        // PRODUCTION FIX: Enhanced cleanup with animation cancellation
         if (holder.thumbnailView != null) {
+            // Cancel any ongoing animations to prevent conflicts
+            holder.thumbnailView.animate().cancel();
+            
             Glide.with(context).clear(holder.thumbnailView);
             holder.thumbnailView.setImageDrawable(null);
             // Reset to visible with black background for next use (not GONE)
             holder.thumbnailView.setVisibility(View.VISIBLE);
             holder.thumbnailView.setAlpha(1f);
             holder.thumbnailView.setBackgroundColor(android.graphics.Color.BLACK);
+            
+            Log.d("ReelAdapter", "Recycled ViewHolder - thumbnail reset for position: " + holder.getAdapterPosition());
         }
         
         // Unregister this ViewHolder from follow state management
@@ -647,6 +653,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
 
             // Start playback if not already playing
             if (!sharedPlayer.isPlaying()) {
+                // PRODUCTION FIX: Ensure thumbnail is visible before starting playback
+                if (holder.thumbnailView != null) {
+                    holder.thumbnailView.setVisibility(View.VISIBLE);
+                    holder.thumbnailView.setAlpha(1f);
+                }
+                
                 sharedPlayer.setPlayWhenReady(true);
                 Log.d("ReelAdapter", "▶️ Started audio for cached player");
             }
@@ -756,6 +768,12 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             }
 
             // Start playback
+            // PRODUCTION FIX: Ensure thumbnail is visible before starting playback
+            if (holder.thumbnailView != null) {
+                holder.thumbnailView.setVisibility(View.VISIBLE);
+                holder.thumbnailView.setAlpha(1f);
+            }
+            
             sharedPlayer.setPlayWhenReady(true);
 
             // Update tracking
@@ -827,11 +845,11 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                 }
             }
 
-            // Create fresh player ONLY if no cached player available
+            // PRODUCTION FIX: Enhanced video loading with reliable playback start
             Log.d("ReelAdapter", "Creating new player for on-demand loading");
             sharedPlayer = new ExoPlayer.Builder(context).build();
             sharedPlayer.setRepeatMode(Player.REPEAT_MODE_ALL);
-            sharedPlayer.setPlayWhenReady(false);
+            sharedPlayer.setPlayWhenReady(false); // Start paused, will be started in listener
 
             // Prepare media source
             DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
@@ -843,7 +861,7 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             sharedPlayer.setMediaSource(mediaSource);
             sharedPlayer.prepare();
 
-            // Attach to view
+            // Attach to view BEFORE adding listeners to ensure proper state
             holder.playerView.setPlayer(sharedPlayer);
 
             // Restore playback position if video was previously played
@@ -863,14 +881,28 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // Start UI progress updates
             holder.startProgressUpdates();
 
-            // Add listener for thumbnail hiding (when first frame is rendered)
+            // PRODUCTION FIX: Add listeners AFTER player is attached and prepared
             attachPlayerListenerWithThumbnailHide(holder, item);
-            
-            // Add listener with error handling and retry logic
             attachPlayerListenerWithErrorHandling(item, videoUri);
 
-            // Set to play (will start when STATE_READY)
-            sharedPlayer.setPlayWhenReady(true);
+            // PRODUCTION FIX: Ensure thumbnail is visible while loading
+            if (holder.thumbnailView != null) {
+                holder.thumbnailView.setVisibility(View.VISIBLE);
+                holder.thumbnailView.setAlpha(1f);
+                Log.d("ReelAdapter", "Ensuring thumbnail visibility during video load for: " + videoId);
+            }
+
+            // PRODUCTION FIX: Start playback with delay to ensure everything is ready
+            mainHandler.postDelayed(() -> {
+                if (sharedPlayer != null && holder == currentPlayingViewHolder) {
+                    try {
+                        sharedPlayer.setPlayWhenReady(true);
+                        Log.d("ReelAdapter", "▶️ Started playback for: " + videoId);
+                    } catch (Exception e) {
+                        Log.e("ReelAdapter", "Error starting delayed playback: " + e.getMessage());
+                    }
+                }
+            }, 200); // 200ms delay to ensure everything is ready
 
             Log.d("ReelAdapter", "Started on-demand loading at position: " + position);
 
@@ -914,10 +946,8 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     }
     
     /**
-     * Attach listener with thumbnail hide support - hides thumbnail when video starts playing
-     * CRITICAL FIX: Uses onRenderedFirstFrame to hide thumbnail only after first frame is actually rendered
-     * PRODUCTION FIX: Enhanced with ViewHolder validation and fast-scroll handling
-     * This eliminates the black screen flash between thumbnail and video
+     * PRODUCTION FIX: Enhanced player listener with comprehensive state management
+     * Handles all video loading states and thumbnail transitions reliably
      */
     private void attachPlayerListenerWithThumbnailHide(ReelViewHolder holder, ReelItem item) {
         try {
@@ -927,13 +957,14 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             
             sharedPlayer.addListener(new Player.Listener() {
                 private boolean thumbnailHidden = false;
+                private boolean videoStarted = false;
+                private Runnable thumbnailHideTimeout;
                 
                 @Override
                 public void onPlaybackStateChanged(int playbackState) {
+                    Log.d("ReelAdapter", "Playback state changed to: " + playbackState + " for video: " + videoId);
+                    
                     if (playbackState == Player.STATE_READY) {
-                        // Don't hide thumbnail here - wait for first frame to be rendered
-                        // This prevents black screen flash
-                        
                         // PRODUCTION FIX: Validate ViewHolder is still valid and at correct position
                         if (isViewHolderValid(holder, holderPosition, videoId)) {
                             if (item.getVideoId() != null && sharedPlayer.getDuration() > 0) {
@@ -943,7 +974,48 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                                     Log.e("ReelAdapter", "Error setting video duration: " + e.getMessage());
                                 }
                             }
+                            
+                            // PRODUCTION FIX: Ensure video actually starts playing
+                            if (!videoStarted && holder == currentPlayingViewHolder) {
+                                try {
+                                    sharedPlayer.setPlayWhenReady(true);
+                                    videoStarted = true;
+                                    Log.d("ReelAdapter", "Video ready and playback started for: " + videoId);
+                                    
+                                    // PRODUCTION FIX: Set timeout to hide thumbnail if callback doesn't fire
+                                    if (!thumbnailHidden) {
+                                        thumbnailHideTimeout = () -> {
+                                            if (!thumbnailHidden && holder == currentPlayingViewHolder && 
+                                                isViewHolderValid(holder, holderPosition, videoId)) {
+                                                thumbnailHidden = true;
+                                                hideThumbnailSafely(holder, videoId);
+                                                Log.d("ReelAdapter", "Timeout: Hiding thumbnail for: " + videoId);
+                                            }
+                                        };
+                                        mainHandler.postDelayed(thumbnailHideTimeout, 1000); // 1 second timeout
+                                    }
+                                } catch (Exception e) {
+                                    Log.e("ReelAdapter", "Error starting video playback: " + e.getMessage());
+                                }
+                            }
+                            
                             Log.d("ReelAdapter", "Video ready for: " + videoId + " at position: " + holderPosition);
+                        }
+                    } else if (playbackState == Player.STATE_BUFFERING) {
+                        // PRODUCTION FIX: Show thumbnail during buffering to prevent black screen
+                        if (holder == currentPlayingViewHolder && holder.thumbnailView != null) {
+                            if (holder.thumbnailView.getVisibility() != View.VISIBLE) {
+                                holder.thumbnailView.setVisibility(View.VISIBLE);
+                                holder.thumbnailView.setAlpha(1f);
+                                Log.d("ReelAdapter", "Showing thumbnail during buffering for: " + videoId);
+                            }
+                        }
+                    } else if (playbackState == Player.STATE_ENDED) {
+                        // PRODUCTION FIX: Reset states when video ends
+                        thumbnailHidden = false;
+                        videoStarted = false;
+                        if (thumbnailHideTimeout != null) {
+                            mainHandler.removeCallbacks(thumbnailHideTimeout);
                         }
                     }
                 }
@@ -955,12 +1027,45 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
                     if (!thumbnailHidden && isViewHolderValid(holder, holderPosition, videoId)) {
                         thumbnailHidden = true;
                         
+                        // Cancel timeout since we got the callback
+                        if (thumbnailHideTimeout != null) {
+                            mainHandler.removeCallbacks(thumbnailHideTimeout);
+                        }
+                        
                         // PRODUCTION FIX: Double-check this is still the current playing ViewHolder
                         if (holder == currentPlayingViewHolder && currentPlayingPosition == holderPosition) {
-                            hideThumbnailSafely(holder, videoId);
-                            Log.d("ReelAdapter", "First frame rendered, hiding thumbnail for: " + videoId);
+                            // PRODUCTION FIX: Add delay to ensure smooth transition
+                            mainHandler.postDelayed(() -> {
+                                if (holder == currentPlayingViewHolder && isViewHolderValid(holder, holderPosition, videoId)) {
+                                    hideThumbnailSafely(holder, videoId);
+                                    Log.d("ReelAdapter", "First frame rendered, hiding thumbnail for: " + videoId);
+                                }
+                            }, 100); // 100ms delay for smooth transition
                         } else {
                             Log.w("ReelAdapter", "ViewHolder mismatch during thumbnail hide - skipping for: " + videoId);
+                        }
+                    }
+                }
+                
+                @Override
+                public void onIsPlayingChanged(boolean isPlaying) {
+                    // PRODUCTION FIX: Additional check to hide thumbnail when video actually starts playing
+                    if (isPlaying && !thumbnailHidden && isViewHolderValid(holder, holderPosition, videoId)) {
+                        if (holder == currentPlayingViewHolder && currentPlayingPosition == holderPosition) {
+                            thumbnailHidden = true;
+                            
+                            // Cancel timeout since video is playing
+                            if (thumbnailHideTimeout != null) {
+                                mainHandler.removeCallbacks(thumbnailHideTimeout);
+                            }
+                            
+                            // Shorter delay since video is already playing
+                            mainHandler.postDelayed(() -> {
+                                if (holder == currentPlayingViewHolder && isViewHolderValid(holder, holderPosition, videoId)) {
+                                    hideThumbnailSafely(holder, videoId);
+                                    Log.d("ReelAdapter", "Video playing, hiding thumbnail for: " + videoId);
+                                }
+                            }, 50); // 50ms delay
                         }
                     }
                 }
@@ -1018,6 +1123,29 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
         return true;
     }
     
+    /**
+     * PRODUCTION FIX: Force thumbnail visibility to prevent black screens
+     * This ensures thumbnails are always visible when videos aren't playing
+     */
+    private void ensureThumbnailVisibility(ReelViewHolder holder, String videoId) {
+        if (holder == null || holder.thumbnailView == null) {
+            return;
+        }
+        
+        try {
+            // Cancel any ongoing hide animations
+            holder.thumbnailView.animate().cancel();
+            
+            // Make thumbnail visible
+            holder.thumbnailView.setVisibility(View.VISIBLE);
+            holder.thumbnailView.setAlpha(1f);
+            
+            Log.d("ReelAdapter", "Ensured thumbnail visibility for: " + videoId);
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error ensuring thumbnail visibility: " + e.getMessage());
+        }
+    }
+
     /**
      * PRODUCTION FIX: Safe thumbnail hiding with additional validation
      * Prevents thumbnail hiding issues during fast scrolling
@@ -1698,6 +1826,54 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
     }
     
     /**
+     * PRODUCTION FIX: Clean up stale thumbnails during fast scrolling
+     * This prevents thumbnails from sticking around when they shouldn't
+     */
+    private void cleanupStaleThumbailsDuringScroll() {
+        try {
+            if (recyclerView.getLayoutManager() == null) {
+                return;
+            }
+            
+            androidx.recyclerview.widget.LinearLayoutManager layoutManager = 
+                (androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager();
+            
+            int firstVisible = layoutManager.findFirstVisibleItemPosition();
+            int lastVisible = layoutManager.findLastVisibleItemPosition();
+            
+            // Check all visible ViewHolders for stale thumbnails
+            for (int i = firstVisible; i <= lastVisible; i++) {
+                ReelViewHolder holder = (ReelViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
+                if (holder != null && holder.thumbnailView != null) {
+                    
+                    // If this ViewHolder is not the current playing one, ensure thumbnail is visible
+                    // If it is the current playing one but video is not actually playing, show thumbnail
+                    if (holder != currentPlayingViewHolder) {
+                        // Non-playing ViewHolder should show thumbnail
+                        if (holder.thumbnailView.getVisibility() != View.VISIBLE) {
+                            holder.thumbnailView.setVisibility(View.VISIBLE);
+                            holder.thumbnailView.setAlpha(1f);
+                            Log.d("ReelAdapter", "Restored thumbnail visibility for non-playing ViewHolder at position: " + i);
+                        }
+                    } else {
+                        // Current playing ViewHolder - check if video is actually playing
+                        if (sharedPlayer != null && sharedPlayer.getPlaybackState() != Player.STATE_READY) {
+                            // Video not ready, ensure thumbnail is visible
+                            if (holder.thumbnailView.getVisibility() != View.VISIBLE) {
+                                holder.thumbnailView.setVisibility(View.VISIBLE);
+                                holder.thumbnailView.setAlpha(1f);
+                                Log.d("ReelAdapter", "Restored thumbnail for current ViewHolder (video not ready) at position: " + i);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e("ReelAdapter", "Error cleaning up stale thumbnails: " + e.getMessage());
+        }
+    }
+
+    /**
      * Update the preload manager with the current scroll position
      */
     public void updatePreloadManagerPosition(int position) {
@@ -1913,6 +2089,16 @@ public class ReelAdapter extends RecyclerView.Adapter<ReelAdapter.ReelViewHolder
             // PERFORMANCE MONITORING: Start scroll monitoring
             if (performanceMonitor != null) {
                 performanceMonitor.startScrollMonitoring();
+            }
+            
+            // PRODUCTION FIX: Clean up stale thumbnails when fast scrolling starts
+            cleanupStaleThumbailsDuringScroll();
+            
+            // PRODUCTION FIX: Ensure current ViewHolder has visible thumbnail during scroll
+            if (currentPlayingViewHolder != null && currentPlayingViewHolder.thumbnailView != null) {
+                ensureThumbnailVisibility(currentPlayingViewHolder, 
+                    currentPlayingPosition >= 0 && currentPlayingPosition < reelItems.size() ? 
+                    reelItems.get(currentPlayingPosition).getVideoId() : "unknown");
             }
             
             // OPTIMIZATION: Debounce preload updates during dragging to reduce excessive calls
