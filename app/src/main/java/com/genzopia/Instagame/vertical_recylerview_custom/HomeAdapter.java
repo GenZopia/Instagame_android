@@ -10,6 +10,9 @@ import android.view.MotionEvent;
 import android.view.GestureDetector;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DefaultDataSourceFactory;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -24,15 +27,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import android.os.Handler;
-import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.exoplayer2.ExoPlayer;
+import androidx.media3.ui.PlayerView;
+import androidx.media3.exoplayer.ExoPlayer;
 import com.genzopia.Instagame.vertical_recylerview_custom.PlayerManager;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import androidx.media3.common.MediaItem;
+import androidx.media3.exoplayer.source.MediaSource;
+
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
@@ -83,12 +85,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             
             // Add error listener
             sharedPlayer.addListener(new Player.Listener() {
-                @Override
-                public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
-                    android.util.Log.e("HomeAdapter", "Shared player error: " + error.getMessage());
-                    // Recover from error
-                    mainHandler.post(() -> recoverFromPlayerError());
-                }
+
                 
                 @Override
                 public void onPlaybackStateChanged(int playbackState) {
@@ -313,7 +310,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         VideoViewHolder videoHolder = (VideoViewHolder) holder;
         playVideoInViewHolder(videoHolder, videoItem, position);
     }
-    
+
+    @OptIn(markerClass = UnstableApi.class)
     private void playVideoInViewHolder(VideoViewHolder holder, VideoItem videoItem, int position) {
         if (videoItem.videoUrl == null || videoItem.videoUrl.isEmpty()) {
             android.util.Log.d("HomeAdapter", "No video URL for video: " + videoItem.id);
@@ -517,7 +515,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // Remove only the PlayerView, keep progress container
             for (int i = videoHolder.videoContainer.getChildCount() - 1; i >= 0; i--) {
                 View child = videoHolder.videoContainer.getChildAt(i);
-                if (child instanceof com.google.android.exoplayer2.ui.PlayerView || 
+                if (child instanceof PlayerView ||
                     child.getId() == R.id.playerView) {
                     videoHolder.videoContainer.removeViewAt(i);
                 }

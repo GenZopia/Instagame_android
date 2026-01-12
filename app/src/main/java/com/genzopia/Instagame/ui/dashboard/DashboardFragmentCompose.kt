@@ -1,0 +1,41 @@
+package com.genzopia.Instagame.ui.dashboard
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import com.genzopia.Instagame.reelview.compose.ReelScreen
+import com.genzopia.Instagame.reelview.compose.ReelViewModel
+
+/**
+ * Modern Dashboard Fragment using Jetpack Compose
+ * Replaces the old RecyclerView-based implementation
+ */
+class DashboardFragmentCompose : Fragment() {
+    
+    private val viewModel: ReelViewModel by viewModels()
+    
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            
+            setContent {
+                MaterialTheme {
+                    Surface {
+                        ReelScreen(viewModel = viewModel)
+                    }
+                }
+            }
+        }
+    }
+}

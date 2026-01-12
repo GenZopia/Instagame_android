@@ -2,15 +2,13 @@
 package com.genzopia.Instagame.vertical_recylerview_custom;
 
 import android.content.Context;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.ProgressiveMediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
-import com.google.android.exoplayer2.PlaybackException;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.common.PlaybackException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,28 +28,20 @@ public class PlayerManager {
             return playerMap.get(videoId);
         }
 
-        SimpleExoPlayer player = new SimpleExoPlayer.Builder(context).build();
-        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+        ExoPlayer player = new ExoPlayer.Builder(context).build();
         MediaItem mediaItem = MediaItem.fromUri(videoUrl);
-
-        // Try HLS first
-        MediaSource hlsSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-        player.setMediaSource(hlsSource);
+        
+        // Use progressive media source (works for both MP4 and HLS)
+        player.setMediaItem(mediaItem);
         player.prepare();
         player.setRepeatMode(Player.REPEAT_MODE_ONE);
 
-        // Add fallback to MP4 if HLS fails
+        // Add error listener
         player.addListener(new Player.Listener() {
-            boolean triedFallback = false;
             @Override
             public void onPlayerError(PlaybackException error) {
-                if (!triedFallback) {
-                    triedFallback = true;
-                    MediaSource mp4Source = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-                    player.setMediaSource(mp4Source);
-                    player.prepare();
-                    player.setPlayWhenReady(true);
-                }
+                // Log error but don't crash
+                android.util.Log.e("PlayerManager", "Player error: " + error.getMessage());
             }
         });
 

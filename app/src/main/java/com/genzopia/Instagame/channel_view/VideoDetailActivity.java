@@ -7,6 +7,8 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.genzopia.Instagame.R;
@@ -21,9 +23,10 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.database.Transaction;
 import androidx.annotation.NonNull;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.ui.StyledPlayerView;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.common.MediaItem;
+import androidx.media3.ui.PlayerView;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import java.util.ArrayList;
@@ -53,7 +56,7 @@ public class VideoDetailActivity extends AppCompatActivity {
     private String originalGameName = "";
 
     // UI Components
-    private StyledPlayerView playerView;
+    private PlayerView playerView;
     private ExoPlayer player;
     private TextInputEditText titleInput;
     private TextInputEditText descriptionInput;
@@ -103,6 +106,7 @@ public class VideoDetailActivity extends AppCompatActivity {
         setupClickListeners();
     }
 
+    @OptIn(markerClass = UnstableApi.class)
     private void initializeViews() {
         playerView = findViewById(R.id.playerView);
         titleInput = findViewById(R.id.titleInput);
@@ -126,15 +130,14 @@ public class VideoDetailActivity extends AppCompatActivity {
 
         // Configure PlayerView for better video rendering
         playerView.setUseController(true);
-        playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-        playerView.setKeepContentOnPlayerReset(true);
+        playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
 
         // Add player listener for better error handling and visibility
-        player.addListener(new com.google.android.exoplayer2.Player.Listener() {
+        player.addListener(new androidx.media3.common.Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 Log.d("VideoDetailActivity", "Playback state changed: " + playbackState);
-                if (playbackState == com.google.android.exoplayer2.Player.STATE_READY) {
+                if (playbackState == androidx.media3.common.Player.STATE_READY) {
                     Log.d("VideoDetailActivity", "Video ready to play");
                     // Ensure video is visible
                     playerView.setVisibility(View.VISIBLE);
@@ -145,17 +148,17 @@ public class VideoDetailActivity extends AppCompatActivity {
                     } else {
                         Log.w("VideoDetailActivity", "Video has no valid dimensions");
                     }
-                } else if (playbackState == com.google.android.exoplayer2.Player.STATE_BUFFERING) {
+                } else if (playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
                     Log.d("VideoDetailActivity", "Video is buffering");
-                } else if (playbackState == com.google.android.exoplayer2.Player.STATE_ENDED) {
+                } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
                     Log.d("VideoDetailActivity", "Video playback ended");
-                } else if (playbackState == com.google.android.exoplayer2.Player.STATE_IDLE) {
+                } else if (playbackState == androidx.media3.common.Player.STATE_IDLE) {
                     Log.d("VideoDetailActivity", "Video is idle");
                 }
             }
 
             @Override
-            public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+            public void onPlayerError(androidx.media3.common.PlaybackException error) {
                 Log.e("VideoDetailActivity", "Player error: " + error.getMessage());
                 Log.e("VideoDetailActivity", "Error cause: " + error.getCause());
 
@@ -172,7 +175,7 @@ public class VideoDetailActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onVideoSizeChanged(com.google.android.exoplayer2.video.VideoSize videoSize) {
+            public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
                 Log.d("VideoDetailActivity", "Video size changed: " + videoSize.width + "x" + videoSize.height);
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     playerView.setVisibility(View.VISIBLE);

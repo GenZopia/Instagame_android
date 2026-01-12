@@ -1,6 +1,6 @@
 package com.genzopia.Instagame.vertical_recylerview_custom;
 
-import com.google.android.exoplayer2.ExoPlayer;
+
 
 public class VideoItem {
     public String id;
@@ -14,7 +14,7 @@ public class VideoItem {
     public String developerId; // Add developer ID for follow tracking
     public String gameId; // Add game ID for play button functionality
     public boolean isPlaying;
-    public ExoPlayer preloadedPlayer; // Store preloaded player for thumbnail
+
 
     public VideoItem(String id, String title, String channelName,
                      String views, String timeAgo, String channelIconUrl, String videoUrl) {

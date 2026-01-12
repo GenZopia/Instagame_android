@@ -18,6 +18,9 @@ import android.os.Looper;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DefaultDataSourceFactory;
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.RecyclerView;
@@ -26,11 +29,11 @@ import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.MainActivity;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.channel_view.ChannelActivity;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.ui.PlayerView;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.PlaybackException;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
 import com.genzopia.Instagame.utils.ViewCountManager;
 import com.google.firebase.auth.FirebaseAuth;
@@ -41,11 +44,11 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import de.hdodenhof.circleimageview.CircleImageView;
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.exoplayer.source.MediaSource;
+
+import androidx.media3.common.MediaItem;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 public class VideoViewHolder extends RecyclerView.ViewHolder {
     FrameLayout videoContainer;
@@ -1063,7 +1066,8 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             }
         }).start();
     }
-    
+
+    @OptIn(markerClass = UnstableApi.class)
     private void tryExoPlayerThumbnail(VideoItem videoItem) {
         android.util.Log.d("VideoViewHolder", "Trying ExoPlayer thumbnail generation for video: " + videoItem.id);
         
