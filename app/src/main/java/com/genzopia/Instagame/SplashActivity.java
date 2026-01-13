@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
 import com.genzopia.Instagame.MainActivity;
 import com.google.firebase.auth.FirebaseAuth;
+import com.genzopia.Instagame.utils.DataPrefetchService;
 
 public class SplashActivity extends AppCompatActivity {
     private boolean hasNavigated = false;
@@ -28,6 +29,9 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
         splashStartMs = SystemClock.uptimeMillis();
+        
+        // Start prefetching data immediately
+        DataPrefetchService.INSTANCE.startPrefetch(this);
 
         // Optional: Make splash fullscreen (hide status & nav bar)
         getWindow().getDecorView().setSystemUiVisibility(

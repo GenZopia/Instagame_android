@@ -18,6 +18,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
     private static final String TAG = "MainActivity";
+    private static boolean isAppInForeground = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -105,6 +106,28 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error navigating to dashboard: " + e.getMessage());
         }
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        isAppInForeground = false;
+        Log.d(TAG, "App paused - videos should pause");
+        // Broadcast pause event to fragments
+        sendBroadcast(new Intent("com.genzopia.Instagame.ACTION_PAUSE_VIDEOS"));
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        isAppInForeground = true;
+        Log.d(TAG, "App resumed - videos should resume");
+        // Broadcast resume event to fragments
+        sendBroadcast(new Intent("com.genzopia.Instagame.ACTION_RESUME_VIDEOS"));
+    }
+    
+    public static boolean isAppInForeground() {
+        return isAppInForeground;
     }
 
 }

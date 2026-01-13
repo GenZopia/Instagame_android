@@ -58,9 +58,34 @@ fun HomeScreen(
     val textColor = if (isDarkTheme) Color.White else Color.Black
     val secondaryTextColor = if (isDarkTheme) Color.LightGray else Color.Gray
     val listState = rememberLazyListState()
+    val context = LocalContext.current
     
     // Track currently visible video index
     var currentVisibleIndex by remember { mutableStateOf(-1) }
+    var shouldPauseAll by remember { mutableStateOf(false) }
+    
+    // Lifecycle observer for pause/resume
+    DisposableEffect(Unit) {
+        val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    shouldPauseAll = true
+                    android.util.Log.d("HomeScreen", "Lifecycle paused - stopping videos")
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    shouldPauseAll = false
+                    android.util.Log.d("HomeScreen", "Lifecycle resumed - resuming videos")
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner?.lifecycle?.removeObserver(observer)
+        }
+    }
     
     // Detect which video is currently most visible
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
@@ -85,7 +110,7 @@ fun HomeScreen(
                         video = video,
                         textColor = textColor,
                         secondaryTextColor = secondaryTextColor,
-                        isVisible = index == currentVisibleIndex,
+                        isVisible = index == currentVisibleIndex && !shouldPauseAll,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

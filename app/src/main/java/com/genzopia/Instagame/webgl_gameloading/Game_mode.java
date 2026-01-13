@@ -1,38 +1,53 @@
 package com.genzopia.Instagame.webgl_gameloading;
 
+import android.Manifest;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.webkit.ConsoleMessage;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.genzopia.Instagame.databinding.ActivityGameModeBinding;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import org.mozilla.geckoview.GeckoRuntime;
-import org.mozilla.geckoview.GeckoSession;
-import org.mozilla.geckoview.GeckoSessionSettings;
-import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
-import androidx.annotation.NonNull;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class Game_mode extends AppCompatActivity {
+    private static final String TAG = "Game_mode";
+    private static final int CAMERA_PERMISSION_REQUEST = 100;
+    private static final int MICROPHONE_PERMISSION_REQUEST = 101;
+    
     private ActivityGameModeBinding binding;
-    private GeckoSession geckoSession;
+    private WebView webView;
+    private PermissionRequest pendingPermissionRequest;
     
     // Variables to store game ID
     private String gameId;
@@ -63,8 +78,8 @@ public class Game_mode extends AppCompatActivity {
         gameId = getIntent().getStringExtra("game_id");
         
         // Log the received values for debugging
-        Log.d("Game_mode", "Game ID: " + gameId);
-        Log.d("Game_mode", "Current User ID: " + currentUserId);
+        Log.d(TAG, "Game ID: " + gameId);
+        Log.d(TAG, "Current User ID: " + currentUserId);
 
         // Fetch game data to get the user_id and orientation, then get signed game URL
         fetchGameDataAndGetSignedUrl();
@@ -72,7 +87,7 @@ public class Game_mode extends AppCompatActivity {
 
     private void fetchGameDataAndGetSignedUrl() {
         if (gameId == null || gameId.isEmpty()) {
-            Log.e("Game_mode", "Game ID is null or empty");
+            Log.e(TAG, "Game ID is null or empty");
             Toast.makeText(this, "Game information not found", Toast.LENGTH_SHORT).show();
             finish();
             return;
@@ -87,8 +102,8 @@ public class Game_mode extends AppCompatActivity {
                     String gameUserId = snapshot.child("user_id").getValue(String.class);
                     String orientation = snapshot.child("orientation").getValue(String.class);
                     
-                    Log.d("Game_mode", "Game user_id from Firebase: " + gameUserId);
-                    Log.d("Game_mode", "Game orientation from Firebase: " + orientation);
+                    Log.d(TAG, "Game user_id from Firebase: " + gameUserId);
+                    Log.d(TAG, "Game orientation from Firebase: " + orientation);
                     
                     // Set screen orientation based on Firebase data
                     setScreenOrientation(orientation);
@@ -97,12 +112,12 @@ public class Game_mode extends AppCompatActivity {
                         // Now get the signed game URL using the game's user_id
                         getSignedGameUrl(gameUserId);
                     } else {
-                        Log.e("Game_mode", "Game user_id is null or empty");
+                        Log.e(TAG, "Game user_id is null or empty");
                         Toast.makeText(Game_mode.this, "Game owner information not found", Toast.LENGTH_SHORT).show();
                         finish();
                     }
                 } else {
-                    Log.e("Game_mode", "Game not found in Firebase: " + gameId);
+                    Log.e(TAG, "Game not found in Firebase: " + gameId);
                     Toast.makeText(Game_mode.this, "Game not found", Toast.LENGTH_SHORT).show();
                     finish();
                 }
@@ -110,7 +125,7 @@ public class Game_mode extends AppCompatActivity {
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("Game_mode", "Error fetching game data: " + error.getMessage());
+                Log.e(TAG, "Error fetching game data: " + error.getMessage());
                 Toast.makeText(Game_mode.this, "Error loading game data", Toast.LENGTH_SHORT).show();
                 finish();
             }
@@ -124,7 +139,7 @@ public class Game_mode extends AppCompatActivity {
     private void setScreenOrientation(String orientation) {
         if (orientation == null || orientation.isEmpty()) {
             // Default to landscape if no orientation specified
-            Log.d("Game_mode", "No orientation specified, defaulting to landscape");
+            Log.d(TAG, "No orientation specified, defaulting to landscape");
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             return;
         }
@@ -134,16 +149,16 @@ public class Game_mode extends AppCompatActivity {
         
         switch (orientationLower) {
             case "portrait":
-                Log.d("Game_mode", "Setting orientation to PORTRAIT");
+                Log.d(TAG, "Setting orientation to PORTRAIT");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
                 break;
             case "landscape":
-                Log.d("Game_mode", "Setting orientation to LANDSCAPE");
+                Log.d(TAG, "Setting orientation to LANDSCAPE");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                 break;
             default:
                 // If orientation value is not recognized, default to landscape
-                Log.w("Game_mode", "Unknown orientation value: " + orientation + ", defaulting to landscape");
+                Log.w(TAG, "Unknown orientation value: " + orientation + ", defaulting to landscape");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                 break;
         }
@@ -154,15 +169,15 @@ public class Game_mode extends AppCompatActivity {
         String linkSignerUrl = "https://link-signer.genzopia.workers.dev/?userid=" + gameUserId + "&gameid=" + gameId;
         
         // Detailed logging to verify the request
-        Log.d("Game_mode", "=== LINK-SIGNER REQUEST DETAILS ===");
-        Log.d("Game_mode", "Base URL: https://link-signer.genzopia.workers.dev/");
-        Log.d("Game_mode", "Game User ID (from game data): " + gameUserId);
-        Log.d("Game_mode", "Game ID: " + gameId);
-        Log.d("Game_mode", "Full URL: " + linkSignerUrl);
-        Log.d("Game_mode", "URL Parameters:");
-        Log.d("Game_mode", "  - userid: " + gameUserId);
-        Log.d("Game_mode", "  - gameid: " + gameId);
-        Log.d("Game_mode", "=====================================");
+        Log.d(TAG, "=== LINK-SIGNER REQUEST DETAILS ===");
+        Log.d(TAG, "Base URL: https://link-signer.genzopia.workers.dev/");
+        Log.d(TAG, "Game User ID (from game data): " + gameUserId);
+        Log.d(TAG, "Game ID: " + gameId);
+        Log.d(TAG, "Full URL: " + linkSignerUrl);
+        Log.d(TAG, "URL Parameters:");
+        Log.d(TAG, "  - userid: " + gameUserId);
+        Log.d(TAG, "  - gameid: " + gameId);
+        Log.d(TAG, "=====================================");
 
         Request request = new Request.Builder()
                 .url(linkSignerUrl)
@@ -171,7 +186,7 @@ public class Game_mode extends AppCompatActivity {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Log.e("Game_mode", "Network error: " + e.getMessage());
+                Log.e(TAG, "Network error: " + e.getMessage());
                 runOnUiThread(() -> {
                     if (!isFinishing() && !isDestroyed()) {
                         Toast.makeText(Game_mode.this, "Network error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -184,7 +199,7 @@ public class Game_mode extends AppCompatActivity {
             public void onResponse(Call call, Response response) throws IOException {
                 if (response.isSuccessful()) {
                     String responseBody = response.body().string();
-                    Log.d("Game_mode", "Link-signer response: " + responseBody);
+                    Log.d(TAG, "Link-signer response: " + responseBody);
                     
                     try {
                         // Parse JSON response
@@ -194,18 +209,18 @@ public class Game_mode extends AppCompatActivity {
                         boolean success = jsonResponse.get("success").getAsBoolean();
                         if (success) {
                             String signedGameUrl = jsonResponse.get("url").getAsString();
-                            Log.d("Game_mode", "Signed game URL: " + signedGameUrl);
+                            Log.d(TAG, "Signed game URL: " + signedGameUrl);
                             
-                            // Load the signed game URL in GeckoView
+                            // Load the signed game URL in WebView
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
-                                    setupGeckoView(signedGameUrl);
+                                    setupWebView(signedGameUrl);
                                 } else {
-                                    Log.w("Game_mode", "Activity is finishing, skipping GeckoView setup");
+                                    Log.w(TAG, "Activity is finishing, skipping WebView setup");
                                 }
                             });
                         } else {
-                            Log.e("Game_mode", "Link-signer returned success=false");
+                            Log.e(TAG, "Link-signer returned success=false");
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
                                     Toast.makeText(Game_mode.this, "Failed to get game URL", Toast.LENGTH_SHORT).show();
@@ -214,7 +229,7 @@ public class Game_mode extends AppCompatActivity {
                             });
                         }
                     } catch (Exception e) {
-                        Log.e("Game_mode", "Error parsing JSON response: " + e.getMessage());
+                        Log.e(TAG, "Error parsing JSON response: " + e.getMessage());
                         runOnUiThread(() -> {
                             if (!isFinishing() && !isDestroyed()) {
                                 Toast.makeText(Game_mode.this, "Error parsing response", Toast.LENGTH_SHORT).show();
@@ -223,7 +238,7 @@ public class Game_mode extends AppCompatActivity {
                         });
                     }
                 } else {
-                    Log.e("Game_mode", "HTTP error: " + response.code());
+                    Log.e(TAG, "HTTP error: " + response.code());
                     runOnUiThread(() -> {
                         if (!isFinishing() && !isDestroyed()) {
                             Toast.makeText(Game_mode.this, "HTTP error: " + response.code(), Toast.LENGTH_SHORT).show();
@@ -235,32 +250,160 @@ public class Game_mode extends AppCompatActivity {
         });
     }
 
-    private void setupGeckoView(String gameUrl) {
+    private void setupWebView(String gameUrl) {
         // Check if activity is still valid and binding is not null
         if (isFinishing() || isDestroyed() || binding == null) {
-            Log.w("Game_mode", "Activity is finishing or binding is null, skipping GeckoView setup");
+            Log.w(TAG, "Activity is finishing or binding is null, skipping WebView setup");
             return;
         }
 
         try {
-        GeckoRuntime runtime = MyApplication.getGeckoRuntime(getBaseContext());
-
-        GeckoSessionSettings settings = new GeckoSessionSettings.Builder()
-                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
-                .build();
-
-        geckoSession = new GeckoSession(settings);
-        geckoSession.open(runtime);
-
-        binding.geckoView.setSession(geckoSession);
+            webView = binding.webView;
+            
+            // Enable JavaScript (required for WebGL games)
+            WebSettings webSettings = webView.getSettings();
+            webSettings.setJavaScriptEnabled(true);
+            
+            // Enable DOM storage (required for many games)
+            webSettings.setDomStorageEnabled(true);
+            
+            // Enable database storage
+            webSettings.setDatabaseEnabled(true);
+            
+            // Enable hardware acceleration and GPU
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null);
+            }
+            
+            // Enable WebGL support
+            webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+            
+            // Enable mixed content (HTTP and HTTPS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            }
+            
+            // Enable zoom controls
+            webSettings.setBuiltInZoomControls(false);
+            webSettings.setDisplayZoomControls(false);
+            
+            // Enable wide viewport
+            webSettings.setUseWideViewPort(true);
+            webSettings.setLoadWithOverviewMode(true);
+            
+            // Enable caching for better performance
+            webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            
+            // Enable media playback
+            webSettings.setMediaPlaybackRequiresUserGesture(false);
+            
+            // Set user agent to desktop for better game compatibility
+            webSettings.setUserAgentString(webSettings.getUserAgentString() + " Desktop");
+            
+            // Enable file access
+            webSettings.setAllowFileAccess(true);
+            webSettings.setAllowContentAccess(true);
+            
+            // Set WebViewClient to handle page loading
+            webView.setWebViewClient(new WebViewClient() {
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    Log.d(TAG, "Page loaded successfully: " + url);
+                }
+                
+                @Override
+                public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                    super.onReceivedError(view, errorCode, description, failingUrl);
+                    Log.e(TAG, "WebView error: " + description);
+                }
+            });
+            
+            // Set WebChromeClient to handle permissions and console messages
+            webView.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onPermissionRequest(PermissionRequest request) {
+                    Log.d(TAG, "Permission requested: " + java.util.Arrays.toString(request.getResources()));
+                    
+                    // Store the request for later
+                    pendingPermissionRequest = request;
+                    
+                    // Check if camera permission is requested
+                    for (String resource : request.getResources()) {
+                        if (resource.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
+                            // Check if we have camera permission
+                            if (ContextCompat.checkSelfPermission(Game_mode.this, Manifest.permission.CAMERA)
+                                    != PackageManager.PERMISSION_GRANTED) {
+                                // Request camera permission from user
+                                ActivityCompat.requestPermissions(Game_mode.this,
+                                        new String[]{Manifest.permission.CAMERA},
+                                        CAMERA_PERMISSION_REQUEST);
+                                return;
+                            }
+                        } else if (resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                            // Check if we have microphone permission
+                            if (ContextCompat.checkSelfPermission(Game_mode.this, Manifest.permission.RECORD_AUDIO)
+                                    != PackageManager.PERMISSION_GRANTED) {
+                                // Request microphone permission from user
+                                ActivityCompat.requestPermissions(Game_mode.this,
+                                        new String[]{Manifest.permission.RECORD_AUDIO},
+                                        MICROPHONE_PERMISSION_REQUEST);
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // Grant all requested permissions
+                    request.grant(request.getResources());
+                }
+                
+                @Override
+                public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                    Log.d(TAG, "Console: " + consoleMessage.message() + 
+                            " -- From line " + consoleMessage.lineNumber() + 
+                            " of " + consoleMessage.sourceId());
+                    return true;
+                }
+                
+                @Override
+                public void onProgressChanged(WebView view, int newProgress) {
+                    super.onProgressChanged(view, newProgress);
+                    Log.d(TAG, "Loading progress: " + newProgress + "%");
+                }
+            });
             
             // Load the signed game URL
-            Log.d("Game_mode", "Loading signed game URL in GeckoView: " + gameUrl);
-            geckoSession.loadUri(gameUrl);
+            Log.d(TAG, "Loading signed game URL in WebView: " + gameUrl);
+            webView.loadUrl(gameUrl);
+            
         } catch (Exception e) {
-            Log.e("Game_mode", "Error setting up GeckoView: " + e.getMessage());
+            Log.e(TAG, "Error setting up WebView: " + e.getMessage());
             Toast.makeText(this, "Error loading game", Toast.LENGTH_SHORT).show();
             finish();
+        }
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == CAMERA_PERMISSION_REQUEST || requestCode == MICROPHONE_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Permission granted");
+                // Grant the pending permission request
+                if (pendingPermissionRequest != null) {
+                    pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
+                    pendingPermissionRequest = null;
+                }
+            } else {
+                Log.d(TAG, "Permission denied");
+                // Deny the pending permission request
+                if (pendingPermissionRequest != null) {
+                    pendingPermissionRequest.deny();
+                    pendingPermissionRequest = null;
+                }
+                Toast.makeText(this, "Permission denied. Some game features may not work.", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
@@ -269,9 +412,12 @@ public class Game_mode extends AppCompatActivity {
         super.onDestroy();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
 
-        if (geckoSession != null) {
-            geckoSession.close();
-            geckoSession = null;
+        if (webView != null) {
+            webView.loadUrl("about:blank");
+            webView.clearCache(true);
+            webView.clearHistory();
+            webView.destroy();
+            webView = null;
         }
 
         if (executorService != null) {
@@ -279,6 +425,15 @@ public class Game_mode extends AppCompatActivity {
         }
 
         binding = null;
+    }
+    
+    @Override
+    public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
     }
     
     // Getter methods for accessing the stored values

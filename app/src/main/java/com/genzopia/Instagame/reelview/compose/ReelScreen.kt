@@ -46,6 +46,31 @@ fun ReelScreen(
 ) {
     val reels = viewModel.reelsFlow.collectAsLazyPagingItems()
     val pagerState = rememberPagerState()
+    val context = LocalContext.current
+    var shouldPauseAll by remember { mutableStateOf(false) }
+    
+    // Lifecycle observer for pause/resume
+    DisposableEffect(Unit) {
+        val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    shouldPauseAll = true
+                    android.util.Log.d("ReelScreen", "Lifecycle paused - stopping reels")
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    shouldPauseAll = false
+                    android.util.Log.d("ReelScreen", "Lifecycle resumed - resuming reels")
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner?.lifecycle?.removeObserver(observer)
+        }
+    }
     
     Box(
         modifier = modifier
@@ -86,7 +111,7 @@ fun ReelScreen(
                 if (reel != null) {
                     ReelItem(
                         reel = reel,
-                        isActive = page == pagerState.currentPage,
+                        isActive = page == pagerState.currentPage && !shouldPauseAll,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
