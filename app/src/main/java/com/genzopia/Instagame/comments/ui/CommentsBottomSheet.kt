@@ -3,6 +3,7 @@ package com.genzopia.Instagame.comments.ui
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,7 +28,9 @@ import coil.request.ImageRequest
 import com.genzopia.Instagame.comments.data.CommentsRepository
 import com.genzopia.Instagame.comments.models.Comment
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * Compose Comments Bottom Sheet
@@ -48,6 +51,10 @@ fun CommentsBottomSheet(
     var isLoading by remember { mutableStateOf(false) }
     
     val currentUser = FirebaseAuth.getInstance().currentUser
+    val isDarkTheme = isSystemInDarkTheme()
+    val backgroundColor = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
+    val textColor = if (isDarkTheme) Color.White else Color.Black
+    val secondaryTextColor = if (isDarkTheme) Color.LightGray else Color.Gray
     
     // Load comments
     LaunchedEffect(videoId) {
@@ -67,7 +74,7 @@ fun CommentsBottomSheet(
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = backgroundColor
     ) {
         Column(
             modifier = Modifier
@@ -85,18 +92,20 @@ fun CommentsBottomSheet(
                 Text(
                     text = "Comments",
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
                 )
                 
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close"
+                        contentDescription = "Close",
+                        tint = textColor
                     )
                 }
             }
             
-            Divider()
+            Divider(color = if (isDarkTheme) Color.DarkGray else Color.LightGray)
             
             // Comments list
             if (isLoading) {
@@ -117,7 +126,7 @@ fun CommentsBottomSheet(
                 ) {
                     Text(
                         text = "No comments yet. Be the first to comment!",
-                        color = Color.Gray
+                        color = secondaryTextColor
                     )
                 }
             } else {
@@ -132,13 +141,15 @@ fun CommentsBottomSheet(
                         CommentItem(
                             comment = comment,
                             videoId = videoId,
-                            repository = repository
+                            repository = repository,
+                            textColor = textColor,
+                            secondaryTextColor = secondaryTextColor
                         )
                     }
                 }
             }
             
-            Divider()
+            Divider(color = if (isDarkTheme) Color.DarkGray else Color.LightGray)
             
             // Input row
             Row(
@@ -226,16 +237,52 @@ fun CommentsBottomSheet(
 fun CommentItem(
     comment: Comment,
     videoId: String,
-    repository: CommentsRepository
+    repository: CommentsRepository,
+    textColor: Color,
+    secondaryTextColor: Color
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var isLiked by remember { mutableStateOf(false) }
     var likeCount by remember { mutableStateOf(comment.like_count ?: 0L) }
+    var userName by remember { mutableStateOf("Loading...") }
+    var userPhotoUrl by remember { mutableStateOf<String?>(null) }
     
     val currentUser = FirebaseAuth.getInstance().currentUser
     
-    // Check if liked
+    // Load user info and check if liked
     LaunchedEffect(comment.comment_id) {
+        // Fetch user info from Firebase users node
+        scope.launch {
+            try {
+                val userSnapshot = FirebaseDatabase.getInstance().reference
+                    .child("users")
+                    .child(comment.user_id)
+                    .get()
+                    .await()
+                
+                // Get full_name from Firebase (based on actual structure)
+                val name = userSnapshot.child("full_name").getValue(String::class.java)
+                    ?: userSnapshot.child("name").getValue(String::class.java)
+                    ?: userSnapshot.child("username").getValue(String::class.java)
+                    ?: "User"
+                
+                // Get profile_photo_url from Firebase
+                val photoUrl = userSnapshot.child("profile_photo_url").getValue(String::class.java)
+                    ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
+                    ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+                
+                userName = name
+                userPhotoUrl = photoUrl
+                
+                android.util.Log.d("CommentsBottomSheet", "Loaded user: $name from users/${comment.user_id}")
+            } catch (e: Exception) {
+                android.util.Log.e("CommentsBottomSheet", "Error loading user info for ${comment.user_id}", e)
+                userName = "User"
+            }
+        }
+        
+        // Check if liked
         if (currentUser != null) {
             repository.isCommentLiked(videoId, comment.comment_id, currentUser.uid, object : CommentsRepository.BooleanCallback {
                 override fun onResult(value: Boolean) {
@@ -254,7 +301,7 @@ fun CommentItem(
         // User avatar - clickable to open channel
         AsyncImage(
             model = ImageRequest.Builder(context)
-                .data(comment.user_photo_url)
+                .data(userPhotoUrl)
                 .crossfade(true)
                 .placeholder(android.R.drawable.ic_menu_gallery)
                 .error(android.R.drawable.ic_menu_gallery)
@@ -278,15 +325,17 @@ fun CommentItem(
         ) {
             // Username
             Text(
-                text = comment.user_display_name ?: "User",
+                text = userName,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                color = textColor
             )
             
             // Comment text
             Text(
                 text = comment.text ?: "",
                 fontSize = 14.sp,
+                color = textColor,
                 modifier = Modifier.padding(top = 4.dp)
             )
             
@@ -326,7 +375,7 @@ fun CommentItem(
                     Icon(
                         imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                         contentDescription = "Like",
-                        tint = if (isLiked) Color(0xFFFF6B35) else Color.Gray,
+                        tint = if (isLiked) Color(0xFFFF6B35) else secondaryTextColor,
                         modifier = Modifier.size(16.dp)
                     )
                     if (likeCount > 0) {
@@ -334,7 +383,7 @@ fun CommentItem(
                         Text(
                             text = likeCount.toString(),
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = secondaryTextColor
                         )
                     }
                 }
@@ -343,7 +392,7 @@ fun CommentItem(
                 Text(
                     text = "Reply",
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = secondaryTextColor,
                     modifier = Modifier.clickable {
                         // TODO: Implement reply functionality
                         android.widget.Toast.makeText(context, "Reply coming soon!", android.widget.Toast.LENGTH_SHORT).show()
@@ -354,7 +403,7 @@ fun CommentItem(
                 Text(
                     text = getTimeAgo(comment.created_at ?: 0L),
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = secondaryTextColor
                 )
             }
         }

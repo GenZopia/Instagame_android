@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,13 @@ import com.genzopia.Instagame.reelview.compose.VideoPlayer
 import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
 import com.google.firebase.database.FirebaseDatabase
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
+import androidx.paging.LoadState
 
 // App's orange theme color
 private val OrangeTheme = Color(0xFFFF6B35)
@@ -48,24 +57,52 @@ fun HomeScreen(
     val backgroundColor = if (isDarkTheme) Color(0xFF121212) else Color.White
     val textColor = if (isDarkTheme) Color.White else Color.Black
     val secondaryTextColor = if (isDarkTheme) Color.LightGray else Color.Gray
+    val listState = rememberLazyListState()
     
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(backgroundColor),
-        contentPadding = PaddingValues(vertical = 8.dp)
-    ) {
-        items(
-            count = videos.itemCount,
-            key = { index -> videos[index]?.videoId ?: index }
-        ) { index ->
-            val video = videos[index]
-            if (video != null) {
-                HomeVideoItem(
-                    video = video,
-                    textColor = textColor,
-                    secondaryTextColor = secondaryTextColor,
-                    modifier = Modifier.fillMaxWidth()
+    // Track currently visible video index
+    var currentVisibleIndex by remember { mutableStateOf(-1) }
+    
+    // Detect which video is currently most visible
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        currentVisibleIndex = listState.firstVisibleItemIndex
+    }
+    
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundColor),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            items(
+                count = videos.itemCount,
+                key = { index -> videos[index]?.videoId ?: index }
+            ) { index ->
+                val video = videos[index]
+                if (video != null) {
+                    HomeVideoItem(
+                        video = video,
+                        textColor = textColor,
+                        secondaryTextColor = secondaryTextColor,
+                        isVisible = index == currentVisibleIndex,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+        
+        // Show loading indicator when loading initial data
+        if (videos.loadState.refresh is LoadState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(backgroundColor),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = OrangeTheme,
+                    modifier = Modifier.size(48.dp)
                 )
             }
         }
@@ -80,31 +117,50 @@ fun HomeVideoItem(
     video: HomeVideoData,
     textColor: Color,
     secondaryTextColor: Color,
+    isVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+    val videoHeight = (screenHeight * 3) / 4 // Fixed 3/4 of screen height
+    
     var isLiked by remember { mutableStateOf(video.isLiked) }
     var likeCount by remember { mutableStateOf(video.likeCount.toIntOrNull() ?: 0) }
     var isFollowing by remember { mutableStateOf(video.isFollowing) }
     var isPlaying by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     
+    // Auto-play when visible, pause when not visible
+    LaunchedEffect(isVisible) {
+        isPlaying = isVisible
+    }
+    
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .background(if (isSystemInDarkTheme()) Color(0xFF121212) else Color.White)
             .padding(bottom = 16.dp)
+            .clipToBounds() // Prevent overflow
     ) {
         // Header with channel info - clickable to navigate to channel
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .clickable {
-                    // Navigate to channel activity
-                    val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
-                    intent.putExtra("user_id", video.developerId)
-                    context.startActivity(intent)
-                }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                    // Navigate to channel activity with developer_id
+                    try {
+                        val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
+                        intent.putExtra("developer_id", video.developerId)
+                        intent.putExtra("user_id", video.developerId) // Also add user_id for compatibility
+                        android.util.Log.d("HomeScreen", "Opening channel for developer: ${video.developerId}")
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        android.util.Log.e("HomeScreen", "Error opening channel", e)
+                        android.widget.Toast.makeText(context, "Error opening channel", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Profile picture with proper loading
@@ -135,45 +191,78 @@ fun HomeVideoItem(
             )
         }
         
-        // Video player with fixed aspect ratio
+        // Video player with fixed height (1/3 of screen)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(9f / 16f) // Fixed 9:16 aspect ratio
+                .height(videoHeight)
+                .background(Color.Black)
+                .clipToBounds() // Prevent video overflow
                 .clickable { isPlaying = !isPlaying }
         ) {
-            VideoPlayer(
-                videoUrl = video.videoUrl,
-                isPlaying = isPlaying,
-                modifier = Modifier.fillMaxSize(),
-                onPlayerReady = { /* Video ready */ },
-                onPlayerError = { /* Handle error */ }
-            )
+            // Only render video player when visible to prevent overlap
+            if (isVisible || isPlaying) {
+                VideoPlayer(
+                    videoUrl = video.videoUrl,
+                    isPlaying = isPlaying,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds(),
+                    onPlayerReady = { /* Video ready */ },
+                    onPlayerError = { /* Handle error */ }
+                )
+            } else {
+                // Show thumbnail or placeholder when not visible
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Play",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
             
             // Play button overlay
             if (!isPlaying) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play",
-                    tint = Color.White,
+                Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .align(Alignment.Center)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                        .padding(16.dp)
-                        .clickable { isPlaying = true }
-                )
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .zIndex(1f), // Ensure overlay is on top
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Play",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                            .padding(20.dp)
+                    )
+                }
             }
         }
         
-        // Action buttons row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Action buttons row - properly separated from video
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (isSystemInDarkTheme()) Color(0xFF121212) else Color.White,
+            tonalElevation = 0.dp
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             // Like button with Firebase update
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -234,33 +323,39 @@ fun HomeVideoItem(
             }
             
             // Share button with proper intent
-            Icon(
-                imageVector = Icons.Outlined.Share,
-                contentDescription = "Share",
-                tint = textColor,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable {
-                        val shareIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, "Check out this video: ${video.title}\nVideo ID: ${video.videoId}")
-                            type = "text/plain"
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share video"))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable {
+                    val shareIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, "Check out this video: ${video.title}\nVideo ID: ${video.videoId}")
+                        type = "text/plain"
                     }
-            )
+                    context.startActivity(Intent.createChooser(shareIntent, "Share video"))
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Share,
+                    contentDescription = "Share",
+                    tint = textColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             
             // Comment button
-            Icon(
-                imageVector = Icons.Outlined.Star,
-                contentDescription = "Comment",
-                tint = textColor,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable {
-                        showComments = true
-                    }
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable {
+                    showComments = true
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Star,
+                    contentDescription = "Comment",
+                    tint = textColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             
             Spacer(modifier = Modifier.weight(1f))
             
@@ -275,55 +370,72 @@ fun HomeVideoItem(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = OrangeTheme
                 ),
-                shape = RoundedCornerShape(4.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                modifier = Modifier.height(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Play", fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Play Game", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
-        
-        // Title
-        Text(
-            text = video.title,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
-            color = textColor,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-        
-        // Description
-        if (video.description.isNotEmpty()) {
-            Text(
-                text = video.description,
-                fontSize = 13.sp,
-                color = secondaryTextColor,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
         }
         
-        // Views and time
-        Text(
-            text = "${formatCount(video.viewCount.toIntOrNull() ?: 0)} views",
-            fontSize = 12.sp,
-            color = secondaryTextColor,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
+        // Content section - properly separated
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (isSystemInDarkTheme()) Color(0xFF121212) else Color.White,
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+            ) {
+        
+            // Title
+            Text(
+                text = video.title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = textColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            // Description
+            if (video.description.isNotEmpty()) {
+                Text(
+                    text = video.description,
+                    fontSize = 13.sp,
+                    color = secondaryTextColor,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            
+            // Views and time
+            Text(
+                text = "${formatCount(video.viewCount.toIntOrNull() ?: 0)} views",
+                fontSize = 12.sp,
+                color = secondaryTextColor,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+        }
+        }
         
         // Divider
-        Divider(
-            modifier = Modifier.padding(top = 12.dp),
-            thickness = 0.5.dp,
-            color = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
+        HorizontalDivider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            thickness = 8.dp,
+            color = if (isSystemInDarkTheme()) Color(0xFF1E1E1E) else Color(0xFFF5F5F5)
         )
     }
     

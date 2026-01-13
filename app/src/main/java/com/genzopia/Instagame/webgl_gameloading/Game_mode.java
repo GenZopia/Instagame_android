@@ -66,10 +66,7 @@ public class Game_mode extends AppCompatActivity {
         Log.d("Game_mode", "Game ID: " + gameId);
         Log.d("Game_mode", "Current User ID: " + currentUserId);
 
-        // Lock to landscape
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-
-        // Fetch game data to get the user_id, then get signed game URL
+        // Fetch game data to get the user_id and orientation, then get signed game URL
         fetchGameDataAndGetSignedUrl();
     }
 
@@ -81,14 +78,20 @@ public class Game_mode extends AppCompatActivity {
             return;
         }
 
-        // Fetch game data from Firebase to get the user_id
+        // Fetch game data from Firebase to get the user_id and orientation
         DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
         gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 if (snapshot.exists()) {
                     String gameUserId = snapshot.child("user_id").getValue(String.class);
+                    String orientation = snapshot.child("orientation").getValue(String.class);
+                    
                     Log.d("Game_mode", "Game user_id from Firebase: " + gameUserId);
+                    Log.d("Game_mode", "Game orientation from Firebase: " + orientation);
+                    
+                    // Set screen orientation based on Firebase data
+                    setScreenOrientation(orientation);
                     
                     if (gameUserId != null && !gameUserId.isEmpty()) {
                         // Now get the signed game URL using the game's user_id
@@ -112,6 +115,38 @@ public class Game_mode extends AppCompatActivity {
                 finish();
             }
         });
+    }
+
+    /**
+     * Set screen orientation based on Firebase orientation parameter
+     * @param orientation The orientation value from Firebase ("portrait" or "landscape")
+     */
+    private void setScreenOrientation(String orientation) {
+        if (orientation == null || orientation.isEmpty()) {
+            // Default to landscape if no orientation specified
+            Log.d("Game_mode", "No orientation specified, defaulting to landscape");
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            return;
+        }
+        
+        // Convert to lowercase for case-insensitive comparison
+        String orientationLower = orientation.toLowerCase().trim();
+        
+        switch (orientationLower) {
+            case "portrait":
+                Log.d("Game_mode", "Setting orientation to PORTRAIT");
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                break;
+            case "landscape":
+                Log.d("Game_mode", "Setting orientation to LANDSCAPE");
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                break;
+            default:
+                // If orientation value is not recognized, default to landscape
+                Log.w("Game_mode", "Unknown orientation value: " + orientation + ", defaulting to landscape");
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                break;
+        }
     }
 
     private void getSignedGameUrl(String gameUserId) {

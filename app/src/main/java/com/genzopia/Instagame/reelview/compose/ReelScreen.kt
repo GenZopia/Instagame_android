@@ -33,6 +33,7 @@ import com.google.accompanist.pager.rememberPagerState
 import com.google.firebase.database.FirebaseDatabase
 import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import kotlinx.coroutines.delay
+import androidx.paging.LoadState
 
 /**
  * Main Reel Screen with vertical paging
@@ -46,19 +47,49 @@ fun ReelScreen(
     val reels = viewModel.reelsFlow.collectAsLazyPagingItems()
     val pagerState = rememberPagerState()
     
-    Box(modifier = modifier.fillMaxSize()) {
-        VerticalPager(
-            count = reels.itemCount,
-            state = pagerState,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            val reel = reels[page]
-            if (reel != null) {
-                ReelItem(
-                    reel = reel,
-                    isActive = page == pagerState.currentPage,
-                    modifier = Modifier.fillMaxSize()
-                )
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black) // Black background for reels
+    ) {
+        // Show loading indicator when loading initial data
+        if (reels.loadState.refresh is LoadState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = "Loading reels...",
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        } else {
+            // Show reels when loaded
+            VerticalPager(
+                count = reels.itemCount,
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val reel = reels[page]
+                if (reel != null) {
+                    ReelItem(
+                        reel = reel,
+                        isActive = page == pagerState.currentPage,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }
@@ -89,14 +120,17 @@ fun ReelItem(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
-                        if (!isLiked) {
-                            isLiked = true
-                            likeCount++
-                            showLikeAnimation = true
-                            // Update Firebase
-                            FirebaseDatabase.getInstance().reference
-                                .child("videos").child(reel.videoId)
-                                .child("like_count").setValue(likeCount.toString())
+                        // Double-click to launch game
+                        if (reel.gameId.isNotEmpty()) {
+                            val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
+                            intent.putExtra("game_id", reel.gameId)
+                            context.startActivity(intent)
+                        } else {
+                            android.widget.Toast.makeText(
+                                context,
+                                "No game associated with this video",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 )
@@ -236,10 +270,17 @@ fun ReelOverlay(
                 modifier = Modifier
                     .padding(bottom = 8.dp)
                     .clickable {
-                        // Navigate to channel activity
-                        val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
-                        intent.putExtra("user_id", reel.developerId)
-                        context.startActivity(intent)
+                        // Navigate to channel activity with developer_id
+                        try {
+                            val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
+                            intent.putExtra("developer_id", reel.developerId)
+                            intent.putExtra("user_id", reel.developerId) // Also add user_id for compatibility
+                            android.util.Log.d("ReelScreen", "Opening channel for developer: ${reel.developerId}")
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.util.Log.e("ReelScreen", "Error opening channel", e)
+                            android.widget.Toast.makeText(context, "Error opening channel", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
             ) {
                 // Profile picture with proper loading
@@ -351,9 +392,7 @@ fun ReelOverlay(
             ActionButton(
                 icon = Icons.Outlined.Star,
                 text = "Comment",
-                onClick = {
-                    android.widget.Toast.makeText(context, "Comments coming soon!", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                onClick = onCommentClick
             )
             
             // Share button with proper intent
