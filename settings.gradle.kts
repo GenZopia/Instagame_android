@@ -21,6 +21,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Genzcrop"
+rootProject.name = "Instagame"
 include(":app")
  

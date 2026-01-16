@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.paging.compose.LazyPagingItems
@@ -243,11 +244,16 @@ fun ReelItem(
             onFollowClick = {
                 isFollowing = true
                 // Update Firebase follow status
-                FirebaseDatabase.getInstance().reference
-                    .child("follows")
-                    .child(com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "")
-                    .child(reel.developerId)
-                    .setValue(true)
+                var devid=FirebaseDatabase.getInstance().reference
+                    .child(reel.videoId).child("user_id").get()
+                devid.addOnSuccessListener {dataSnapshot ->
+                    val developerId = dataSnapshot.getValue(String::class.java) ?: ""
+                    FirebaseDatabase.getInstance().reference
+                        .child("users").child(developerId)
+                        .child("following_list").child(devid.result.toString())
+                        .setValue(true)
+                }
+
             },
             onShareClick = { /* Share handled in overlay */ },
             onCommentClick = { showComments = true },
