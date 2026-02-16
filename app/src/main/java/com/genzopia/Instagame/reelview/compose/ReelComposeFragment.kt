@@ -1,5 +1,6 @@
 package com.genzopia.Instagame.reelview.compose
 
+import ReelViewModel
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View

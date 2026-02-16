@@ -1,6 +1,11 @@
 package com.genzopia.Instagame.ui.home.compose
 
+import HomeViewModel
+import VideoPlayer
+import android.R
 import android.content.Intent
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,7 +34,6 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.genzopia.Instagame.reelview.compose.VideoPlayer
 import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
 import com.google.firebase.database.FirebaseDatabase
@@ -39,7 +43,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.paging.LoadState
+import com.genzopia.Instagame.channel_view.ChannelActivity
 
 // App's orange theme color
 private val OrangeTheme = Color(0xFFFF6B35)
@@ -59,39 +68,43 @@ fun HomeScreen(
     val secondaryTextColor = if (isDarkTheme) Color.LightGray else Color.Gray
     val listState = rememberLazyListState()
     val context = LocalContext.current
-    
+
+    LaunchedEffect(Unit) {
+        viewModel.initializePlayer(context)
+    }
+
     // Track currently visible video index
     var currentVisibleIndex by remember { mutableStateOf(-1) }
     var shouldPauseAll by remember { mutableStateOf(false) }
-    
+
     // Lifecycle observer for pause/resume
     DisposableEffect(Unit) {
-        val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+        val lifecycleOwner = context as? LifecycleOwner
+        val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                Lifecycle.Event.ON_PAUSE -> {
                     shouldPauseAll = true
-                    android.util.Log.d("HomeScreen", "Lifecycle paused - stopping videos")
+                    Log.d("HomeScreen", "Lifecycle paused - stopping videos")
                 }
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                Lifecycle.Event.ON_RESUME -> {
                     shouldPauseAll = false
-                    android.util.Log.d("HomeScreen", "Lifecycle resumed - resuming videos")
+                    Log.d("HomeScreen", "Lifecycle resumed - resuming videos")
                 }
                 else -> {}
             }
         }
         lifecycleOwner?.lifecycle?.addObserver(observer)
-        
+
         onDispose {
             lifecycleOwner?.lifecycle?.removeObserver(observer)
         }
     }
-    
+
     // Detect which video is currently most visible
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
         currentVisibleIndex = listState.firstVisibleItemIndex
     }
-    
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -111,12 +124,13 @@ fun HomeScreen(
                         textColor = textColor,
                         secondaryTextColor = secondaryTextColor,
                         isVisible = index == currentVisibleIndex && !shouldPauseAll,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        player = viewModel.exoPlayer
                     )
                 }
             }
         }
-        
+
         // Show loading indicator when loading initial data
         if (videos.loadState.refresh is LoadState.Loading) {
             Box(
@@ -143,7 +157,8 @@ fun HomeVideoItem(
     textColor: Color,
     secondaryTextColor: Color,
     isVisible: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    player: ExoPlayer
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -176,14 +191,14 @@ fun HomeVideoItem(
                 .clickable {
                     // Navigate to channel activity with developer_id
                     try {
-                        val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
+                        val intent = Intent(context, ChannelActivity::class.java)
                         intent.putExtra("developer_id", video.developerId)
                         intent.putExtra("user_id", video.developerId) // Also add user_id for compatibility
-                        android.util.Log.d("HomeScreen", "Opening channel for developer: ${video.developerId}")
+                        Log.d("HomeScreen", "Opening channel for developer: ${video.developerId}")
                         context.startActivity(intent)
                     } catch (e: Exception) {
-                        android.util.Log.e("HomeScreen", "Error opening channel", e)
-                        android.widget.Toast.makeText(context, "Error opening channel", android.widget.Toast.LENGTH_SHORT).show()
+                        Log.e("HomeScreen", "Error opening channel", e)
+                        Toast.makeText(context, "Error opening channel", Toast.LENGTH_SHORT).show()
                     }
                 },
             verticalAlignment = Alignment.CenterVertically
@@ -193,8 +208,8 @@ fun HomeVideoItem(
                 model = ImageRequest.Builder(context)
                     .data(video.developerPhotoUrl)
                     .crossfade(true)
-                    .placeholder(android.R.drawable.ic_menu_gallery)
-                    .error(android.R.drawable.ic_menu_gallery)
+                    .placeholder(R.drawable.ic_menu_gallery)
+                    .error(R.drawable.ic_menu_gallery)
                     .build(),
                 contentDescription = "Profile",
                 modifier = Modifier
@@ -234,7 +249,8 @@ fun HomeVideoItem(
                         .fillMaxSize()
                         .clipToBounds(),
                     onPlayerReady = { /* Video ready */ },
-                    onPlayerError = { /* Handle error */ }
+                    onPlayerError = { /* Handle error */ },
+                    player = player
                 )
             } else {
                 // Show thumbnail or placeholder when not visible

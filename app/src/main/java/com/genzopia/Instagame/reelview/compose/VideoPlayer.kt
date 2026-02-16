@@ -1,7 +1,3 @@
-package com.genzopia.Instagame.reelview.compose
-
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,77 +6,46 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
-/**
- * Composable video player using Media3 ExoPlayer
- */
+@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
-    videoUrl: String?,
+    videoUrl: String?,           // Not used directly, kept for compatibility
     isPlaying: Boolean,
+    player: ExoPlayer,
     modifier: Modifier = Modifier,
     onPlayerReady: () -> Unit = {},
     onPlayerError: (Exception) -> Unit = {}
 ) {
-    val context = LocalContext.current
-    
-    // Create and remember ExoPlayer
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context))
-            .build().apply {
-                repeatMode = Player.REPEAT_MODE_ONE
-                volume = 1f
-            }
-    }
-    
-    // Handle video URL changes
-    LaunchedEffect(videoUrl) {
-        if (videoUrl != null && videoUrl.isNotEmpty()) {
-            try {
-                val mediaItem = MediaItem.fromUri(videoUrl)
-                exoPlayer.setMediaItem(mediaItem)
-                exoPlayer.prepare()
-            } catch (e: Exception) {
-                onPlayerError(e)
-            }
-        }
-    }
-    
-    // Handle play/pause state
+    // Control play/pause based on visibility
     LaunchedEffect(isPlaying) {
-        exoPlayer.playWhenReady = isPlaying
+        player.playWhenReady = isPlaying
     }
-    
-    // Add player listener
-    DisposableEffect(exoPlayer) {
+
+    // Attach listener for state changes and errors
+    DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     onPlayerReady()
                 }
             }
-            
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                onPlayerError(Exception(error))
+            override fun onPlayerError(error: PlaybackException) {
+                onPlayerError(error)
             }
         }
-        
-        exoPlayer.addListener(listener)
-        
+        player.addListener(listener)
         onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            player.removeListener(listener)
         }
     }
-    
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -89,12 +54,12 @@ fun VideoPlayer(
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    player = exoPlayer
+                    this.player = player
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
+                    layoutParams = android.widget.FrameLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 }
             },

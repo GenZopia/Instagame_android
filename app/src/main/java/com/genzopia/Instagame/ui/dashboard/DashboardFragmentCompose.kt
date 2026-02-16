@@ -1,5 +1,6 @@
 package com.genzopia.Instagame.ui.dashboard
 
+import ReelViewModel
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -11,7 +12,6 @@ import androidx.fragment.app.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import com.genzopia.Instagame.reelview.compose.ReelScreen
-import com.genzopia.Instagame.reelview.compose.ReelViewModel
 
 /**
  * Modern Dashboard Fragment using Jetpack Compose

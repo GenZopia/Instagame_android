@@ -1,6 +1,9 @@
 package com.genzopia.Instagame.reelview.compose
 
+import ReelViewModel
+import VideoPlayer
 import android.content.Intent
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
@@ -49,7 +53,25 @@ fun ReelScreen(
     val pagerState = rememberPagerState()
     val context = LocalContext.current
     var shouldPauseAll by remember { mutableStateOf(false) }
-    
+
+    // Initialize the player when the screen first appears
+    LaunchedEffect(Unit) {
+        viewModel.initializePlayer(context)
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (reels.itemCount > 0 && pagerState.currentPage < reels.itemCount) {
+            val reel = reels[pagerState.currentPage]
+            Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
+            reel?.let {
+                viewModel.setCurrentVideo(it.videoUrl)
+                if (!shouldPauseAll) {
+                    viewModel.play()
+                }
+            }
+        }
+    }
+
     // Lifecycle observer for pause/resume
     DisposableEffect(Unit) {
         val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
@@ -57,52 +79,35 @@ fun ReelScreen(
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
                     shouldPauseAll = true
-                    android.util.Log.d("ReelScreen", "Lifecycle paused - stopping reels")
+                    viewModel.pause()   // pause the shared player
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     shouldPauseAll = false
-                    android.util.Log.d("ReelScreen", "Lifecycle resumed - resuming reels")
+                    // Resume will be handled by page change
                 }
                 else -> {}
             }
         }
         lifecycleOwner?.lifecycle?.addObserver(observer)
-        
         onDispose {
             lifecycleOwner?.lifecycle?.removeObserver(observer)
         }
     }
-    
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black) // Black background for reels
+            .background(Color.Black)
     ) {
-        // Show loading indicator when loading initial data
+        // Loading state unchanged
         if (reels.loadState.refresh is LoadState.Loading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = "Loading reels...",
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
+                CircularProgressIndicator(color = Color.White)
             }
         } else {
-            // Show reels when loaded
             VerticalPager(
                 count = reels.itemCount,
                 state = pagerState,
@@ -113,6 +118,7 @@ fun ReelScreen(
                     ReelItem(
                         reel = reel,
                         isActive = page == pagerState.currentPage && !shouldPauseAll,
+                        player = viewModel.exoPlayer,  // pass the shared player
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -128,6 +134,7 @@ fun ReelScreen(
 fun ReelItem(
     reel: ReelData,
     isActive: Boolean,
+    player: ExoPlayer,
     modifier: Modifier = Modifier
 ) {
     var isLiked by remember { mutableStateOf(reel.isLiked) }
@@ -165,8 +172,9 @@ fun ReelItem(
         // Video Player
         VideoPlayer(
             videoUrl = reel.videoUrl,
-            isPlaying = isActive,
+            isPlaying = isActive, // <-- pass shared player
             modifier = Modifier.fillMaxSize(),
+            player = player,
             onPlayerReady = {
                 showThumbnail = false
                 isLoading = false
@@ -175,7 +183,6 @@ fun ReelItem(
                 isLoading = false
             }
         )
-        
         // Thumbnail overlay (shown while loading) - with black background
         if (showThumbnail && reel.videoUrl != null) {
             Box(
