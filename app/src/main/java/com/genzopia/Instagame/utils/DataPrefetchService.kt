@@ -2,6 +2,8 @@ package com.genzopia.Instagame.utils
 
 import android.content.Context
 import android.util.Log
+import com.genzopia.Instagame.features.home.domain.FollowedUser
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -29,6 +31,7 @@ object DataPrefetchService {
     // Cache for prefetched data
     private val videoCache = mutableMapOf<String, VideoMetadata>()
     private val signedUrlCache = mutableMapOf<String, String>()
+    private var followedUsersCache: List<FollowedUser>? = null
     
     data class VideoMetadata(
         val videoId: String,
@@ -46,11 +49,14 @@ object DataPrefetchService {
         
         scope.launch {
             try {
+                // Prefetch followed users for stories bar
+                prefetchFollowedUsers()
+                
                 // Prefetch first batch of videos
-                prefetchVideos(5) // Prefetch 5 videos
+                prefetchVideos(5)
                 
                 // Prefetch first batch of reels
-                prefetchReels(3) // Prefetch 3 reels
+                prefetchReels(3)
                 
                 Log.d(TAG, "Prefetch completed successfully")
             } catch (e: Exception) {
@@ -187,6 +193,63 @@ object DataPrefetchService {
     fun clearCache() {
         videoCache.clear()
         signedUrlCache.clear()
+        followedUsersCache = null
         Log.d(TAG, "Cache cleared")
+    }
+
+    /**
+     * Prefetch followed users for the stories bar
+     */
+    private suspend fun prefetchFollowedUsers() {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        try {
+            val followsSnapshot = database.reference
+                .child("follows")
+                .child(currentUserId)
+                .get()
+                .await()
+
+            val followedIds = followsSnapshot.children.mapNotNull { it.key }
+            if (followedIds.isEmpty()) {
+                followedUsersCache = emptyList()
+                return
+            }
+
+            val users = mutableListOf<FollowedUser>()
+            for (userId in followedIds) {
+                try {
+                    val userSnapshot = database.reference
+                        .child("users")
+                        .child(userId)
+                        .get()
+                        .await()
+
+                    val fullName = userSnapshot.child("full_name").getValue(String::class.java)
+                        ?: userSnapshot.child("name").getValue(String::class.java)
+                        ?: userSnapshot.child("username").getValue(String::class.java)
+                        ?: "User"
+
+                    val profilePhotoUrl = userSnapshot.child("profile_photo_url").getValue(String::class.java)
+                        ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
+                        ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+
+                    users.add(FollowedUser(userId, fullName, profilePhotoUrl))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching user $userId", e)
+                }
+            }
+
+            followedUsersCache = users
+            Log.d(TAG, "Prefetched ${users.size} followed users")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error prefetching followed users", e)
+        }
+    }
+
+    /**
+     * Get cached followed users (null = not yet loaded)
+     */
+    fun getCachedFollowedUsers(): List<FollowedUser>? {
+        return followedUsersCache
     }
 }

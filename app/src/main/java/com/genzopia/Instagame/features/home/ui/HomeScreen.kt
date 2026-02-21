@@ -1,6 +1,7 @@
 package com.genzopia.Instagame.ui.home.compose
 
 import HomeViewModel
+import com.genzopia.Instagame.features.home.ui.FollowingStoriesBar
 import VideoPlayer
 import android.R
 import android.content.Intent
@@ -63,6 +64,10 @@ fun HomeScreen(
     val secondaryTextColor = if (isDarkTheme) Color.LightGray else Color.Gray
     val listState = rememberLazyListState()
     val context = LocalContext.current
+
+    // Followed users for stories bar
+    val followedUsers by viewModel.followedUsers.collectAsState()
+    val followedUsersLoading by viewModel.followedUsersLoading.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.initializePlayer(context)
@@ -136,6 +141,14 @@ fun HomeScreen(
                 .background(backgroundColor),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
+            // Instagram-style followers bar at the top
+            item(key = "followers_bar") {
+                FollowingStoriesBar(
+                    users = followedUsers,
+                    isLoading = followedUsersLoading
+                )
+            }
+
             items(
                 count = videos.itemCount,
                 key = { index -> videos[index]?.videoId ?: index }
@@ -151,21 +164,6 @@ fun HomeScreen(
                         viewModel = viewModel
                     )
                 }
-            }
-        }
-
-        // Show loading indicator when loading initial data
-        if (videos.loadState.refresh is LoadState.Loading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(backgroundColor),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    color = OrangeTheme,
-                    modifier = Modifier.size(48.dp)
-                )
             }
         }
     }

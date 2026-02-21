@@ -11,11 +11,15 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import com.genzopia.Instagame.features.home.data.FollowingRepository
+import com.genzopia.Instagame.features.home.domain.FollowedUser
 import com.genzopia.Instagame.ui.home.compose.HomePagingSource
 import com.genzopia.Instagame.ui.home.compose.HomeVideoData
+import com.genzopia.Instagame.utils.DataPrefetchService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -32,6 +36,37 @@ class HomeViewModel : ViewModel() {
         ),
         pagingSourceFactory = { HomePagingSource() }
     ).flow.cachedIn(viewModelScope)
+
+    // Followed users for the stories bar
+    private val followingRepository = FollowingRepository()
+    private val _followedUsers = MutableStateFlow<List<FollowedUser>>(emptyList())
+    val followedUsers = _followedUsers.asStateFlow()
+    private val _followedUsersLoading = MutableStateFlow(true)
+    val followedUsersLoading = _followedUsersLoading.asStateFlow()
+
+    init {
+        loadFollowedUsers()
+    }
+
+    private fun loadFollowedUsers() {
+        // Check prefetch cache first (loaded during splash screen)
+        val cached = DataPrefetchService.getCachedFollowedUsers()
+        if (cached != null) {
+            _followedUsers.value = cached
+            _followedUsersLoading.value = false
+            return
+        }
+
+        // Fallback: fetch fresh if cache wasn't ready
+        viewModelScope.launch {
+            followingRepository.getFollowedUsers()
+                .catch { _followedUsersLoading.value = false }
+                .collect { users ->
+                    _followedUsers.value = users
+                    _followedUsersLoading.value = false
+                }
+        }
+    }
 
     // Player pool for smooth scrolling
     private val playerPool = mutableMapOf<String, ExoPlayer>()
