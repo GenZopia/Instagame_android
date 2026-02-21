@@ -6,6 +6,10 @@ import androidx.paging.PagingState
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -24,6 +28,24 @@ class HomePagingSource : PagingSource<String, HomeVideoData>() {
     companion object {
         private const val TAG = "HomePagingSource"
         private const val PAGE_SIZE = 10
+        
+        // Cache for signed URLs (video_id -> signed_url)
+        private val urlCache = mutableMapOf<String, Pair<String, Long>>()
+        private const val CACHE_DURATION = 3600000L // 1 hour in milliseconds
+        
+        fun getCachedUrl(videoId: String): String? {
+            val cached = urlCache[videoId]
+            return if (cached != null && System.currentTimeMillis() - cached.second < CACHE_DURATION) {
+                cached.first
+            } else {
+                urlCache.remove(videoId)
+                null
+            }
+        }
+        
+        fun cacheUrl(videoId: String, url: String) {
+            urlCache[videoId] = Pair(url, System.currentTimeMillis())
+        }
     }
     
     override suspend fun load(params: LoadParams<String>): LoadResult<String, HomeVideoData> {
@@ -73,25 +95,27 @@ class HomePagingSource : PagingSource<String, HomeVideoData>() {
                 }
             }
             
-            // Fetch signed URLs for all videos
-            videos.forEach { video ->
-                try {
-                    val signedUrl = fetchSignedUrl(video.videoId)
-                    val index = videos.indexOf(video)
-                    if (index >= 0) {
-                        videos[index] = video.copy(videoUrl = signedUrl)
+            // Fetch signed URLs in parallel using coroutines
+            val videosWithUrls = withContext(Dispatchers.IO) {
+                videos.map { video ->
+                    async {
+                        try {
+                            val signedUrl = fetchSignedUrl(video.videoId)
+                            video.copy(videoUrl = signedUrl)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error fetching signed URL for ${video.videoId}", e)
+                            video
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error fetching signed URL for ${video.videoId}", e)
-                }
+                }.map { it.await() }
             }
             
-            Log.d(TAG, "Loaded ${videos.size} videos, nextKey: $lastKey")
+            Log.d(TAG, "Loaded ${videosWithUrls.size} videos, nextKey: $lastKey")
             
             LoadResult.Page(
-                data = videos,
+                data = videosWithUrls,
                 prevKey = null,
-                nextKey = if (videos.size < PAGE_SIZE) null else lastKey
+                nextKey = if (videosWithUrls.size < PAGE_SIZE) null else lastKey
             )
             
         } catch (e: Exception) {
@@ -180,6 +204,9 @@ class HomePagingSource : PagingSource<String, HomeVideoData>() {
     }
     
     private suspend fun fetchSignedUrl(videoId: String): String? {
+        // Check cache first
+        getCachedUrl(videoId)?.let { return it }
+        
         return suspendCancellableCoroutine { continuation ->
             val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
             val request = Request.Builder().url(url).build()
@@ -197,7 +224,12 @@ class HomePagingSource : PagingSource<String, HomeVideoData>() {
                             val json = JSONObject(body)
                             if (json.optBoolean("success")) {
                                 val signedUrl = json.optString("url")
-                                continuation.resume(signedUrl)
+                                if (signedUrl.isNotEmpty()) {
+                                    cacheUrl(videoId, signedUrl)
+                                    continuation.resume(signedUrl)
+                                } else {
+                                    continuation.resume(null)
+                                }
                             } else {
                                 continuation.resume(null)
                             }

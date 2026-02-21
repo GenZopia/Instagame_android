@@ -24,11 +24,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -53,21 +51,31 @@ fun ReelScreen(
     val pagerState = rememberPagerState()
     val context = LocalContext.current
     var shouldPauseAll by remember { mutableStateOf(false) }
+    
+    // Convert paging items to list for preloading
+    val reelsList = remember(reels.itemCount) {
+        (0 until reels.itemCount).mapNotNull { reels[it] }
+    }
 
     // Initialize the player when the screen first appears
     LaunchedEffect(Unit) {
         viewModel.initializePlayer(context)
     }
 
-    LaunchedEffect(pagerState.currentPage) {
+    // Handle page changes with preloading
+    LaunchedEffect(pagerState.currentPage, reels.itemCount) {
         if (reels.itemCount > 0 && pagerState.currentPage < reels.itemCount) {
             val reel = reels[pagerState.currentPage]
             Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
             reel?.let {
-                viewModel.setCurrentVideo(it.videoUrl)
+                viewModel.setCurrentVideo(it.videoId, it.videoUrl)
                 if (!shouldPauseAll) {
-                    viewModel.play()
+                    viewModel.playVideo(it.videoId)
                 }
+                
+                // Preload adjacent videos
+                val currentReelsList = (0 until reels.itemCount).mapNotNull { reels[it] }
+                viewModel.preloadVideos(pagerState.currentPage, currentReelsList)
             }
         }
     }
@@ -79,11 +87,15 @@ fun ReelScreen(
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
                     shouldPauseAll = true
-                    viewModel.pause()   // pause the shared player
+                    viewModel.pauseAll()
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     shouldPauseAll = false
-                    // Resume will be handled by page change
+                    if (reels.itemCount > 0 && pagerState.currentPage < reels.itemCount) {
+                        reels[pagerState.currentPage]?.let { reel ->
+                            viewModel.playVideo(reel.videoId)
+                        }
+                    }
                 }
                 else -> {}
             }
@@ -99,7 +111,6 @@ fun ReelScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Loading state unchanged
         if (reels.loadState.refresh is LoadState.Loading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -118,7 +129,7 @@ fun ReelScreen(
                     ReelItem(
                         reel = reel,
                         isActive = page == pagerState.currentPage && !shouldPauseAll,
-                        player = viewModel.exoPlayer,  // pass the shared player
+                        viewModel = viewModel,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -134,7 +145,7 @@ fun ReelScreen(
 fun ReelItem(
     reel: ReelData,
     isActive: Boolean,
-    player: ExoPlayer,
+    viewModel: ReelViewModel,
     modifier: Modifier = Modifier
 ) {
     var isLiked by remember { mutableStateOf(reel.isLiked) }
@@ -146,14 +157,33 @@ fun ReelItem(
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
+    // Get player for this video
+    val player = remember(reel.videoId) {
+        viewModel.getPlayerForVideo(reel.videoId, reel.videoUrl)
+    }
+    
+    // Control playback based on active state
+    LaunchedEffect(isActive, player) {
+        if (player != null) {
+            if (isActive) {
+                player.playWhenReady = true
+                // Hide thumbnail once playing
+                delay(300)
+                showThumbnail = false
+                isLoading = false
+            } else {
+                player.playWhenReady = false
+            }
+        }
+    }
+    
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black) // Always black background for reels
+            .background(Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
-                        // Double-click to launch game
                         if (reel.gameId.isNotEmpty()) {
                             val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
                             intent.putExtra("game_id", reel.gameId)
@@ -170,20 +200,22 @@ fun ReelItem(
             }
     ) {
         // Video Player
-        VideoPlayer(
-            videoUrl = reel.videoUrl,
-            isPlaying = isActive, // <-- pass shared player
-            modifier = Modifier.fillMaxSize(),
-            player = player,
-            onPlayerReady = {
-                showThumbnail = false
-                isLoading = false
-            },
-            onPlayerError = {
-                isLoading = false
-            }
-        )
-        // Thumbnail overlay (shown while loading) - with black background
+        if (player != null) {
+            VideoPlayer(
+                isPlaying = isActive,
+                modifier = Modifier.fillMaxSize(),
+                player = player,
+                onPlayerReady = {
+                    showThumbnail = false
+                    isLoading = false
+                },
+                onPlayerError = {
+                    isLoading = false
+                }
+            )
+        }
+        
+        // Thumbnail overlay - only show initially
         if (showThumbnail && reel.videoUrl != null) {
             Box(
                 modifier = Modifier
@@ -202,8 +234,8 @@ fun ReelItem(
             }
         }
         
-        // Loading indicator
-        if (isLoading) {
+        // Loading indicator - only for initial load
+        if (isLoading && player == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -243,14 +275,12 @@ fun ReelItem(
             onLikeClick = {
                 isLiked = !isLiked
                 likeCount += if (isLiked) 1 else -1
-                // Update Firebase
                 FirebaseDatabase.getInstance().reference
                     .child("videos").child(reel.videoId)
                     .child("like_count").setValue(likeCount.toString())
             },
             onFollowClick = {
                 isFollowing = true
-                // Update Firebase follow status
                 var devid=FirebaseDatabase.getInstance().reference
                     .child(reel.videoId).child("user_id").get()
                 devid.addOnSuccessListener {dataSnapshot ->
@@ -260,15 +290,13 @@ fun ReelItem(
                         .child("following_list").child(devid.result.toString())
                         .setValue(true)
                 }
-
             },
-            onShareClick = { /* Share handled in overlay */ },
+            onShareClick = { },
             onCommentClick = { showComments = true },
             modifier = Modifier.fillMaxSize()
         )
     }
     
-    // Show comments bottom sheet
     if (showComments) {
         CommentsBottomSheet(
             videoId = reel.videoId,

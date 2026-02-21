@@ -9,6 +9,10 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -26,6 +30,24 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     companion object {
         private const val TAG = "ReelPagingSource"
         private const val PAGE_SIZE = 10
+        
+        // Cache for signed URLs (video_id -> signed_url)
+        private val urlCache = mutableMapOf<String, Pair<String, Long>>()
+        private const val CACHE_DURATION = 3600000L // 1 hour in milliseconds
+        
+        fun getCachedUrl(videoId: String): String? {
+            val cached = urlCache[videoId]
+            return if (cached != null && System.currentTimeMillis() - cached.second < CACHE_DURATION) {
+                cached.first
+            } else {
+                urlCache.remove(videoId)
+                null
+            }
+        }
+        
+        fun cacheUrl(videoId: String, url: String) {
+            urlCache[videoId] = Pair(url, System.currentTimeMillis())
+        }
     }
     
     override suspend fun load(params: LoadParams<String>): LoadResult<String, ReelData> {
@@ -61,6 +83,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             val reels = mutableListOf<ReelData>()
             var lastKey: String? = null
             
+            // Parse all videos first
             for (videoSnapshot in snapshot.children) {
                 val videoId = videoSnapshot.key ?: continue
                 lastKey = videoId
@@ -75,25 +98,27 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 }
             }
             
-            // Fetch signed URLs for all videos in parallel
-            reels.forEach { reel ->
-                try {
-                    val signedUrl = fetchSignedUrl(reel.videoId)
-                    val index = reels.indexOf(reel)
-                    if (index >= 0) {
-                        reels[index] = reel.copy(videoUrl = signedUrl)
+            // Fetch signed URLs in parallel using coroutines
+            val reelsWithUrls = withContext(Dispatchers.IO) {
+                reels.map { reel ->
+                    async {
+                        try {
+                            val signedUrl = fetchSignedUrl(reel.videoId)
+                            reel.copy(videoUrl = signedUrl)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error fetching signed URL for ${reel.videoId}", e)
+                            reel
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error fetching signed URL for ${reel.videoId}", e)
-                }
+                }.map { it.await() }
             }
             
-            Log.d(TAG, "Loaded ${reels.size} reels, nextKey: $lastKey")
+            Log.d(TAG, "Loaded ${reelsWithUrls.size} reels, nextKey: $lastKey")
             
             LoadResult.Page(
-                data = reels,
-                prevKey = null, // We don't support backward paging
-                nextKey = if (reels.size < PAGE_SIZE) null else lastKey
+                data = reelsWithUrls,
+                prevKey = null,
+                nextKey = if (reelsWithUrls.size < PAGE_SIZE) null else lastKey
             )
             
         } catch (e: Exception) {
@@ -179,6 +204,9 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     }
     
     private suspend fun fetchSignedUrl(videoId: String): String? {
+        // Check cache first
+        getCachedUrl(videoId)?.let { return it }
+        
         return suspendCancellableCoroutine { continuation ->
             val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
             val request = Request.Builder().url(url).build()
@@ -196,7 +224,12 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                             val json = JSONObject(body)
                             if (json.optBoolean("success")) {
                                 val signedUrl = json.optString("url")
-                                continuation.resume(signedUrl)
+                                if (signedUrl.isNotEmpty()) {
+                                    cacheUrl(videoId, signedUrl)
+                                    continuation.resume(signedUrl)
+                                } else {
+                                    continuation.resume(null)
+                                }
                             } else {
                                 continuation.resume(null)
                             }

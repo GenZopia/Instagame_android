@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,16 +29,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
 import com.google.firebase.database.FirebaseDatabase
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -76,6 +71,11 @@ fun HomeScreen(
     // Track currently visible video index
     var currentVisibleIndex by remember { mutableStateOf(-1) }
     var shouldPauseAll by remember { mutableStateOf(false) }
+    
+    // Convert paging items to list for preloading
+    val videosList = remember(videos.itemCount) {
+        (0 until videos.itemCount).mapNotNull { videos[it] }
+    }
 
     // Lifecycle observer for pause/resume
     DisposableEffect(Unit) {
@@ -84,10 +84,16 @@ fun HomeScreen(
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     shouldPauseAll = true
+                    viewModel.pauseAll()
                     Log.d("HomeScreen", "Lifecycle paused - stopping videos")
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     shouldPauseAll = false
+                    if (videos.itemCount > 0 && currentVisibleIndex >= 0 && currentVisibleIndex < videos.itemCount) {
+                        videos[currentVisibleIndex]?.let { video ->
+                            viewModel.playVideo(video.videoId)
+                        }
+                    }
                     Log.d("HomeScreen", "Lifecycle resumed - resuming videos")
                 }
                 else -> {}
@@ -100,9 +106,26 @@ fun HomeScreen(
         }
     }
 
-    // Detect which video is currently most visible
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-        currentVisibleIndex = listState.firstVisibleItemIndex
+    // Detect which video is currently most visible and preload adjacent videos
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, videos.itemCount) {
+        val newIndex = listState.firstVisibleItemIndex
+        if (newIndex != currentVisibleIndex) {
+            currentVisibleIndex = newIndex
+            
+            // Set current video and preload adjacent ones
+            if (videos.itemCount > 0 && currentVisibleIndex < videos.itemCount) {
+                videos[currentVisibleIndex]?.let { video ->
+                    viewModel.setCurrentVideo(video.videoId, video.videoUrl)
+                    if (!shouldPauseAll) {
+                        viewModel.playVideo(video.videoId)
+                    }
+                    
+                    // Preload adjacent videos
+                    val currentVideosList = (0 until videos.itemCount).mapNotNull { videos[it] }
+                    viewModel.preloadVideos(currentVisibleIndex, currentVideosList)
+                }
+            }
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -125,7 +148,7 @@ fun HomeScreen(
                         secondaryTextColor = secondaryTextColor,
                         isVisible = index == currentVisibleIndex && !shouldPauseAll,
                         modifier = Modifier.fillMaxWidth(),
-                        player = viewModel.exoPlayer
+                        viewModel = viewModel
                     )
                 }
             }
@@ -158,7 +181,7 @@ fun HomeVideoItem(
     secondaryTextColor: Color,
     isVisible: Boolean,
     modifier: Modifier = Modifier,
-    player: ExoPlayer
+    viewModel: HomeViewModel
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -171,9 +194,21 @@ fun HomeVideoItem(
     var isPlaying by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     
+    // Get player for this video
+    val player = remember(video.videoId) {
+        viewModel.getPlayerForVideo(video.videoId, video.videoUrl)
+    }
+    
     // Auto-play when visible, pause when not visible
-    LaunchedEffect(isVisible) {
-        isPlaying = isVisible
+    LaunchedEffect(isVisible, player) {
+        if (player != null) {
+            isPlaying = isVisible
+            if (isVisible) {
+                player.playWhenReady = true
+            } else {
+                player.playWhenReady = false
+            }
+        }
     }
     
     Column(
@@ -238,12 +273,16 @@ fun HomeVideoItem(
                 .height(videoHeight)
                 .background(Color.Black)
                 .clipToBounds() // Prevent video overflow
-                .clickable { isPlaying = !isPlaying }
+                .clickable { 
+                    if (player != null) {
+                        isPlaying = !isPlaying
+                        player.playWhenReady = isPlaying
+                    }
+                }
         ) {
             // Only render video player when visible to prevent overlap
-            if (isVisible || isPlaying) {
+            if (player != null && (isVisible || isPlaying)) {
                 VideoPlayer(
-                    videoUrl = video.videoUrl,
                     isPlaying = isPlaying,
                     modifier = Modifier
                         .fillMaxSize()

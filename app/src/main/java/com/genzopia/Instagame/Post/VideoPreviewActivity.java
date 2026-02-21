@@ -225,6 +225,7 @@ public class VideoPreviewActivity extends AppCompatActivity {
                         uploadBtn.setText("Upload");
                         if (success) {
                             Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
+
                             finish();
                         } else {
                             Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
