@@ -3,7 +3,6 @@ package com.genzopia.Instagame.ui.home.compose
 import HomeViewModel
 import com.genzopia.Instagame.features.home.ui.FollowingStoriesBar
 import VideoPlayer
-import android.R
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
@@ -42,8 +41,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.paging.LoadState
 import com.genzopia.Instagame.channel_view.ChannelActivity
 
 // App's orange theme color
@@ -51,13 +48,16 @@ private val OrangeTheme = Color(0xFFFF6B35)
 
 /**
  * Home feed screen with vertical scrolling list of videos
+ * Shows only videos from followed users (Instagram style)
  */
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
     modifier: Modifier = Modifier
 ) {
-    val videos = viewModel.videosFlow.collectAsLazyPagingItems()
+    // Show only videos from followed users (Instagram style)
+    val videos = viewModel.followingVideosFlow.collectAsLazyPagingItems()
+
     val isDarkTheme = isSystemInDarkTheme()
     val backgroundColor = if (isDarkTheme) Color(0xFF121212) else Color.White
     val textColor = if (isDarkTheme) Color.White else Color.Black
@@ -76,11 +76,6 @@ fun HomeScreen(
     // Track currently visible video index
     var currentVisibleIndex by remember { mutableStateOf(-1) }
     var shouldPauseAll by remember { mutableStateOf(false) }
-    
-    // Convert paging items to list for preloading
-    val videosList = remember(videos.itemCount) {
-        (0 until videos.itemCount).mapNotNull { videos[it] }
-    }
 
     // Lifecycle observer for pause/resume
     DisposableEffect(Unit) {
@@ -241,8 +236,6 @@ fun HomeVideoItem(
                 model = ImageRequest.Builder(context)
                     .data(video.developerPhotoUrl)
                     .crossfade(true)
-                    .placeholder(R.drawable.ic_menu_gallery)
-                    .error(R.drawable.ic_menu_gallery)
                     .build(),
                 contentDescription = "Profile",
                 modifier = Modifier

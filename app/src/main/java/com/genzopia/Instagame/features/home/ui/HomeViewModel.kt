@@ -5,8 +5,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -25,17 +23,33 @@ import kotlinx.coroutines.launch
 @androidx.annotation.OptIn(UnstableApi::class)
 class HomeViewModel : ViewModel() {
 
-    // Paging flow for home videos
-    val videosFlow: Flow<PagingData<HomeVideoData>> = Pager(
+    // Paging flow for following videos only (Instagram style - default feed)
+    val followingVideosFlow: Flow<PagingData<HomeVideoData>> = Pager(
         config = PagingConfig(
-            pageSize = 5,
-            prefetchDistance = 3,
+            pageSize = 10,          // Match PAGE_SIZE in HomePagingSource
+            prefetchDistance = 5,    // Prefetch more for smooth scrolling
             enablePlaceholders = false,
-            initialLoadSize = 5,
-            maxSize = 20
+            initialLoadSize = 10,    // Start with 10 videos
+            maxSize = 100            // Cache up to 100 videos (increased for filtered content)
         ),
-        pagingSourceFactory = { HomePagingSource() }
+        pagingSourceFactory = { HomePagingSource(showOnlyFollowed = true) }
     ).flow.cachedIn(viewModelScope)
+
+    // For backward compatibility, expose the original videosFlow (now shows following only)
+    val videosFlow: Flow<PagingData<HomeVideoData>> = followingVideosFlow
+
+    // All videos flow - kept for potential future use
+    val allVideosFlow: Flow<PagingData<HomeVideoData>> = Pager(
+        config = PagingConfig(
+            pageSize = 10,
+            prefetchDistance = 5,
+            enablePlaceholders = false,
+            initialLoadSize = 10,
+            maxSize = 100
+        ),
+        pagingSourceFactory = { HomePagingSource(showOnlyFollowed = false) }
+    ).flow.cachedIn(viewModelScope)
+
 
     // Followed users for the stories bar
     private val followingRepository = FollowingRepository()
