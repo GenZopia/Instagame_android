@@ -180,6 +180,13 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             ""
         }
         
+        // Check if current user is following this developer
+        val isFollowing = if (developerId.isNotEmpty()) {
+            checkIfFollowing(developerId)
+        } else {
+            false
+        }
+        
         return ReelData(
             videoId = videoId,
             title = title,
@@ -189,7 +196,8 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             developerName = developerName,
             developerPhotoUrl = developerPhotoUrl,
             gameId = gameId,
-            gameName = gameName
+            gameName = gameName,
+            isFollowing = isFollowing
         )
     }
     
@@ -225,6 +233,31 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching game name for $gameId", e)
             ""
+        }
+    }
+    
+    private suspend fun checkIfFollowing(developerId: String): Boolean {
+        return try {
+            val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+            if (currentUserId == null || currentUserId == developerId) {
+                // Not logged in or it's the user's own video
+                return false
+            }
+            
+            val followingSnapshot = database.reference
+                .child("users")
+                .child(currentUserId)
+                .child("following_list")
+                .child(developerId)
+                .get()
+                .await()
+            
+            val isFollowing = followingSnapshot.exists() && followingSnapshot.getValue(Boolean::class.java) == true
+            Log.d(TAG, "User $currentUserId following $developerId: $isFollowing")
+            isFollowing
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking follow status for $developerId", e)
+            false
         }
     }
     

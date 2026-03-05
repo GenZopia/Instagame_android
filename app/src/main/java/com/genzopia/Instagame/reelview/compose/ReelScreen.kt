@@ -4,6 +4,7 @@ import ReelViewModel
 import VideoPlayer
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -37,6 +38,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import kotlinx.coroutines.delay
 import androidx.paging.LoadState
+import com.google.firebase.auth.FirebaseAuth
 
 /**
  * Main Reel Screen with vertical paging
@@ -150,7 +152,10 @@ fun ReelItem(
 ) {
     var isLiked by remember { mutableStateOf(reel.isLiked) }
     var likeCount by remember { mutableStateOf(reel.likeCount.toIntOrNull() ?: 0) }
-    var isFollowing by remember { mutableStateOf(reel.isFollowing) }
+    // Use ViewModel to persist follow state across scrolls
+    var isFollowing by remember(reel.developerId) { 
+        mutableStateOf(viewModel.getFollowState(reel.developerId, reel.isFollowing)) 
+    }
     var showThumbnail by remember { mutableStateOf(true) }
     var isLoading by remember { mutableStateOf(true) }
     var showComments by remember { mutableStateOf(false) }
@@ -281,19 +286,58 @@ fun ReelItem(
                     .child("like_count").setValue(likeCount.toString())
             },
             onFollowClick = {
-                isFollowing = true
-                var devid=FirebaseDatabase.getInstance().reference
-                    .child(reel.videoId).child("user_id").get()
-                devid.addOnSuccessListener {dataSnapshot ->
-                    val developerId = dataSnapshot.getValue(String::class.java) ?: ""
-                    FirebaseDatabase.getInstance().reference
-                        .child("users").child(developerId)
-                        .child("following_list").child(devid.result.toString())
-                        .setValue(true)
+                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                if (currentUserId == null) {
+                    Toast.makeText(context, "Please login to follow", Toast.LENGTH_SHORT).show()
+                    return@ReelOverlay
+                }
+                
+                if (reel.developerId.isEmpty()) {
+                    Toast.makeText(context, "Invalid developer ID", Toast.LENGTH_SHORT).show()
+                    return@ReelOverlay
+                }
+                
+                // Toggle follow state
+                val newFollowState = !isFollowing
+                isFollowing = newFollowState
+                
+                // Update ViewModel state immediately for persistence
+                viewModel.updateFollowState(reel.developerId, newFollowState)
+                
+                // Update Firebase
+                val followingRef = FirebaseDatabase.getInstance().reference
+                    .child("users")
+                    .child(currentUserId)
+                    .child("following_list")
+                    .child(reel.developerId)
+                
+                if (newFollowState) {
+                    // Follow
+                    followingRef.setValue(true)
+                        .addOnSuccessListener {
+                            Toast.makeText(context, "Following ${reel.developerName}", Toast.LENGTH_SHORT).show()
+                        }
+                        .addOnFailureListener { e ->
+                            isFollowing = !newFollowState // Revert on failure
+                            viewModel.updateFollowState(reel.developerId, !newFollowState)
+                            Toast.makeText(context, "Failed to follow: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                } else {
+                    // Unfollow
+                    followingRef.removeValue()
+                        .addOnSuccessListener {
+                            Toast.makeText(context, "Unfollowed ${reel.developerName}", Toast.LENGTH_SHORT).show()
+                        }
+                        .addOnFailureListener { e ->
+                            isFollowing = !newFollowState // Revert on failure
+                            viewModel.updateFollowState(reel.developerId, !newFollowState)
+                            Toast.makeText(context, "Failed to unfollow: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                 }
             },
             onShareClick = { },
             onCommentClick = { showComments = true },
+            viewModel = viewModel,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -319,6 +363,7 @@ fun ReelOverlay(
     onFollowClick: () -> Unit,
     onShareClick: () -> Unit,
     onCommentClick: () -> Unit,
+    viewModel: ReelViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -378,30 +423,21 @@ fun ReelOverlay(
                 
                 Spacer(modifier = Modifier.width(12.dp))
                 
-                // Follow button - show "Following" when followed
-                if (!isFollowing) {
-                    Button(
-                        onClick = onFollowClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Transparent
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White),
-                        shape = RoundedCornerShape(4.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text(
-                            text = "Follow",
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
-                } else {
+                // Follow/Following button - always clickable
+                Button(
+                    onClick = onFollowClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isFollowing) Color.White.copy(alpha = 0.2f) else Color.Transparent
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White),
+                    shape = RoundedCornerShape(4.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
                     Text(
-                        text = "Following",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp)
+                        text = if (isFollowing) "Following" else "Follow",
+                        color = Color.White,
+                        fontSize = 14.sp
                     )
                 }
             }

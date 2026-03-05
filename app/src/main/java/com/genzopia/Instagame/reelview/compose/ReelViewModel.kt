@@ -40,6 +40,9 @@ class ReelViewModel : ViewModel() {
     private val _currentVideoUrl = MutableStateFlow<String?>(null)
     val currentVideoUrl = _currentVideoUrl.asStateFlow()
     
+    // Track follow states (developerId -> isFollowing)
+    private val followStates = mutableMapOf<String, Boolean>()
+    
     private var appContext: Context? = null
     private var isPlayerInitialized = false
 
@@ -166,10 +169,20 @@ class ReelViewModel : ViewModel() {
     fun pauseAll() {
         playerPool.values.forEach { it.playWhenReady = false }
     }
+    
+    // Follow state management
+    fun getFollowState(developerId: String, defaultState: Boolean): Boolean {
+        return followStates[developerId] ?: defaultState
+    }
+    
+    fun updateFollowState(developerId: String, isFollowing: Boolean) {
+        followStates[developerId] = isFollowing
+    }
 
     override fun onCleared() {
         super.onCleared()
         playerPool.values.forEach { it.release() }
         playerPool.clear()
+        followStates.clear()
     }
 }
