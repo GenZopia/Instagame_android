@@ -24,9 +24,9 @@ class ReelViewModel : ViewModel() {
     val reelsFlow: Flow<PagingData<ReelData>> = Pager(
         config = PagingConfig(
             pageSize = 5,
-            prefetchDistance = 3,
+            prefetchDistance = 2,
             enablePlaceholders = false,
-            initialLoadSize = 5,
+            initialLoadSize = 3,  // Reduced from 5 to show content faster
             maxSize = 20
         ),
         pagingSourceFactory = { ReelPagingSource() }
@@ -41,16 +41,35 @@ class ReelViewModel : ViewModel() {
     val currentVideoUrl = _currentVideoUrl.asStateFlow()
     
     private var appContext: Context? = null
+    private var isPlayerInitialized = false
 
     // Initialize the player pool
     fun initializePlayer(context: Context) {
+        if (isPlayerInitialized) return
         appContext = context.applicationContext
+        isPlayerInitialized = true
     }
 
     // Get or create player for a video
     fun getPlayerForVideo(videoId: String, videoUrl: String?): ExoPlayer? {
         if (videoUrl == null) return null
         
+        // Check if we have a preloaded player for this video
+        val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
+        if (preloaded != null) {
+            android.util.Log.d("ReelViewModel", "=== USING PRELOADED PLAYER ===")
+            android.util.Log.d("ReelViewModel", "Video ID: $videoId")
+            android.util.Log.d("ReelViewModel", "Player state: ${preloaded.playbackState}")
+            playerPool[videoId] = preloaded
+            // Clear the preloaded reference so it's not used again
+            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            // Unmute the player
+            preloaded.volume = 1f
+            android.util.Log.d("ReelViewModel", "Preloaded player ready to play!")
+            return preloaded
+        }
+        
+        android.util.Log.d("ReelViewModel", "No preloaded player for $videoId, creating new one")
         return playerPool.getOrPut(videoId) {
             createPlayer(videoUrl)
         }
@@ -59,10 +78,10 @@ class ReelViewModel : ViewModel() {
     private fun createPlayer(videoUrl: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15000,  // min buffer
-                50000,  // max buffer
-                2500,   // playback buffer
-                5000    // rebuffer
+                5000,   // min buffer - reduced significantly for instant start
+                30000,  // max buffer
+                500,    // playback buffer - very low for instant playback
+                1000    // rebuffer - low for quick recovery
             )
             .build()
             

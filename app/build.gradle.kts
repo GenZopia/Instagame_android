@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
     // Jetpack Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))

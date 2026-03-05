@@ -2,41 +2,50 @@ package com.genzopia.Instagame;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.os.SystemClock;
-import android.os.Handler;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 
+import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 
+import androidx.media3.common.util.UnstableApi;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
 import com.genzopia.Instagame.MainActivity;
 import com.google.firebase.auth.FirebaseAuth;
 import com.genzopia.Instagame.utils.DataPrefetchService;
 
+import kotlin.Unit;
+
 public class SplashActivity extends AppCompatActivity {
+    private static final String TAG = "SplashActivity";
     private boolean hasNavigated = false;
-    private long splashStartMs = 0L;
-    private static final long MIN_SPLASH_MS = 2000L; // 2s minimum display
+    private boolean animationComplete = false;
+    private boolean dataLoaded = false;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
-        splashStartMs = SystemClock.uptimeMillis();
         
-        // Start prefetching data immediately
-        DataPrefetchService.INSTANCE.startPrefetch(this);
+        Log.d(TAG, "SplashActivity started - beginning data prefetch");
+        
+        // Start prefetching data immediately in background with callback
+        startDataPrefetch();
 
-        // Optional: Make splash fullscreen (hide status & nav bar)
+        // Make splash fullscreen for immersive experience
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
 
         WebView webView = findViewById(R.id.web_splash);
@@ -45,12 +54,13 @@ public class SplashActivity extends AppCompatActivity {
         webView.getSettings().setUseWideViewPort(true);
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
 
-        // Switch animation based on theme (night/day) using raw JSON resources
+        // Switch animation based on theme
         int nightModeFlags = getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
 
         final boolean isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         final int rawId = isNight ? R.raw.game_logo_dark_theme : R.raw.game_logo_white_theme;
+        
         String html = "<!DOCTYPE html>\n" +
                 "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
                 "<style>html,body{height:100%;margin:0;padding:0;background:transparent;overflow:hidden;}#anim{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}#anim>div{width:80vw;height:80vh;max-width:500px;max-height:500px;}</style>" +
@@ -60,7 +70,7 @@ public class SplashActivity extends AppCompatActivity {
                 "<script>" +
                 "(function(){" +
                 "  function done(){window.AndroidSplash && AndroidSplash.onDone();}" +
-                "  var fallback = setTimeout(done, 2500);" +
+                "  var fallback = setTimeout(done, 3000);" +
                 "  try {" +
                 "    var jsonStr = (window.AndroidSplash && AndroidSplash.getJson()) || '{}';" +
                 "    var data = JSON.parse(jsonStr);" +
@@ -77,18 +87,9 @@ public class SplashActivity extends AppCompatActivity {
             @android.webkit.JavascriptInterface
             public void onDone(){
                 runOnUiThread(() -> {
-                    if (hasNavigated) return;
-                    long elapsed = SystemClock.uptimeMillis() - splashStartMs;
-                    long delay = Math.max(0, MIN_SPLASH_MS - elapsed);
-                    new Handler(getMainLooper()).postDelayed(() -> {
-                        if (hasNavigated) return;
-                        hasNavigated = true;
-                        boolean isLoggedIn = FirebaseAuth.getInstance().getCurrentUser() != null;
-                        Intent intent = new Intent(SplashActivity.this,
-                                isLoggedIn ? MainActivity.class : LoginActivity.class);
-                        startActivity(intent);
-                        finish();
-                    }, delay);
+                    Log.d(TAG, "Animation complete");
+                    animationComplete = true;
+                    checkAndNavigate();
                 });
             }
             @android.webkit.JavascriptInterface
@@ -99,6 +100,57 @@ public class SplashActivity extends AppCompatActivity {
 
         webView.setWebViewClient(new WebViewClient());
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
+    }
+
+    /**
+     * Start prefetching data in background with callback
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    private void startDataPrefetch() {
+        DataPrefetchService.INSTANCE.startPrefetch(this, () -> {
+            // This callback is already called on main thread from DataPrefetchService
+            Log.d(TAG, "Data prefetch complete - callback received");
+            dataLoaded = true;
+            checkAndNavigate();
+            return Unit.INSTANCE;
+        });
+        
+        // Safety timeout - navigate after 10 seconds even if data isn't loaded
+        handler.postDelayed(() -> {
+            if (!dataLoaded) {
+                Log.w(TAG, "Data prefetch timeout - navigating anyway");
+                dataLoaded = true;
+                checkAndNavigate();
+            }
+        }, 10000);
+    }
+
+    /**
+     * Check if both animation and data are ready, then navigate
+     */
+    private void checkAndNavigate() {
+        if (hasNavigated) return;
+        
+        Log.d(TAG, "Check navigate - Animation: " + animationComplete + ", Data: " + dataLoaded);
+        
+        // Only navigate when BOTH animation is complete AND data is loaded
+        if (animationComplete && dataLoaded) {
+            hasNavigated = true;
+            Log.d(TAG, "Both conditions met - navigating to next screen");
+            navigateToNextScreen();
+        } else {
+            Log.d(TAG, "Waiting... Animation: " + animationComplete + ", Data: " + dataLoaded);
+        }
+    }
+
+    private void navigateToNextScreen() {
+        boolean isLoggedIn = FirebaseAuth.getInstance().getCurrentUser() != null;
+        Intent intent = new Intent(SplashActivity.this,
+                isLoggedIn ? MainActivity.class : LoginActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        finish();
     }
 
     private String readRawJson(int resId) {
@@ -113,5 +165,11 @@ public class SplashActivity extends AppCompatActivity {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        handler.removeCallbacksAndMessages(null);
     }
 }
