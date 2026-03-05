@@ -3,6 +3,7 @@ package com.genzopia.Instagame.ui.home.compose
 import android.util.Log
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
+import com.genzopia.Instagame.utils.DataPrefetchService
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
@@ -100,7 +101,14 @@ class HomePagingSource : PagingSource<String, HomeVideoData>() {
                 videos.map { video ->
                     async {
                         try {
-                            val signedUrl = fetchSignedUrl(video.videoId)
+                            // Check DataPrefetchService cache first
+                            val cachedUrl = DataPrefetchService.getCachedSignedUrl(video.videoId)
+                            val signedUrl = cachedUrl ?: fetchSignedUrl(video.videoId)
+                            
+                            if (cachedUrl != null) {
+                                Log.d(TAG, "Using prefetched URL for ${video.videoId}")
+                            }
+                            
                             video.copy(videoUrl = signedUrl)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error fetching signed URL for ${video.videoId}", e)

@@ -166,9 +166,10 @@ fun ReelItem(
     LaunchedEffect(isActive, player) {
         if (player != null) {
             if (isActive) {
+                // Start playing immediately
                 player.playWhenReady = true
-                // Hide thumbnail once playing
-                delay(300)
+                // Hide thumbnail quickly once buffering starts
+                delay(100)  // Reduced from 300ms
                 showThumbnail = false
                 isLoading = false
             } else {
