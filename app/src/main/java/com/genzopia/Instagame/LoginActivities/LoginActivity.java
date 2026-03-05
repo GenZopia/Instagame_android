@@ -138,9 +138,9 @@ public class LoginActivity extends AppCompatActivity {
                                 .putString("email", email)
                                 .putString("password", pass)
                                 .apply();
-                        Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-                        startActivity(intent);
-                        finish();
+                        
+                        // Check if user needs to complete profile or verify email
+                        checkUserStatusAndNavigate();
                     } else {
                         Toast.makeText(LoginActivity.this, "Login failed. Please check your credentials.", Toast.LENGTH_SHORT).show();
                         binding.btnLoginNow.clearAnimation();
@@ -189,14 +189,14 @@ public class LoginActivity extends AppCompatActivity {
                             String emailAddress = user.getEmail();
                             String fullName = user.getDisplayName();
                             String profilePhotoUrl = user.getPhotoUrl() != null ? user.getPhotoUrl().toString() : "";
-                            String dob = "";  // Example DOB, replace with your logic
-                            String mobileNumber = user.getPhoneNumber(); // Example mobile number, replace with your logic
+                            String dob = "";  // Will be asked in ProfileCompletionActivity if needed
+                            String mobileNumber = user.getPhoneNumber(); // Will be asked in ProfileCompletionActivity if needed
 
                             // Create the User object with the correct constructor
                             User firebaseUser = new User(
                                     user.getUid(), // userId
                                     emailAddress,
-                                    fullName,
+                                    fullName != null ? fullName : "",
                                     dob,
                                     mobileNumber != null ? mobileNumber : "-1"
                             );
@@ -214,9 +214,9 @@ public class LoginActivity extends AppCompatActivity {
                                             getApplicationContext().getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE).edit()
                                                     .putString("email", emailAddress)
                                                     .apply();
-                                            Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-                                            startActivity(intent);
-                                            finishAffinity();
+                                            
+                                            // Check if user needs to complete profile
+                                            checkUserStatusAndNavigate();
                                         } else {
                                             Toast.makeText(LoginActivity.this, task1.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
                                         }
@@ -229,8 +229,73 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     void goToNextActivity() {
-        startActivity(new Intent(LoginActivity.this, MainActivity.class));
-        finish();
+        checkUserStatusAndNavigate();
+    }
+    
+    void checkUserStatusAndNavigate() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) {
+            // No user, go to login
+            startActivity(new Intent(LoginActivity.this, LoginActivity.class));
+            finish();
+            return;
+        }
+        
+        // Reload user to get latest verification status
+        currentUser.reload().addOnCompleteListener(reloadTask -> {
+            if (!reloadTask.isSuccessful()) {
+                Toast.makeText(LoginActivity.this, "Failed to verify user status", Toast.LENGTH_SHORT).show();
+                binding.btnLoginNow.clearAnimation();
+                binding.btnLoginNow.setText("Login");
+                return;
+            }
+            
+            // Check if email is verified
+            if (!currentUser.isEmailVerified()) {
+                // Email not verified, go to profile completion activity
+                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                finish();
+                return;
+            }
+            
+            // Check if profile data is complete
+            database.getReference()
+                    .child("users")
+                    .child(currentUser.getUid())
+                    .get()
+                    .addOnCompleteListener(task -> {
+                        if (task.isSuccessful() && task.getResult() != null) {
+                            if (!task.getResult().exists()) {
+                                // User data doesn't exist, go to profile completion
+                                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                                finish();
+                                return;
+                            }
+                            
+                            String dob = task.getResult().child("date_of_birth").getValue(String.class);
+                            String mobile = task.getResult().child("mobile_no").getValue(String.class);
+                            String fullName = task.getResult().child("full_name").getValue(String.class);
+                            
+                            boolean needsCompletion = (dob == null || dob.isEmpty()) ||
+                                    (mobile == null || mobile.isEmpty() || mobile.equals("-1")) ||
+                                    (fullName == null || fullName.isEmpty());
+                            
+                            if (needsCompletion) {
+                                // Profile incomplete, go to profile completion
+                                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                                finish();
+                            } else {
+                                // Everything is complete, go to main activity
+                                startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                                finish();
+                            }
+                        } else {
+                            // Error checking profile, go to profile completion to be safe
+                            startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                            finish();
+                        }
+                    });
+        });
     }
 
     public static String replacePeriods(String input) {

@@ -75,6 +75,10 @@
             android:name=".LoginActivities.RegisterActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <activity
+            android:name=".LoginActivities.ProfileCompletionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <!-- FileProvider for sharing cached avatar drawables as content:// URIs -->
         <provider
             android:name="androidx.core.content.FileProvider"

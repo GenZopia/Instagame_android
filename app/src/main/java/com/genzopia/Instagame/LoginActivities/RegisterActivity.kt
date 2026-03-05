@@ -227,43 +227,65 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
     }
 
     private fun startEmailVerificationFlow(email: String, password: String) {
-        // If there's already a signed-in user with same email, just resend verification
+
         val current = auth.currentUser
+
+        // If user already signed in with same email → resend verification
         if (current != null && current.email?.equals(email, true) == true) {
             sendVerificationEmail(current)
             startPollingForVerification()
             return
         }
 
-        // Try creating an auth account (if already exists, sign-in and resend)
+        // Create new Firebase user
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
+
                 if (task.isSuccessful) {
-                    val user = auth.currentUser
-                    if (user != null) {
-                        // Keep user signed in so we can poll for email verification
-                        sendVerificationEmail(user)
-                        startPollingForVerification()
-                    }
+
+                    val user = auth.currentUser ?: return@addOnCompleteListener
+                    val uid = user.uid
+
+                    // Save verification status in database
+                    database.reference.child("users")
+                        .child(uid)
+                        .child("isverified")
+                        .setValue(false)
+                        .addOnCompleteListener {
+
+                            sendVerificationEmail(user)
+                            startPollingForVerification()
+                        }
+
                 } else {
+
                     val msg = task.exception?.message ?: "Unknown error"
-                    Log.d(TAG, "createUser (verify) failed: $msg")
-                    // If account exists already, sign in and resend verification
-                    if (msg.contains("email address is already in use", true) || msg.contains("already in use", true)) {
+                    Log.d(TAG, "createUser failed: $msg")
+
+                    // If account already exists → login
+                    if (msg.contains("already in use", true)) {
+
                         auth.signInWithEmailAndPassword(email, password)
                             .addOnCompleteListener(this) { signInTask ->
+
                                 if (signInTask.isSuccessful) {
+
                                     val user = auth.currentUser
+
                                     if (user != null) {
                                         sendVerificationEmail(user)
                                         startPollingForVerification()
                                     }
+
                                 } else {
-                                    val err = signInTask.exception?.message ?: "Sign in failed"
+
+                                    val err = signInTask.exception?.message ?: "Login failed"
                                     Toast.makeText(this, err, Toast.LENGTH_LONG).show()
                                 }
                             }
+
                     } else {
+
                         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                     }
                 }
@@ -305,34 +327,69 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
     }
 
     private fun onEmailVerified() {
+
         emailVerified = true
         verifyHandler.removeCallbacks(verifyRunnable)
-        runOnUiThread {
-            // Show tick
-            try { binding.imgEmailVerified.visibility = View.VISIBLE } catch (_: Exception) {}
-            // Hide the verify button entirely when verified
-            try { binding.btnVerifyEmail.visibility = View.GONE } catch (_: Exception) {}
-            // Enable register button so user can complete signup
-            binding.btnRegister.isEnabled = true
-            Toast.makeText(this, "Email verified — you can now complete sign up.", Toast.LENGTH_SHORT).show()
-        }
+
+        val uid = auth.currentUser?.uid ?: return
+
+        database.reference.child("users")
+            .child(uid)
+            .child("isverified")
+            .setValue(true)
+            .addOnFailureListener {
+
+                Toast.makeText(
+                    this,
+                    "Email verification error please try again later",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                finish()
+            }
+            .addOnSuccessListener {
+
+                runOnUiThread {
+
+                    binding.imgEmailVerified.visibility = View.VISIBLE
+                    binding.btnVerifyEmail.visibility = View.GONE
+                    binding.btnRegister.isEnabled = true
+
+                    Toast.makeText(
+                        this,
+                        "Email verified — you can now complete sign up.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
     }
 
 
     // Helper to send verification email and surface result to user (non-blocking)
-    private fun sendVerificationEmail(user: FirebaseUser) {
-        user.sendEmailVerification()
-            .addOnCompleteListener { sendTask ->
-                if (sendTask.isSuccessful) {
-                    runOnUiThread {
-                        Toast.makeText(this, "Verification email sent to ${user.email}. Please check your inbox.", Toast.LENGTH_LONG).show()
-                    }
+    private fun sendVerificationEmail(user: FirebaseUser?) {
+
+        user?.sendEmailVerification()
+            ?.addOnCompleteListener { task ->
+
+                if (task.isSuccessful) {
+
+                    Toast.makeText(
+                        this,
+                        "Verification email sent to ${user.email}",
+                        Toast.LENGTH_LONG
+                    ).show()
+
                 } else {
-                    val msg = sendTask.exception?.message ?: "Failed to send verification email"
-                    runOnUiThread {
-                        Toast.makeText(this, "$msg", Toast.LENGTH_LONG).show()
-                    }
-                    Log.w(TAG, "sendVerificationEmail failed: ${sendTask.exception}")
+
+                    val msg = task.exception?.message ?: "Failed to send verification email"
+
+                    Toast.makeText(
+                        this,
+                        msg,
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    Log.w(TAG, "sendVerificationEmail failed: ${task.exception}")
                 }
             }
     }
@@ -497,7 +554,18 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
             }
         })
     }
+    override fun onResume() {
+        super.onResume()
 
+        val user = auth.currentUser
+
+        user?.reload()?.addOnCompleteListener {
+
+            if (user.isEmailVerified) {
+                onEmailVerified()
+            }
+        }
+    }
     private fun saveUserToDatabaseWithRollback(
         user_id: String,
         email: String,
