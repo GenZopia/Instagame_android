@@ -3,6 +3,7 @@ package com.genzopia.Instagame.reelview.compose
 import android.util.Log
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
+import com.genzopia.Instagame.utils.DataPrefetchService
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -29,7 +30,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     
     companion object {
         private const val TAG = "ReelPagingSource"
-        private const val PAGE_SIZE = 10
+        private const val PAGE_SIZE = 5  // Reduced from 10 for faster initial load
         
         // Cache for signed URLs (video_id -> signed_url)
         private val urlCache = mutableMapOf<String, Pair<String, Long>>()
@@ -54,7 +55,23 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         return try {
             val startKey = params.key
             
-            Log.d(TAG, "Loading page with startKey: $startKey")
+            Log.d(TAG, "Loading reels page with startKey: $startKey")
+            
+            // For first page, try to use prefetched data for instant display
+            if (startKey == null) {
+                Log.d(TAG, "First page load - checking prefetch cache")
+                val prefetchedReels = tryLoadFromPrefetchCache()
+                if (prefetchedReels.isNotEmpty()) {
+                    Log.d(TAG, "Returning ${prefetchedReels.size} prefetched reels INSTANTLY")
+                    return LoadResult.Page(
+                        data = prefetchedReels,
+                        prevKey = null,
+                        nextKey = prefetchedReels.lastOrNull()?.videoId
+                    )
+                } else {
+                    Log.d(TAG, "No prefetched data available, loading from Firebase")
+                }
+            }
             
             // Query Firebase for videos
             val query = if (startKey == null) {
@@ -72,7 +89,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             val snapshot = query.get().await()
             
             if (!snapshot.exists()) {
-                Log.d(TAG, "No more videos found")
+                Log.d(TAG, "No more reels found")
                 return LoadResult.Page(
                     data = emptyList(),
                     prevKey = null,
@@ -94,19 +111,26 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                         reels.add(reel)
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing video $videoId", e)
+                    Log.e(TAG, "Error parsing reel $videoId", e)
                 }
             }
             
-            // Fetch signed URLs in parallel using coroutines
+            // Fetch signed URLs in parallel, checking prefetch cache first
             val reelsWithUrls = withContext(Dispatchers.IO) {
                 reels.map { reel ->
                     async {
                         try {
-                            val signedUrl = fetchSignedUrl(reel.videoId)
+                            // Check DataPrefetchService cache first
+                            val cachedUrl = DataPrefetchService.getCachedSignedUrl(reel.videoId)
+                            val signedUrl = cachedUrl ?: fetchSignedUrl(reel.videoId)
+                            
+                            if (cachedUrl != null) {
+                                Log.d(TAG, "Using prefetched URL for reel ${reel.videoId}")
+                            }
+                            
                             reel.copy(videoUrl = signedUrl)
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error fetching signed URL for ${reel.videoId}", e)
+                            Log.e(TAG, "Error fetching signed URL for reel ${reel.videoId}", e)
                             reel
                         }
                     }
@@ -120,6 +144,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 prevKey = null,
                 nextKey = if (reelsWithUrls.size < PAGE_SIZE) null else lastKey
             )
+
             
         } catch (e: Exception) {
             Log.e(TAG, "Error loading reels", e)
@@ -242,6 +267,70 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                     }
                 }
             })
+        }
+    }
+    
+    /**
+     * Try to load reels from prefetch cache for instant display
+     */
+    private suspend fun tryLoadFromPrefetchCache(): List<ReelData> {
+        return try {
+            // First, check if we have prefetched videos
+            val cachedVideos = DataPrefetchService.getAllCachedVideos()
+            
+            if (cachedVideos.isEmpty()) {
+                Log.d(TAG, "No prefetched videos found")
+                return emptyList()
+            }
+            
+            Log.d(TAG, "Found ${cachedVideos.size} prefetched videos")
+            
+            // Get the first 3 videos from Firebase to get full metadata
+            // This is still needed but should be fast since we're only getting metadata
+            val snapshot = database.reference.child("videos")
+                .orderByKey()
+                .limitToFirst(3)
+                .get()
+                .await()
+            
+            if (!snapshot.exists()) {
+                Log.d(TAG, "No videos in Firebase")
+                return emptyList()
+            }
+            
+            val reels = mutableListOf<ReelData>()
+            
+            // Process videos sequentially for the first page to ensure order
+            for (videoSnapshot in snapshot.children) {
+                val videoId = videoSnapshot.key ?: continue
+                
+                try {
+                    // Parse the video data
+                    val reel = parseVideoSnapshot(videoSnapshot)
+                    if (reel != null) {
+                        // Use prefetched URL if available
+                        val signedUrl = DataPrefetchService.getCachedSignedUrl(videoId)
+                        
+                        if (signedUrl != null) {
+                            reels.add(reel.copy(videoUrl = signedUrl))
+                            Log.d(TAG, "✓ Using prefetched URL for video $videoId")
+                        } else {
+                            // If not prefetched, fetch it now (shouldn't happen for first 3)
+                            Log.w(TAG, "⚠ Video $videoId not prefetched, fetching now")
+                            val freshUrl = fetchSignedUrl(videoId)
+                            reels.add(reel.copy(videoUrl = freshUrl))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error loading reel $videoId", e)
+                }
+            }
+            
+            Log.d(TAG, "✓✓✓ Returning ${reels.size} reels from prefetch cache INSTANTLY")
+            reels
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading from prefetch cache", e)
+            emptyList()
         }
     }
 }
