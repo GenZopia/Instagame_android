@@ -150,8 +150,13 @@ fun ReelItem(
     viewModel: ReelViewModel,
     modifier: Modifier = Modifier
 ) {
-    var isLiked by remember { mutableStateOf(reel.isLiked) }
-    var likeCount by remember { mutableStateOf(reel.likeCount.toIntOrNull() ?: 0) }
+    // Use ViewModel to persist like state across scrolls
+    val (defaultIsLiked, defaultLikeCount) = remember(reel.videoId) {
+        viewModel.getLikeState(reel.videoId, reel.isLiked, reel.likeCount.toIntOrNull() ?: 0)
+    }
+    var isLiked by remember(reel.videoId) { mutableStateOf(defaultIsLiked) }
+    var likeCount by remember(reel.videoId) { mutableStateOf(defaultLikeCount) }
+    
     // Use ViewModel to persist follow state across scrolls
     var isFollowing by remember(reel.developerId) { 
         mutableStateOf(viewModel.getFollowState(reel.developerId, reel.isFollowing)) 
@@ -279,11 +284,61 @@ fun ReelItem(
             likeCount = likeCount,
             isFollowing = isFollowing,
             onLikeClick = {
-                isLiked = !isLiked
-                likeCount += if (isLiked) 1 else -1
-                FirebaseDatabase.getInstance().reference
+                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                if (currentUserId == null) {
+                    Toast.makeText(context, "Please login to like", Toast.LENGTH_SHORT).show()
+                    return@ReelOverlay
+                }
+                
+                // Toggle like state
+                val newLikedState = !isLiked
+                val newLikeCount = likeCount + if (newLikedState) 1 else -1
+                
+                // Update UI immediately
+                isLiked = newLikedState
+                likeCount = newLikeCount
+                
+                // Update ViewModel state immediately for persistence
+                viewModel.updateLikeState(reel.videoId, newLikedState, newLikeCount)
+                
+                // Update Firebase
+                val videoRef = FirebaseDatabase.getInstance().reference
                     .child("videos").child(reel.videoId)
-                    .child("like_count").setValue(likeCount.toString())
+                    .child("like_count")
+                
+                val userLikedRef = FirebaseDatabase.getInstance().reference
+                    .child("users")
+                    .child(currentUserId)
+                    .child("liked_videos")
+                    .child(reel.videoId)
+                
+                if (newLikedState) {
+                    // Like the video
+                    videoRef.setValue(newLikeCount.toString())
+                        .addOnSuccessListener {
+                            userLikedRef.setValue(true)
+                        }
+                        .addOnFailureListener { e ->
+                            // Revert on failure
+                            isLiked = !newLikedState
+                            likeCount = likeCount - if (newLikedState) 1 else -1
+                            viewModel.updateLikeState(reel.videoId, !newLikedState, likeCount)
+                            Toast.makeText(context, "Failed to like: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                } else {
+                    // Unlike the video
+                    videoRef.setValue(newLikeCount.toString())
+                        .addOnSuccessListener {
+                            userLikedRef.removeValue()
+                        }
+                        .addOnFailureListener { e ->
+                            // Revert on failure
+                            isLiked = !newLikedState
+                            likeCount = likeCount + if (newLikedState) 1 else -1
+                            viewModel.updateLikeState(reel.videoId, !newLikedState, likeCount)
+                            Toast.makeText(context, "Failed to unlike: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                }
             },
             onFollowClick = {
                 val currentUserId = FirebaseAuth.getInstance().currentUser?.uid

@@ -43,6 +43,9 @@ class ReelViewModel : ViewModel() {
     // Track follow states (developerId -> isFollowing)
     private val followStates = mutableMapOf<String, Boolean>()
     
+    // Track like states (videoId -> Pair(isLiked, likeCount))
+    private val likeStates = mutableMapOf<String, Pair<Boolean, Int>>()
+    
     private var appContext: Context? = null
     private var isPlayerInitialized = false
 
@@ -178,11 +181,21 @@ class ReelViewModel : ViewModel() {
     fun updateFollowState(developerId: String, isFollowing: Boolean) {
         followStates[developerId] = isFollowing
     }
+    
+    // Like state management
+    fun getLikeState(videoId: String, defaultIsLiked: Boolean, defaultLikeCount: Int): Pair<Boolean, Int> {
+        return likeStates[videoId] ?: Pair(defaultIsLiked, defaultLikeCount)
+    }
+    
+    fun updateLikeState(videoId: String, isLiked: Boolean, likeCount: Int) {
+        likeStates[videoId] = Pair(isLiked, likeCount)
+    }
 
     override fun onCleared() {
         super.onCleared()
         playerPool.values.forEach { it.release() }
         playerPool.clear()
         followStates.clear()
+        likeStates.clear()
     }
 }

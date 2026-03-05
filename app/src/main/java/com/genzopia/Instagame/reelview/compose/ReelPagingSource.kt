@@ -187,6 +187,9 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             false
         }
         
+        // Check if current user has liked this video
+        val isLiked = checkIfLiked(videoId)
+        
         return ReelData(
             videoId = videoId,
             title = title,
@@ -197,7 +200,8 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             developerPhotoUrl = developerPhotoUrl,
             gameId = gameId,
             gameName = gameName,
-            isFollowing = isFollowing
+            isFollowing = isFollowing,
+            isLiked = isLiked
         )
     }
     
@@ -257,6 +261,30 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             isFollowing
         } catch (e: Exception) {
             Log.e(TAG, "Error checking follow status for $developerId", e)
+            false
+        }
+    }
+    
+    private suspend fun checkIfLiked(videoId: String): Boolean {
+        return try {
+            val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+            if (currentUserId == null) {
+                return false
+            }
+            
+            val likedSnapshot = database.reference
+                .child("users")
+                .child(currentUserId)
+                .child("liked_videos")
+                .child(videoId)
+                .get()
+                .await()
+            
+            val isLiked = likedSnapshot.exists() && likedSnapshot.getValue(Boolean::class.java) == true
+            Log.d(TAG, "User $currentUserId liked video $videoId: $isLiked")
+            isLiked
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking like status for $videoId", e)
             false
         }
     }
