@@ -32,13 +32,51 @@ public class CommentsRepository {
         return FirebaseDatabase.getInstance().getReference("videos").child(videoId).child("comments");
     }
 
+    // Safely parse a Long field that may be stored as String or Long in Firebase
+    private static Long safeLong(DataSnapshot ds, String key) {
+        Object val = ds.child(key).getValue();
+        if (val == null) return null;
+        if (val instanceof Long) return (Long) val;
+        if (val instanceof Integer) return ((Integer) val).longValue();
+        if (val instanceof Double) return ((Double) val).longValue();
+        try { return Long.parseLong(val.toString()); } catch (NumberFormatException e) { return null; }
+    }
+
+    private static Comment commentFrom(DataSnapshot ds) {
+        Comment c = new Comment();
+        c.comment_id      = ds.child("comment_id").getValue(String.class);
+        c.user_id         = ds.child("user_id").getValue(String.class);
+        c.user_display_name = ds.child("user_display_name").getValue(String.class);
+        c.user_photo_url  = ds.child("user_photo_url").getValue(String.class);
+        c.text            = ds.child("text").getValue(String.class);
+        c.created_at      = safeLong(ds, "created_at");
+        c.like_count      = safeLong(ds, "like_count");
+        c.dislike_count   = safeLong(ds, "dislike_count");
+        c.reply_count     = safeLong(ds, "reply_count");
+        return c;
+    }
+
+    private static Reply replyFrom(DataSnapshot ds) {
+        Reply r = new Reply();
+        r.reply_id           = ds.child("reply_id").getValue(String.class);
+        r.parent_comment_id  = ds.child("parent_comment_id").getValue(String.class);
+        r.user_id            = ds.child("user_id").getValue(String.class);
+        r.user_display_name  = ds.child("user_display_name").getValue(String.class);
+        r.user_photo_url     = ds.child("user_photo_url").getValue(String.class);
+        r.text               = ds.child("text").getValue(String.class);
+        r.created_at         = safeLong(ds, "created_at");
+        r.like_count         = safeLong(ds, "like_count");
+        r.dislike_count      = safeLong(ds, "dislike_count");
+        return r;
+    }
+
     public void fetchCommentsFirstPage(String videoId, final CommentsCallback callback) {
         Query q = commentsRef(videoId).orderByChild("created_at").limitToLast(20);
         q.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                 List<Comment> list = new ArrayList<>();
                 for (DataSnapshot ds : snapshot.getChildren()) {
-                    Comment c = ds.getValue(Comment.class);
+                    Comment c = commentFrom(ds);
                     if (c != null) list.add(c);
                 }
                 list.sort((a,b) -> Long.compare(b.created_at != null ? b.created_at : 0L, a.created_at != null ? a.created_at : 0L));
@@ -62,7 +100,7 @@ public class CommentsRepository {
             @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                 List<Comment> list = new ArrayList<>();
                 for (DataSnapshot ds : snapshot.getChildren()) {
-                    Comment c = ds.getValue(Comment.class);
+                    Comment c = commentFrom(ds);
                     if (c != null) list.add(c);
                 }
                 list.sort((a,b) -> Long.compare(b.created_at != null ? b.created_at : 0L, a.created_at != null ? a.created_at : 0L));
@@ -84,7 +122,7 @@ public class CommentsRepository {
             @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                 List<Reply> list = new ArrayList<>();
                 for (DataSnapshot ds : snapshot.getChildren()) {
-                    Reply r = ds.getValue(Reply.class);
+                    Reply r = replyFrom(ds);
                     if (r != null) list.add(r);
                 }
                 list.sort((a,b) -> Long.compare(a.created_at != null ? a.created_at : 0L, b.created_at != null ? b.created_at : 0L));

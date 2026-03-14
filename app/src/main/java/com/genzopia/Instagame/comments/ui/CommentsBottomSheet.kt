@@ -49,6 +49,7 @@ fun CommentsBottomSheet(
     var comments by remember { mutableStateOf<List<Comment>>(emptyList()) }
     var commentText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<Comment?>(null) }
     
     val currentUser = FirebaseAuth.getInstance().currentUser
     val isDarkTheme = isSystemInDarkTheme()
@@ -143,14 +144,40 @@ fun CommentsBottomSheet(
                             videoId = videoId,
                             repository = repository,
                             textColor = textColor,
-                            secondaryTextColor = secondaryTextColor
+                            secondaryTextColor = secondaryTextColor,
+                            onReply = { c ->
+                                replyingTo = c
+                                commentText = ""
+                            }
                         )
                     }
                 }
             }
             
             Divider(color = if (isDarkTheme) Color.DarkGray else Color.LightGray)
-            
+
+            // Reply-to banner
+            if (replyingTo != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (isDarkTheme) Color(0xFF2C2C2E) else Color(0xFFF2F2F7))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Replying to ${replyingTo!!.user_display_name ?: "user"}",
+                        fontSize = 12.sp,
+                        color = Color(0xFFFF6B35)
+                    )
+                    IconButton(onClick = { replyingTo = null; commentText = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel reply",
+                            tint = secondaryTextColor, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
             // Input row
             Row(
                 modifier = Modifier
@@ -159,7 +186,6 @@ fun CommentsBottomSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // User avatar
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(currentUser?.photoUrl)
@@ -168,48 +194,69 @@ fun CommentsBottomSheet(
                         .error(android.R.drawable.ic_menu_gallery)
                         .build(),
                     contentDescription = "Your avatar",
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Gray),
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(Color.Gray),
                     contentScale = ContentScale.Crop
                 )
-                
-                // Input field
+
                 OutlinedTextField(
                     value = commentText,
                     onValueChange = { commentText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Add a comment") },
+                    placeholder = {
+                        Text(if (replyingTo != null) "Write a reply…" else "Add a comment")
+                    },
                     trailingIcon = {
                         IconButton(
                             onClick = {
                                 if (commentText.isNotBlank() && currentUser != null) {
+                                    val text = commentText
+                                    val target = replyingTo
+                                    commentText = ""
+                                    replyingTo = null
                                     scope.launch {
-                                        repository.postComment(
-                                            videoId,
-                                            commentText,
-                                            currentUser.uid,
-                                            currentUser.displayName ?: "User",
-                                            currentUser.photoUrl?.toString() ?: "",
-                                            object : CommentsRepository.CompletionCallback {
-                                                override fun onComplete(success: Boolean, errorMessage: String?) {
-                                                    if (success) {
-                                                        commentText = ""
-                                                        // Reload comments
-                                                        repository.fetchCommentsFirstPage(videoId, object : CommentsRepository.CommentsCallback {
-                                                            override fun onLoaded(loadedComments: List<Comment>, lastCreatedAt: Long?, hasMore: Boolean) {
-                                                                comments = loadedComments
-                                                            }
-                                                            
-                                                            override fun onError(message: String) {
-                                                                android.util.Log.e("CommentsBottomSheet", "Error reloading: $message")
-                                                            }
-                                                        })
+                                        if (target != null) {
+                                            // Post reply
+                                            val uid = currentUser.uid
+                                            val userSnap = com.google.firebase.database.FirebaseDatabase
+                                                .getInstance().getReference("users").child(uid)
+                                                .get().await()
+                                            val name = userSnap.child("full_name").getValue(String::class.java)
+                                                ?: userSnap.child("username").getValue(String::class.java)
+                                                ?: currentUser.displayName ?: "User"
+                                            val photo = userSnap.child("profile_photo_url").getValue(String::class.java)
+                                                ?: currentUser.photoUrl?.toString() ?: ""
+                                            repository.postReply(
+                                                videoId, target.comment_id, text,
+                                                uid, name, photo,
+                                                object : CommentsRepository.CompletionCallback {
+                                                    override fun onComplete(success: Boolean, errorMessage: String?) {
+                                                        if (success) {
+                                                            repository.fetchCommentsFirstPage(videoId, object : CommentsRepository.CommentsCallback {
+                                                                override fun onLoaded(list: List<Comment>, last: Long?, more: Boolean) { comments = list }
+                                                                override fun onError(msg: String) {}
+                                                            })
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        } else {
+                                            // Post comment
+                                            repository.postComment(
+                                                videoId, text, currentUser.uid,
+                                                currentUser.displayName ?: "User",
+                                                currentUser.photoUrl?.toString() ?: "",
+                                                object : CommentsRepository.CompletionCallback {
+                                                    override fun onComplete(success: Boolean, errorMessage: String?) {
+                                                        if (success) {
+                                                            repository.fetchCommentsFirstPage(videoId, object : CommentsRepository.CommentsCallback {
+                                                                override fun onLoaded(list: List<Comment>, last: Long?, more: Boolean) { comments = list }
+                                                                override fun onError(msg: String) {}
+                                                            })
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -239,7 +286,8 @@ fun CommentItem(
     videoId: String,
     repository: CommentsRepository,
     textColor: Color,
-    secondaryTextColor: Color
+    secondaryTextColor: Color,
+    onReply: ((Comment) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -393,10 +441,7 @@ fun CommentItem(
                     text = "Reply",
                     fontSize = 12.sp,
                     color = secondaryTextColor,
-                    modifier = Modifier.clickable {
-                        // TODO: Implement reply functionality
-                        android.widget.Toast.makeText(context, "Reply coming soon!", android.widget.Toast.LENGTH_SHORT).show()
-                    }
+                    modifier = Modifier.clickable { onReply?.invoke(comment) }
                 )
                 
                 // Time ago

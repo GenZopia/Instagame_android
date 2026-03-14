@@ -2,6 +2,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -59,38 +61,45 @@ class ReelViewModel : ViewModel() {
     // Get or create player for a video
     fun getPlayerForVideo(videoId: String, videoUrl: String?): ExoPlayer? {
         if (videoUrl == null) return null
-        
+
         // Check if we have a preloaded player for this video
         val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
         if (preloaded != null) {
             android.util.Log.d("ReelViewModel", "=== USING PRELOADED PLAYER ===")
-            android.util.Log.d("ReelViewModel", "Video ID: $videoId")
-            android.util.Log.d("ReelViewModel", "Player state: ${preloaded.playbackState}")
-            playerPool[videoId] = preloaded
-            // Clear the preloaded reference so it's not used again
-            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
-            // Unmute the player
-            preloaded.volume = 1f
-            android.util.Log.d("ReelViewModel", "Preloaded player ready to play!")
-            return preloaded
+            android.util.Log.d("ReelViewModel", "Video ID: $videoId, state: ${preloaded.playbackState}")
+
+            // Only accept the preloaded player if it's in a usable state (not IDLE/ERROR)
+            if (preloaded.playbackState != Player.STATE_IDLE) {
+                com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+                preloaded.volume = 1f
+                attachErrorRecovery(preloaded, videoId, videoUrl)
+                playerPool[videoId] = preloaded
+                android.util.Log.d("ReelViewModel", "Preloaded player accepted")
+                return preloaded
+            } else {
+                // Preloaded player is in a bad state — release it and fall through to create a fresh one
+                android.util.Log.w("ReelViewModel", "Preloaded player in IDLE state, discarding")
+                preloaded.release()
+                com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            }
         }
-        
+
         android.util.Log.d("ReelViewModel", "No preloaded player for $videoId, creating new one")
         return playerPool.getOrPut(videoId) {
-            createPlayer(videoUrl)
+            createPlayer(videoId, videoUrl)
         }
     }
-    
-    private fun createPlayer(videoUrl: String): ExoPlayer {
+
+    private fun createPlayer(videoId: String, videoUrl: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                5000,   // min buffer - reduced significantly for instant start
+                5000,   // min buffer
                 30000,  // max buffer
-                500,    // playback buffer - very low for instant playback
-                1000    // rebuffer - low for quick recovery
+                500,    // playback buffer - low for instant start
+                1000    // rebuffer
             )
             .build()
-            
+
         return ExoPlayer.Builder(appContext!!)
             .setLoadControl(loadControl)
             .build()
@@ -100,7 +109,33 @@ class ReelViewModel : ViewModel() {
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
                 volume = 1f
                 prepare()
+                attachErrorRecovery(this, videoId, videoUrl)
             }
+    }
+
+    /**
+     * Attaches an error listener that recovers from codec crashes (e.g. AAC decoder failure)
+     * by releasing the broken player and creating a fresh one for the same video.
+     */
+    private fun attachErrorRecovery(player: ExoPlayer, videoId: String, videoUrl: String) {
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                android.util.Log.e("ReelViewModel", "Player error for $videoId: ${error.message}")
+                // Remove the broken player from the pool
+                playerPool.remove(videoId)
+                player.removeListener(this)
+                player.release()
+
+                // Recreate a fresh player and put it back in the pool
+                val fresh = createPlayer(videoId, videoUrl)
+                playerPool[videoId] = fresh
+
+                // If this was the currently playing video, resume playback
+                if (currentVideoId == videoId) {
+                    fresh.playWhenReady = true
+                }
+            }
+        })
     }
 
     // Preload adjacent videos for smooth scrolling

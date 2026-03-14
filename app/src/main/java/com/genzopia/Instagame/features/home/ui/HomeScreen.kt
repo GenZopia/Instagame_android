@@ -516,10 +516,16 @@ fun HomeVideoItem(
     
     // Show comments bottom sheet
     if (showComments) {
-        CommentsBottomSheet(
-            videoId = video.videoId,
-            onDismiss = { showComments = false }
-        )
+        val fragmentManager = (context as? androidx.fragment.app.FragmentActivity)?.supportFragmentManager
+        if (fragmentManager != null) {
+            val tag = "comments_${video.videoId}"
+            if (fragmentManager.findFragmentByTag(tag) == null) {
+                com.genzopia.Instagame.comments.ui.CommentsBottomSheetFragment
+                    .newInstance(video.videoId)
+                    .show(fragmentManager, tag)
+            }
+        }
+        showComments = false
     }
 }
 

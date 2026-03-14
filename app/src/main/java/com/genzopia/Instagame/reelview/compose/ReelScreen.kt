@@ -449,10 +449,16 @@ fun ReelItem(
     }
     
     if (showComments) {
-        CommentsBottomSheet(
-            videoId = reel.videoId,
-            onDismiss = { showComments = false }
-        )
+        val fragmentManager = (context as? androidx.fragment.app.FragmentActivity)?.supportFragmentManager
+        if (fragmentManager != null) {
+            val tag = "comments_${reel.videoId}"
+            if (fragmentManager.findFragmentByTag(tag) == null) {
+                com.genzopia.Instagame.comments.ui.CommentsBottomSheetFragment
+                    .newInstance(reel.videoId)
+                    .show(fragmentManager, tag)
+            }
+        }
+        showComments = false
     }
 }
 
