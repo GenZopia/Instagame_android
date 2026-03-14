@@ -39,6 +39,11 @@ import com.genzopia.Instagame.comments.ui.CommentsBottomSheet
 import kotlinx.coroutines.delay
 import androidx.paging.LoadState
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.MutableData
+import com.google.firebase.database.Transaction
+import com.google.firebase.firestore.FieldValue
 
 /**
  * Main Reel Screen with vertical paging
@@ -346,45 +351,91 @@ fun ReelItem(
                     Toast.makeText(context, "Please login to follow", Toast.LENGTH_SHORT).show()
                     return@ReelOverlay
                 }
-                
+
                 if (reel.developerId.isEmpty()) {
                     Toast.makeText(context, "Invalid developer ID", Toast.LENGTH_SHORT).show()
                     return@ReelOverlay
                 }
-                
-                // Toggle follow state
+
                 val newFollowState = !isFollowing
                 isFollowing = newFollowState
-                
-                // Update ViewModel state immediately for persistence
+
                 viewModel.updateFollowState(reel.developerId, newFollowState)
-                
-                // Update Firebase
-                val followingRef = FirebaseDatabase.getInstance().reference
+
+                val db = FirebaseDatabase.getInstance().reference
+
+                val followingRef = db
                     .child("users")
                     .child(currentUserId)
                     .child("following_list")
                     .child(reel.developerId)
-                
+
+                val followersCountRef = db
+                    .child("users")
+                    .child(reel.developerId)
+                    .child("followers_count")
+
                 if (newFollowState) {
-                    // Follow
+
+                    // FOLLOW
                     followingRef.setValue(true)
                         .addOnSuccessListener {
-                            Toast.makeText(context, "Following ${reel.developerName}", Toast.LENGTH_SHORT).show()
+
+                            followersCountRef.runTransaction(object : Transaction.Handler {
+
+                                override fun doTransaction(currentData: MutableData): Transaction.Result {
+                                    var count = currentData.getValue(Int::class.java) ?: 0
+                                    currentData.value = count + 1
+                                    return Transaction.success(currentData)
+                                }
+
+                                override fun onComplete(
+                                    error: DatabaseError?,
+                                    committed: Boolean,
+                                    snapshot: DataSnapshot?
+                                ) {
+                                    if (committed) {
+                                        Toast.makeText(context, "Following ${reel.developerName}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            })
+
                         }
                         .addOnFailureListener { e ->
-                            isFollowing = !newFollowState // Revert on failure
+                            isFollowing = !newFollowState
                             viewModel.updateFollowState(reel.developerId, !newFollowState)
                             Toast.makeText(context, "Failed to follow: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
+
                 } else {
-                    // Unfollow
+
+                    // UNFOLLOW
                     followingRef.removeValue()
                         .addOnSuccessListener {
-                            Toast.makeText(context, "Unfollowed ${reel.developerName}", Toast.LENGTH_SHORT).show()
+
+                            followersCountRef.runTransaction(object : Transaction.Handler {
+
+                                override fun doTransaction(currentData: MutableData): Transaction.Result {
+                                    var count = currentData.getValue(Int::class.java) ?: 0
+                                    if (count > 0) count -= 1
+                                    currentData.value = count
+                                    return Transaction.success(currentData)
+                                }
+
+                                override fun onComplete(
+                                    error: DatabaseError?,
+                                    committed: Boolean,
+                                    snapshot: DataSnapshot?
+                                ) {
+                                    if (committed) {
+                                        Toast.makeText(context, "Unfollowed ${reel.developerName}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            })
+
                         }
                         .addOnFailureListener { e ->
-                            isFollowing = !newFollowState // Revert on failure
+                            isFollowing = !newFollowState
                             viewModel.updateFollowState(reel.developerId, !newFollowState)
                             Toast.makeText(context, "Failed to unfollow: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
