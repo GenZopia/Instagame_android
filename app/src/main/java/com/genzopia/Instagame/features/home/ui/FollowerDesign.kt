@@ -8,11 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,77 +31,99 @@ import coil.request.ImageRequest
 import com.genzopia.Instagame.channel_view.ChannelActivity
 import com.genzopia.Instagame.features.home.domain.FollowedUser
 
-// Instagram-style gradient for the story ring
-private val StoryGradient = Brush.linearGradient(
+private val StoryGradient = Brush.sweepGradient(
     colors = listOf(
-        Color(0xFFDE0046),
-        Color(0xFFF7A34B),
-        Color(0xFFFED373),
-        Color(0xFFDE0046),
+        Color(0xFFFF6B35),
+        Color(0xFFFF3CAC),
+        Color(0xFF784BA0),
+        Color(0xFF2B86C5),
+        Color(0xFFFF6B35),
     )
 )
 
-// Height for one story item (circle 72dp + spacing 4dp + text ~14dp)
-private val STORY_ITEM_HEIGHT = 94.dp
-
-/**
- * Instagram-style horizontal grid showing circular profile pics of followed users
- * in two rows. Takes a list of FollowedUser directly.
- */
 @Composable
 fun FollowingStoriesBar(
     users: List<FollowedUser>,
     isLoading: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val backgroundColor = if (isDarkTheme) Color(0xFF121212) else Color.White
-    val textColor = if (isDarkTheme) Color.White else Color.Black
+    val isDark = isSystemInDarkTheme()
+    val bg = if (isDark) Color(0xFF0E0E0E) else Color(0xFFFAFAFA)
+    val textColor = if (isDark) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
+    val dividerColor = if (isDark) Color(0xFF1F1F1F) else Color(0xFFEEEEEE)
 
-    if (!isLoading && users.isNotEmpty()) {
-        Column(
-            modifier = modifier
+    if (isLoading || users.isEmpty()) return
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(bg)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
                 .fillMaxWidth()
-                .background(backgroundColor)
+                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            LazyHorizontalGrid(
-                rows = GridCells.Fixed(2),
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(STORY_ITEM_HEIGHT * 2 + 8.dp) // 2 rows + spacing
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp)
-            ) {
-                items(items = users, key = { it.userId }) { user ->
-                    StoryItem(user = user, textColor = textColor)
-                }
-            }
-
-            HorizontalDivider(
-                thickness = 0.5.dp,
-                color = if (isDarkTheme) Color(0xFF2A2A2A) else Color(0xFFDDDDDD)
+                    .width(3.dp)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFFFF6B35))
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Following",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = textColor,
+                letterSpacing = 0.3.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${users.size}",
+                fontSize = 12.sp,
+                color = Color(0xFFFF6B35),
+                fontWeight = FontWeight.SemiBold
             )
         }
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(items = users, key = { it.userId }) { user ->
+                StoryItem(user = user, textColor = textColor)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(dividerColor)
+        )
     }
 }
 
-/**
- * Single circular profile pic with gradient ring + name below
- */
 @Composable
 private fun StoryItem(user: FollowedUser, textColor: Color) {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
+    val avatarBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE8E8E8)
 
     Column(
         modifier = Modifier
-            .width(76.dp)
+            .width(68.dp)
             .clickable {
                 try {
                     val intent = Intent(context, ChannelActivity::class.java)
                     intent.putExtra("developer_id", user.userId)
-                    intent.putExtra("user_id", user.userId)
                     context.startActivity(intent)
                 } catch (e: Exception) {
                     Log.e("FollowerDesign", "Error opening channel", e)
@@ -114,66 +135,44 @@ private fun StoryItem(user: FollowedUser, textColor: Color) {
         // Gradient ring
         Box(
             modifier = Modifier
-                .size(72.dp)
-                .border(width = 2.5.dp, brush = StoryGradient, shape = CircleShape)
-                .padding(4.dp),
+                .size(60.dp)
+                .background(StoryGradient, CircleShape)
+                .padding(2.5.dp),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(user.profilePhotoUrl)
-                    .crossfade(true)
-                    .placeholder(android.R.drawable.ic_menu_gallery)
-                    .error(android.R.drawable.ic_menu_gallery)
-                    .build(),
-                contentDescription = "${user.fullName}'s profile",
+            Box(
                 modifier = Modifier
-                    .size(62.dp)
-                    .clip(CircleShape)
-                    .background(Color.Gray),
-                contentScale = ContentScale.Crop
-            )
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0xFF0E0E0E) else Color.White, CircleShape)
+                    .padding(2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(user.profilePhotoUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = user.fullName,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(avatarBg),
+                    contentScale = ContentScale.Crop
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
 
         Text(
-            text = user.fullName,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Normal,
+            text = user.fullName.split(" ").first(),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-/**
- * Shimmer placeholder circle while loading
- */
-@Composable
-private fun ShimmerStoryItem() {
-    val shimmerColor = if (isSystemInDarkTheme()) Color(0xFF2A2A2A) else Color(0xFFE8E8E8)
-
-    Column(
-        modifier = Modifier.width(76.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(shimmerColor)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Box(
-            modifier = Modifier
-                .width(48.dp)
-                .height(10.dp)
-                .clip(CircleShape)
-                .background(shimmerColor)
         )
     }
 }

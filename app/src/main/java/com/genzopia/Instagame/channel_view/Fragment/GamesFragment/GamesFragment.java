@@ -132,21 +132,19 @@ public class GamesFragment extends Fragment {
                         .addListenerForSingleValueEvent(new ValueEventListener() {
                             @Override
                             public void onDataChange(@NonNull DataSnapshot photoSnap) {
-                                // Always use worker URL (pre-signed photo_url is expired)
-                                String r2Key = photoSnap.child("r2_key").getValue(String.class);
-                                String imageUrl;
-                                if (r2Key != null && !r2Key.isEmpty()) {
-                                    imageUrl = "https://file-upload-worker.genzopia.workers.dev/?key=" + r2Key;
-                                } else {
-                                    String ext = photoSnap.child("file_ext").getValue(String.class);
-                                    if (ext == null || ext.isEmpty()) {
-                                        String fileName = photoSnap.child("file_name").getValue(String.class);
-                                        ext = (fileName != null && fileName.contains("."))
-                                            ? fileName.substring(fileName.lastIndexOf('.') + 1) : "jpg";
-                                    }
-                                    imageUrl = "https://file-upload-worker.genzopia.workers.dev/?key=photo/" + photoId + "." + ext;
+                                // Use video-signer worker (same as web version getSignedPhotoUrl)
+                                String ext = photoSnap.child("file_ext").getValue(String.class);
+                                if (ext == null || ext.isEmpty()) {
+                                    String fileName = photoSnap.child("file_name").getValue(String.class);
+                                    ext = (fileName != null && fileName.contains("."))
+                                        ? fileName.substring(fileName.lastIndexOf('.') + 1) : "jpg";
                                 }
-                                addGameItem(gameName, description, imageUrl, playStoreUrl);
+                                final String fileExt = ext;
+                                // Resolve signed URL on background thread
+                                new Thread(() -> {
+                                    String signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt);
+                                    addGameItem(gameName, description, signedUrl != null ? signedUrl : "", playStoreUrl);
+                                }).start();
                             }
                             @Override
                             public void onCancelled(@NonNull DatabaseError error) {
