@@ -408,42 +408,57 @@ class HomePagingSource(
     private suspend fun fetchSignedUrl(videoId: String): String? {
         // Check cache first
         getCachedUrl(videoId)?.let { return it }
-        
-        return suspendCancellableCoroutine { continuation ->
-            val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
-            val request = Request.Builder().url(url).build()
-            
-            httpClient.newCall(request).enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                    Log.e(TAG, "Failed to fetch signed URL for $videoId", e)
-                    continuation.resume(null)
+
+        return withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val R2_PUBLIC = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+                val basePath = resolveVideoBasePath(videoId)
+                val hlsDir = "${basePath}_hls"
+
+                // Check HLS first (HEAD request to public R2)
+                val manifestName = checkHlsManifest(R2_PUBLIC, hlsDir)
+                if (manifestName != null) {
+                    val hlsUrl = "$R2_PUBLIC/$hlsDir/$manifestName"
+                    Log.d(TAG, "Video $videoId → HLS: $hlsUrl")
+                    cacheUrl(videoId, hlsUrl)
+                    hlsUrl
+                } else {
+                    // Fall back to signed MP4
+                    val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
+                    val resp = httpClient.newCall(Request.Builder().url(url).build()).execute()
+                    val body = resp.body?.string()
+                    resp.close()
+                    val json = if (body != null) org.json.JSONObject(body) else null
+                    val signedUrl = if (json?.optBoolean("success") == true)
+                        json.optString("url").takeIf { it.isNotEmpty() } else null
+                    if (signedUrl != null) cacheUrl(videoId, signedUrl)
+                    Log.d(TAG, "Video $videoId → MP4: $signedUrl")
+                    signedUrl
                 }
-                
-                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                    try {
-                        val body = response.body?.string()
-                        if (body != null) {
-                            val json = JSONObject(body)
-                            if (json.optBoolean("success")) {
-                                val signedUrl = json.optString("url")
-                                if (signedUrl.isNotEmpty()) {
-                                    cacheUrl(videoId, signedUrl)
-                                    continuation.resume(signedUrl)
-                                } else {
-                                    continuation.resume(null)
-                                }
-                            } else {
-                                continuation.resume(null)
-                            }
-                        } else {
-                            continuation.resume(null)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing signed URL response", e)
-                        continuation.resume(null)
-                    }
-                }
-            })
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resolving URL for $videoId", e)
+                null
+            }
         }
+    }
+
+    private fun resolveVideoBasePath(videoIdOrKey: String): String {
+        var id = videoIdOrKey
+        if (id.startsWith("video/")) return id.replace(Regex("\\.[^.]+$"), "")
+        id = id.removeSuffix(".mp4").removeSuffix(".m3u8")
+        return if (id.startsWith("video_")) "video/$id" else "video/video_$id"
+    }
+
+    private fun checkHlsManifest(r2Base: String, hlsDir: String): String? {
+        val manifests = listOf("master.m3u8", "1080p.m3u8", "playlist.m3u8", "index.m3u8")
+        for (name in manifests) {
+            try {
+                val req = Request.Builder().url("$r2Base/$hlsDir/$name").head().build()
+                val resp = httpClient.newCall(req).execute()
+                resp.close()
+                if (resp.isSuccessful) return name
+            } catch (_: Exception) {}
+        }
+        return null
     }
 }

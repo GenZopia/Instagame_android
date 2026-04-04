@@ -1,6 +1,8 @@
 package com.genzopia.Instagame.reelview.compose
 
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.genzopia.Instagame.utils.DataPrefetchService
@@ -10,9 +12,8 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -50,7 +51,8 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             urlCache[videoId] = Pair(url, System.currentTimeMillis())
         }
     }
-    
+
+    @OptIn(UnstableApi::class)
     override suspend fun load(params: LoadParams<String>): LoadResult<String, ReelData> {
         return try {
             val startKey = params.key
@@ -120,15 +122,14 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 reels.map { reel ->
                     async {
                         try {
-                            // Check DataPrefetchService cache first
                             val cachedUrl = DataPrefetchService.getCachedSignedUrl(reel.videoId)
-                            val signedUrl = cachedUrl ?: fetchSignedUrl(reel.videoId)
-                            
                             if (cachedUrl != null) {
                                 Log.d(TAG, "Using prefetched URL for reel ${reel.videoId}")
+                                reel.copy(videoUrl = cachedUrl)
+                            } else {
+                                val (mp4Url, hlsUrl) = fetchSignedUrl(reel.videoId)
+                                reel.copy(videoUrl = mp4Url, hlsManifestUrl = hlsUrl)
                             }
-                            
-                            reel.copy(videoUrl = signedUrl)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error fetching signed URL for reel ${reel.videoId}", e)
                             reel
@@ -289,45 +290,82 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         }
     }
     
-    private suspend fun fetchSignedUrl(videoId: String): String? {
+    private suspend fun fetchSignedUrl(videoId: String): Pair<String?, String?> {
+        // Returns Pair(mp4Url, hlsManifestUrl)
         // Check cache first
-        getCachedUrl(videoId)?.let { return it }
-        
-        return suspendCancellableCoroutine { continuation ->
+        getCachedUrl(videoId)?.let { return Pair(it, null) }
+
+        return withContext(Dispatchers.IO) {
+            try {
+                // Mirror web's getSignedVideoUrlWithType():
+                // 1. Resolve base path: video/video_xxx  (strip extensions, add prefix)
+                val basePath = resolveVideoBasePath(videoId)
+                val hlsDir   = "${basePath}_hls"
+
+                // 2. Check if HLS manifest exists on the public R2 bucket (same as web HEAD check)
+                val R2_PUBLIC = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+                val manifestName = checkHlsManifest(R2_PUBLIC, hlsDir)
+
+                if (manifestName != null) {
+                    // HLS exists — build manifest URL directly from public R2
+                    val hlsUrl = "$R2_PUBLIC/$hlsDir/$manifestName"
+                    Log.d(TAG, "Video $videoId → HLS: $hlsUrl")
+                    Pair(null, hlsUrl)
+                } else {
+                    // No HLS — get signed MP4 URL from the signer worker
+                    val mp4Url = fetchSignerUrl(videoId)
+                    Log.d(TAG, "Video $videoId → MP4: $mp4Url")
+                    if (mp4Url != null) cacheUrl(videoId, mp4Url)
+                    Pair(mp4Url, null)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resolving URL for $videoId", e)
+                Pair(null, null)
+            }
+        }
+    }
+
+    /** Mirrors web resolveVideoBasePath() */
+    private fun resolveVideoBasePath(videoIdOrKey: String): String {
+        var id = videoIdOrKey
+        if (id.startsWith("video/")) return id.replace(Regex("\\.[^.]+$"), "")
+        id = id.removeSuffix(".mp4").removeSuffix(".m3u8")
+        return if (id.startsWith("video_")) "video/$id" else "video/video_$id"
+    }
+
+    /** HEAD-check the public R2 bucket for HLS manifests, returns manifest name or null */
+    private fun checkHlsManifest(r2Base: String, hlsDir: String): String? {
+        val manifests = listOf("master.m3u8", "1080p.m3u8", "playlist.m3u8", "index.m3u8")
+        for (name in manifests) {
+            try {
+                val req = Request.Builder()
+                    .url("$r2Base/$hlsDir/$name")
+                    .head()
+                    .build()
+                val resp = httpClient.newCall(req).execute()
+                resp.close()
+                if (resp.isSuccessful) {
+                    Log.d(TAG, "HLS manifest found: $hlsDir/$name")
+                    return name
+                }
+            } catch (_: Exception) { /* try next */ }
+        }
+        return null
+    }
+
+    /** Call video-signer worker for a plain signed MP4 URL */
+    private fun fetchSignerUrl(videoId: String): String? {
+        return try {
             val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
-            val request = Request.Builder().url(url).build()
-            
-            httpClient.newCall(request).enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                    Log.e(TAG, "Failed to fetch signed URL for $videoId", e)
-                    continuation.resume(null)
-                }
-                
-                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                    try {
-                        val body = response.body?.string()
-                        if (body != null) {
-                            val json = JSONObject(body)
-                            if (json.optBoolean("success")) {
-                                val signedUrl = json.optString("url")
-                                if (signedUrl.isNotEmpty()) {
-                                    cacheUrl(videoId, signedUrl)
-                                    continuation.resume(signedUrl)
-                                } else {
-                                    continuation.resume(null)
-                                }
-                            } else {
-                                continuation.resume(null)
-                            }
-                        } else {
-                            continuation.resume(null)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing signed URL response", e)
-                        continuation.resume(null)
-                    }
-                }
-            })
+            val resp = httpClient.newCall(Request.Builder().url(url).build()).execute()
+            val body = resp.body?.string() ?: return null
+            resp.close()
+            val json = JSONObject(body)
+            if (json.optBoolean("success")) json.optString("url").takeIf { it.isNotEmpty() }
+            else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Signer error for $videoId", e)
+            null
         }
     }
     
@@ -378,8 +416,8 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                         } else {
                             // If not prefetched, fetch it now (shouldn't happen for first 3)
                             Log.w(TAG, "⚠ Video $videoId not prefetched, fetching now")
-                            val freshUrl = fetchSignedUrl(videoId)
-                            reels.add(reel.copy(videoUrl = freshUrl))
+                            val (mp4Url, hlsUrl) = fetchSignedUrl(videoId)
+                            reels.add(reel.copy(videoUrl = mp4Url, hlsManifestUrl = hlsUrl))
                         }
                     }
                 } catch (e: Exception) {

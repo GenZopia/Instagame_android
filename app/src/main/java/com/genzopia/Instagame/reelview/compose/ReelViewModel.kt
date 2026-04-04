@@ -62,32 +62,22 @@ class ReelViewModel : ViewModel() {
     fun getPlayerForVideo(videoId: String, videoUrl: String?): ExoPlayer? {
         if (videoUrl == null) return null
 
-        // Check if we have a preloaded player for this video
         val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
         if (preloaded != null) {
-            android.util.Log.d("ReelViewModel", "=== USING PRELOADED PLAYER ===")
-            android.util.Log.d("ReelViewModel", "Video ID: $videoId, state: ${preloaded.playbackState}")
-
-            // Only accept the preloaded player if it's in a usable state (not IDLE/ERROR)
+            android.util.Log.d("ReelViewModel", "=== USING PRELOADED PLAYER === $videoId")
             if (preloaded.playbackState != Player.STATE_IDLE) {
                 com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
                 preloaded.volume = 1f
                 attachErrorRecovery(preloaded, videoId, videoUrl)
                 playerPool[videoId] = preloaded
-                android.util.Log.d("ReelViewModel", "Preloaded player accepted")
                 return preloaded
             } else {
-                // Preloaded player is in a bad state — release it and fall through to create a fresh one
-                android.util.Log.w("ReelViewModel", "Preloaded player in IDLE state, discarding")
                 preloaded.release()
                 com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
             }
         }
 
-        android.util.Log.d("ReelViewModel", "No preloaded player for $videoId, creating new one")
-        return playerPool.getOrPut(videoId) {
-            createPlayer(videoId, videoUrl)
-        }
+        return playerPool.getOrPut(videoId) { createPlayer(videoId, videoUrl) }
     }
 
     private fun createPlayer(videoId: String, videoUrl: String): ExoPlayer {
@@ -138,30 +128,24 @@ class ReelViewModel : ViewModel() {
         })
     }
 
-    // Preload adjacent videos for smooth scrolling
     fun preloadVideos(currentIndex: Int, reels: List<ReelData>) {
         viewModelScope.launch {
-            // Preload next 2 videos
             for (i in 1..2) {
                 val nextIndex = currentIndex + i
                 if (nextIndex < reels.size) {
                     val reel = reels[nextIndex]
-                    if (reel.videoUrl != null && !playerPool.containsKey(reel.videoId)) {
-                        getPlayerForVideo(reel.videoId, reel.videoUrl)
+                    if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
+                        getPlayerForVideo(reel.videoId, reel.playbackUrl)
                     }
                 }
             }
-            
-            // Preload previous video
             val prevIndex = currentIndex - 1
             if (prevIndex >= 0) {
                 val reel = reels[prevIndex]
-                if (reel.videoUrl != null && !playerPool.containsKey(reel.videoId)) {
-                    getPlayerForVideo(reel.videoId, reel.videoUrl)
+                if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
+                    getPlayerForVideo(reel.videoId, reel.playbackUrl)
                 }
             }
-            
-            // Clean up players that are too far away
             cleanupDistantPlayers(currentIndex, reels)
         }
     }

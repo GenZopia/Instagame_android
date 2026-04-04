@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
@@ -75,12 +76,10 @@ fun ReelScreen(
             val reel = reels[pagerState.currentPage]
             Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
             reel?.let {
-                viewModel.setCurrentVideo(it.videoId, it.videoUrl)
+                viewModel.setCurrentVideo(it.videoId, it.playbackUrl)
                 if (!shouldPauseAll) {
                     viewModel.playVideo(it.videoId)
                 }
-                
-                // Preload adjacent videos
                 val currentReelsList = (0 until reels.itemCount).mapNotNull { reels[it] }
                 viewModel.preloadVideos(pagerState.currentPage, currentReelsList)
             }
@@ -96,7 +95,7 @@ fun ReelScreen(
                     shouldPauseAll = true
                     viewModel.pauseAll()
                 }
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                Lifecycle.Event.ON_RESUME -> {
                     shouldPauseAll = false
                     if (reels.itemCount > 0 && pagerState.currentPage < reels.itemCount) {
                         reels[pagerState.currentPage]?.let { reel ->
@@ -172,9 +171,9 @@ fun ReelItem(
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
-    // Get player for this video
+    // Get player for this video — use playbackUrl (HLS manifest preferred over MP4)
     val player = remember(reel.videoId) {
-        viewModel.getPlayerForVideo(reel.videoId, reel.videoUrl)
+        viewModel.getPlayerForVideo(reel.videoId, reel.playbackUrl)
     }
     
     // Control playback based on active state
