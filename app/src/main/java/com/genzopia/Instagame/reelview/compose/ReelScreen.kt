@@ -2,11 +2,14 @@ package com.genzopia.Instagame.reelview.compose
 
 import ReelViewModel
 import VideoPlayer
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,12 +22,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -445,6 +455,14 @@ fun ReelItem(
             viewModel = viewModel,
             modifier = Modifier.fillMaxSize()
         )
+
+        // ── Glowing seekable progress bar ──────────────────────────────────────
+        if (player != null) {
+            GlowingSeekBar(
+                player = player,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
     
     if (showComments) {
@@ -652,6 +670,108 @@ fun ActionButton(
             fontSize = 12.sp,
             modifier = Modifier.padding(top = 4.dp)
         )
+    }
+}
+
+/**
+ * Glowing orange seekable progress bar pinned to the bottom of the reel.
+ * Polls player position every 200ms. Drag left/right to seek.
+ */
+@SuppressLint("UnusedBoxWithConstraintsScope")
+@Composable
+fun GlowingSeekBar(
+    player: ExoPlayer,
+    modifier: Modifier = Modifier,
+    barHeight: Dp = 3.dp,
+    glowRadius: Dp = 8.dp
+) {
+    val Orange = Color(0xFFFF6B35)
+    val TrackColor = Color.White.copy(alpha = 0.18f)
+
+    var progress by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(player) {
+        while (true) {
+            if (!isDragging) {
+                val dur = player.duration
+                val pos = player.currentPosition
+                progress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+            }
+            delay(200)
+        }
+    }
+
+    val displayProgress = if (isDragging) dragProgress else progress
+    val density = LocalDensity.current
+    val glowPx = with(density) { glowRadius.toPx() }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(barHeight + 16.dp)
+            .pointerInput(player) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        isDragging = true
+                        dragProgress = (down.position.x / size.width).coerceIn(0f, 1f)
+                        do {
+                            val event = awaitPointerEvent()
+                            val drag = event.changes.firstOrNull() ?: break
+                            drag.consume()
+                            dragProgress = (drag.position.x / size.width).coerceIn(0f, 1f)
+                        } while (event.changes.any { it.pressed })
+                        val dur = player.duration
+                        if (dur > 0L) player.seekTo((dragProgress * dur).toLong())
+                        progress = dragProgress
+                        isDragging = false
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+
+        // Track background
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .clip(RoundedCornerShape(50))
+                .background(TrackColor)
+        )
+
+        // Filled progress with glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .clip(RoundedCornerShape(50))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(displayProgress.coerceAtLeast(0f))
+                    .drawBehind {
+                        drawIntoCanvas { canvas ->
+                            val paint = Paint().apply {
+                                asFrameworkPaint().apply {
+                                    isAntiAlias = true
+                                    color = android.graphics.Color.TRANSPARENT
+                                    setShadowLayer(glowPx, 0f, 0f, Orange.copy(alpha = 0.9f).toArgb())
+                                }
+                            }
+                            canvas.drawRect(0f, 0f, size.width, size.height, paint)
+                        }
+                    }
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Orange.copy(alpha = 0.8f), Orange)
+                        )
+                    )
+            )
+        }
     }
 }
 
