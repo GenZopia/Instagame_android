@@ -173,8 +173,9 @@ public class ChannelActivity extends AppCompatActivity {
 
                 // Profile photo
                 String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
-                if (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) {
-                    Glide.with(ChannelActivity.this).load(profilePhotoUrl)
+                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
+                if (sanitizedPhotoUrl != null) {
+                    Glide.with(ChannelActivity.this).load(sanitizedPhotoUrl)
                             .placeholder(R.drawable.demo_user).error(R.drawable.demo_user)
                             .into(profileImage);
                 }

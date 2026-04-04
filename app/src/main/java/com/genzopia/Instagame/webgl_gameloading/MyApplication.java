@@ -2,20 +2,59 @@ package com.genzopia.Instagame.webgl_gameloading;
 
 import android.app.Application;
 import android.content.Context;
+import android.util.Log;
+
+import coil.Coil;
+import coil.ImageLoader;
+
+import com.genzopia.Instagame.BuildConfig;
+
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Response;
 
 public class MyApplication extends Application {
     private static GeckoRuntime geckoRuntime;
 
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        setupCoil();
+    }
+
+    private void setupCoil() {
+        OkHttpClient coilClient = new OkHttpClient.Builder()
+            .addInterceptor(chain -> {
+                okhttp3.Request original = chain.request();
+                String url = original.url().toString();
+                okhttp3.Request request;
+                if (url.contains("file-upload-worker.genzopia.workers.dev")) {
+                    Log.d("profile_photo", "Coil → " + url);
+                    request = original.newBuilder()
+                        .header("x-api-key", BuildConfig.FILE_UPLOAD_API_KEY)
+                        .build();
+                } else {
+                    request = original;
+                }
+                Response response = chain.proceed(request);
+                Log.d("profile_photo", "Coil ← " + response.code() + " " + url);
+                return response;
+            })
+            .build();
+
+        Coil.setImageLoader(new ImageLoader.Builder(this)
+            .okHttpClient(coilClient)
+            .build());
+    }
+
     public static synchronized GeckoRuntime getGeckoRuntime(Context context) {
         if (geckoRuntime == null) {
-            // Configure runtime settings to disable all zoom functionality
             GeckoRuntimeSettings settings = new GeckoRuntimeSettings.Builder()
-                    .forceUserScalableEnabled(false)  // Disable pinch-to-zoom
-                    .doubleTapZoomingEnabled(false)   // Disable double-tap zoom
+                    .forceUserScalableEnabled(false)
+                    .doubleTapZoomingEnabled(false)
                     .build();
-
             geckoRuntime = GeckoRuntime.create(context, settings);
         }
         return geckoRuntime;

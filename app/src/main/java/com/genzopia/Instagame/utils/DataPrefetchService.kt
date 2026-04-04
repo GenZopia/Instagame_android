@@ -357,8 +357,9 @@ object DataPrefetchService {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
         try {
             val followsSnapshot = database.reference
-                .child("follows")
+                .child("users")
                 .child(currentUserId)
+                .child("following_list")
                 .get()
                 .await()
 
@@ -382,9 +383,11 @@ object DataPrefetchService {
                         ?: userSnapshot.child("username").getValue(String::class.java)
                         ?: "User"
 
-                    val profilePhotoUrl = userSnapshot.child("profile_photo_url").getValue(String::class.java)
-                        ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
-                        ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+                    val profilePhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
+                        userSnapshot.child("profile_photo_url").getValue(String::class.java)
+                            ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
+                            ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+                    )
 
                     users.add(FollowedUser(userId, fullName, profilePhotoUrl))
                 } catch (e: Exception) {

@@ -131,6 +131,7 @@ dependencies {
 
     implementation(libs.glide)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
+    implementation("com.github.bumptech.glide:okhttp3-integration:4.15.0")
 
     implementation("com.facebook.shimmer:shimmer:0.5.0")
     // Country picker with flags + search

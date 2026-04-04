@@ -179,14 +179,14 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
                 }
 
                 uploadProfileImage(user_id, email, fullName, dob, mobileNo, object : UploadCallback {
-                    override fun onSuccess(downloadUrl: String, uploadedPath: String?) {
+                    override fun onSuccess(downloadUrl: String, uploadedPath: String?, photoId: String) {
                         // Hide loading UI on main thread before proceeding to DB save
                         runOnUiThread {
                             binding.progressTop.visibility = View.GONE
                             binding.btnRegisterProgress.visibility = View.GONE
                             binding.btnRegister.text = registerBtnOriginalText
                         }
-                        saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath)
+                        saveUserToDatabaseWithRollback(user_id, email, fullName, dob, mobileNo, downloadUrl, uploadedPath, photoId)
                     }
 
                     override fun onFailure(message: String) {
@@ -420,7 +420,7 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
     // Rest of existing upload/save/delete logic — unchanged except registerUser removal
 
     private interface UploadCallback {
-        fun onSuccess(downloadUrl: String, uploadedPath: String?)
+        fun onSuccess(downloadUrl: String, uploadedPath: String?, photoId: String)
         fun onFailure(message: String)
     }
 
@@ -457,7 +457,9 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
             return
         }
 
-        val safeFilename: String = (queryFileName(uri) ?: "$user_id.jpg")
+        val ext = (queryFileName(uri) ?: "$user_id.jpg").substringAfterLast('.', "jpg")
+        val photoId = "${user_id}_${System.currentTimeMillis()}"
+        val safeFilename = "$photoId.$ext"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -467,11 +469,13 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
             .build()
         val mediaType = (contentResolver.getType(uri) ?: "image/jpeg").toMediaTypeOrNull()
 
+        val r2Path = "instagame/$user_id/$safeFilename"
+
         val multipartBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", safeFilename, fileBytes.toRequestBody(mediaType))
             .addFormDataPart("name", safeFilename)
-            .addFormDataPart("path", "$user_id/$safeFilename")
+            .addFormDataPart("path", r2Path)
             .build()
 
         val request = Request.Builder()
@@ -485,7 +489,6 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.d(TAG, "upload failed: ${e.message}")
-                // Ensure UI is re-enabled on failure
                 runOnUiThread {
                     binding.btnRegister.isEnabled = true
                     binding.btnVerifyEmail.isEnabled = true
@@ -500,13 +503,11 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
                     runOnUiThread { Toast.makeText(this@RegisterActivity, "Worker response: ${if (bodyStrSafe.isEmpty()) "<empty>" else bodyStrSafe}", Toast.LENGTH_LONG).show() }
 
                     if (!it.isSuccessful) {
-                        val errMsg = "${it.code} ${bodyStrSafe}"
-                        // Re-enable UI so user can retry
                         runOnUiThread {
                             binding.btnRegister.isEnabled = true
                             binding.btnVerifyEmail.isEnabled = true
                         }
-                        callback.onFailure(errMsg)
+                        callback.onFailure("${it.code} ${bodyStrSafe}")
                         return
                     }
 
@@ -524,14 +525,18 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
                     try {
                         if (bodyStrSafe.trimStart().startsWith("{")) {
                             val obj = org.json.JSONObject(bodyStrSafe)
+                            // Worker returns {"success":true,"key":"instagame/uid/filename.ext"}
+                            // Build the access URL from the key
+                            val key = obj.optString("key", "")
                             downloadUrl = when {
+                                key.isNotEmpty() -> "https://file-upload-worker.genzopia.workers.dev/?key=$key"
                                 obj.has("url") -> obj.optString("url")
                                 obj.has("link") -> obj.optString("link")
                                 obj.has("file") -> obj.optString("file")
                                 obj.has("location") -> obj.optString("location")
                                 else -> bodyStrSafe
                             }
-                            val pathStr = obj.optString("path", "")
+                            val pathStr = if (key.isNotEmpty()) key else obj.optString("path", "")
                             if (pathStr.isNotEmpty()) returnedPath = pathStr
                         } else {
                             downloadUrl = bodyStrSafe
@@ -549,7 +554,7 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
                         return
                     }
 
-                    callback.onSuccess(downloadUrl, returnedPath)
+                    callback.onSuccess(downloadUrl, returnedPath ?: r2Path, photoId)
                 }
             }
         })
@@ -573,10 +578,12 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
         dob: String,
         mobileNo: String,
         profilePhotoUrl: String,
-        uploadedPath: String?
+        uploadedPath: String?,
+        photoId: String
     ) {
         val user = User(user_id, email, fullName, dob, mobileNo)
         user.profile_photo_url = profilePhotoUrl
+        user.profile_photo_id = photoId
 
         database.reference.child("users").child(user_id)
             .setValue(user)
@@ -599,8 +606,8 @@ class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener
 
                 val pathToDelete = when {
                     !uploadedPath.isNullOrBlank() -> uploadedPath
-                    profilePhotoUrl.contains("/") -> "$user_id/${profilePhotoUrl.substringAfterLast('/') }"
-                    else -> "$user_id/$profilePhotoUrl"
+                    profilePhotoUrl.contains("/") -> "instagame/$user_id/${profilePhotoUrl.substringAfterLast('/')}"
+                    else -> "instagame/$user_id/$profilePhotoUrl"
                 }
 
                 Log.d(TAG, "Attempting to delete uploaded file at path: $pathToDelete")

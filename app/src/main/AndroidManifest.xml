@@ -41,6 +41,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Genzcrop"
         tools:targetApi="31">
+
         <activity
             android:name=".Post.VideoPreviewActivity"
             android:exported="false"

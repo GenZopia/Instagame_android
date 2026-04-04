@@ -116,34 +116,45 @@ public class GamesFragment extends Fragment {
         gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                Log.d("GamesFragment", "Game details snapshot exists: " + snapshot.exists());
-                
-                if (snapshot.exists()) {
-                    String gameName = snapshot.child("game_name").getValue(String.class);
-                    String description = snapshot.child("description").getValue(String.class);
-                    String imageUrl = snapshot.child("image_url").getValue(String.class);
-                    String playStoreUrl = snapshot.child("play_store_url").getValue(String.class);
-                    
-                    Log.d("GamesFragment", "Game name: " + gameName);
-                    Log.d("GamesFragment", "Game description: " + description);
-                    Log.d("GamesFragment", "Game image URL: " + imageUrl);
-                    Log.d("GamesFragment", "Game Play Store URL: " + playStoreUrl);
-                    
-                    // Create GameItem with fetched data
-                    GameItem gameItem = new GameItem(
-                        gameName != null ? gameName : "Unknown Game",
-                        "Developer Game",
-                        description != null ? description : "No description available",
-                        imageUrl != null ? imageUrl : "",
-                        playStoreUrl != null ? playStoreUrl : ""
-                    );
-                    
-                    gameList.add(gameItem);
-                    adapter.notifyDataSetChanged();
-                    
-                    Log.d("GamesFragment", "Added game: " + gameName + " (Total games in list: " + gameList.size() + ")");
-                } else {
+                if (!snapshot.exists()) {
                     Log.e("GamesFragment", "Game details not found for game ID: " + gameId);
+                    return;
+                }
+
+                String gameName = snapshot.child("game_name").getValue(String.class);
+                String description = snapshot.child("description").getValue(String.class);
+                String playStoreUrl = snapshot.child("play_store_url").getValue(String.class);
+                String photoId = snapshot.child("photo_id").getValue(String.class);
+
+                // Resolve thumbnail from /photos/{photo_id}
+                if (photoId != null && !photoId.isEmpty()) {
+                    FirebaseDatabase.getInstance().getReference("photos").child(photoId)
+                        .addListenerForSingleValueEvent(new ValueEventListener() {
+                            @Override
+                            public void onDataChange(@NonNull DataSnapshot photoSnap) {
+                                // Always use worker URL (pre-signed photo_url is expired)
+                                String r2Key = photoSnap.child("r2_key").getValue(String.class);
+                                String imageUrl;
+                                if (r2Key != null && !r2Key.isEmpty()) {
+                                    imageUrl = "https://file-upload-worker.genzopia.workers.dev/?key=" + r2Key;
+                                } else {
+                                    String ext = photoSnap.child("file_ext").getValue(String.class);
+                                    if (ext == null || ext.isEmpty()) {
+                                        String fileName = photoSnap.child("file_name").getValue(String.class);
+                                        ext = (fileName != null && fileName.contains("."))
+                                            ? fileName.substring(fileName.lastIndexOf('.') + 1) : "jpg";
+                                    }
+                                    imageUrl = "https://file-upload-worker.genzopia.workers.dev/?key=photo/" + photoId + "." + ext;
+                                }
+                                addGameItem(gameName, description, imageUrl, playStoreUrl);
+                            }
+                            @Override
+                            public void onCancelled(@NonNull DatabaseError error) {
+                                addGameItem(gameName, description, "", playStoreUrl);
+                            }
+                        });
+                } else {
+                    addGameItem(gameName, description, "", playStoreUrl);
                 }
             }
             
@@ -152,5 +163,17 @@ public class GamesFragment extends Fragment {
                 Log.e("GamesFragment", "Error loading game details: " + error.getMessage());
             }
         });
+    }
+
+    private void addGameItem(String gameName, String description, String imageUrl, String playStoreUrl) {
+        GameItem gameItem = new GameItem(
+            gameName != null ? gameName : "Unknown Game",
+            "Developer Game",
+            description != null ? description : "No description available",
+            imageUrl,
+            playStoreUrl != null ? playStoreUrl : ""
+        );
+        gameList.add(gameItem);
+        if (isAdded()) adapter.notifyDataSetChanged();
     }
 }

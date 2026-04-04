@@ -382,9 +382,10 @@ public class VideoUploadInfoActivity extends AppCompatActivity {
 
                 // Profile photo
                 String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
-                if (profilePhotoUrl != null && !profilePhotoUrl.equals("-1")) {
+                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
+                if (sanitizedPhotoUrl != null) {
                     Glide.with(VideoUploadInfoActivity.this)
-                            .load(profilePhotoUrl)
+                            .load(sanitizedPhotoUrl)
                             .placeholder(R.drawable.profile)
                             .error(R.drawable.profile)
                             .into(userAvatar);

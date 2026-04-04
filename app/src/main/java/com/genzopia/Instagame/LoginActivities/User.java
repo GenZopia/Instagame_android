@@ -7,6 +7,7 @@ public class User {
     private String full_name;
     private String mobile_no;
     private String profile_photo_url;
+    private String profile_photo_id;
     private String followers;
 
     // Empty constructor required for Firebase
@@ -70,6 +71,14 @@ public class User {
 
     public void setProfile_photo_url(String profile_photo_url) {
         this.profile_photo_url = profile_photo_url;
+    }
+
+    public String getProfile_photo_id() {
+        return profile_photo_id;
+    }
+
+    public void setProfile_photo_id(String profile_photo_id) {
+        this.profile_photo_id = profile_photo_id;
     }
 
     public String getFollowers() {

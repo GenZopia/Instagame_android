@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -33,6 +33,8 @@ import com.google.firebase.database.ValueEventListener;
 import de.hdodenhof.circleimageview.CircleImageView;
 
 public class ProfileFragment extends Fragment {
+
+    private static final String TAG = "profile_photo";
 
     private FirebaseAuth auth;
     private SharedPreferences sharedPreferences;
@@ -182,36 +184,69 @@ public class ProfileFragment extends Fragment {
     }
 
     private void fetchUserData() {
-        String email = sharedPreferences.getString("email", "");
-        if (TextUtils.isEmpty(email)) return;
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            Log.e(TAG, "fetchUserData: currentUser is null — aborting");
+            return;
+        }
 
-        // Get current user ID from Firebase Auth
-        if (FirebaseAuth.getInstance().getCurrentUser() == null) return;
         String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        Log.d(TAG, "fetchUserData: userId = " + userId);
+
         userRef = FirebaseDatabase.getInstance().getReference()
                 .child("users").child(userId);
 
         userListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (!dataSnapshot.exists() || !isAdded()) return;
+                Log.d(TAG, "onDataChange: snapshot exists = " + dataSnapshot.exists());
+                if (!dataSnapshot.exists() || !isAdded()) {
+                    Log.e(TAG, "onDataChange: snapshot missing or fragment detached");
+                    return;
+                }
 
                 // Profile photo
                 String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
-                if (profilePhotoUrl != null && !profilePhotoUrl.equals("-1") && getActivity() != null) {
+                Log.d(TAG, "onDataChange: raw profile_photo_url = '" + profilePhotoUrl + "'");
+
+                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
+                Log.d(TAG, "onDataChange: sanitized url = '" + sanitizedPhotoUrl + "'");
+
+                if (sanitizedPhotoUrl != null && getActivity() != null) {
+                    Log.d(TAG, "onDataChange: calling Glide.load() with url = " + sanitizedPhotoUrl);
                     Glide.with(ProfileFragment.this)
-                            .load(profilePhotoUrl)
+                            .load(sanitizedPhotoUrl)
                             .placeholder(R.drawable.profile)
                             .error(R.drawable.profile)
+                            .listener(new com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable>() {
+                                @Override
+                                public boolean onLoadFailed(@androidx.annotation.Nullable com.bumptech.glide.load.engine.GlideException e,
+                                        Object model, com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
+                                        boolean isFirstResource) {
+                                    Log.e(TAG, "Glide.onLoadFailed: url=" + sanitizedPhotoUrl
+                                            + " error=" + (e != null ? e.getMessage() : "null"));
+                                    if (e != null) e.logRootCauses(TAG);
+                                    return false;
+                                }
+                                @Override
+                                public boolean onResourceReady(android.graphics.drawable.Drawable resource,
+                                        Object model, com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
+                                        com.bumptech.glide.load.DataSource dataSource, boolean isFirstResource) {
+                                    Log.d(TAG, "Glide.onResourceReady: image loaded successfully from " + dataSource);
+                                    return false;
+                                }
+                            })
                             .into(profileImage);
-                    sharedPreferences.edit().putString("profilePhotoUrl", profilePhotoUrl).apply();
+                    sharedPreferences.edit().putString("profilePhotoUrl", sanitizedPhotoUrl).apply();
+                } else {
+                    Log.e(TAG, "onDataChange: sanitizedPhotoUrl is null or activity is null — skipping Glide load");
                 }
 
                 // Username and full name
                 String fullName = dataSnapshot.child("full_name").getValue(String.class);
+                Log.d(TAG, "onDataChange: full_name = '" + fullName + "'");
                 usernameTop.setText(fullName);
 
-                // Bio and website (these fields might need to be added to User class if needed)
+                // Bio and website
                 String userBio = dataSnapshot.child("bio").getValue(String.class);
                 String userWebsite = dataSnapshot.child("website").getValue(String.class);
                 bio.setText(userBio != null ? userBio : "Add a bio to tell your story!");
@@ -229,6 +264,7 @@ public class ProfileFragment extends Fragment {
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "onCancelled: " + error.getMessage());
                 Toast.makeText(getContext(), "Failed to fetch user data", Toast.LENGTH_SHORT).show();
             }
         };

@@ -86,13 +86,14 @@ class HomePagingSource(
 
         return try {
             val snapshot = database.reference
-                .child("follows")
+                .child("users")
                 .child(currentUserId)
+                .child("following_list")
                 .get()
                 .await()
 
             if (!snapshot.exists()) {
-                Log.w(TAG, "No follows node found for user $currentUserId")
+                Log.w(TAG, "No following_list found for user $currentUserId")
                 followedUserIdsCache = emptySet()
                 followedUserIdsCacheTime = System.currentTimeMillis()
                 return emptySet()
@@ -372,14 +373,14 @@ class HomePagingSource(
     private suspend fun fetchDeveloperInfo(userId: String): Pair<String, String?> {
         return try {
             val userSnapshot = database.reference.child("users").child(userId).get().await()
-            // Match ChannelActivity: use full_name first, then fallbacks
             val name = userSnapshot.child("full_name").getValue(String::class.java)
                 ?: userSnapshot.child("name").getValue(String::class.java) 
                 ?: userSnapshot.child("username").getValue(String::class.java) 
                 ?: "User"
-            val photoUrl = userSnapshot.child("profile_photo_url").getValue(String::class.java)
+            val rawPhoto = userSnapshot.child("profile_photo_url").getValue(String::class.java)
                 ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
                 ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+            val photoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhoto)
             
             Log.d(TAG, "Fetched developer info for $userId: name=$name, photoUrl=$photoUrl")
             Pair(name, photoUrl)

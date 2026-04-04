@@ -64,6 +64,16 @@ fun CommentsBottomSheet(
     val textColor = if (isDark) Color.White else Color.Black
     val subColor = if (isDark) Color.LightGray else Color.Gray
 
+    // Load current user's profile photo from RTD
+    var currentUserPhotoUrl by remember { mutableStateOf<String?>(currentUser?.photoUrl?.toString()) }
+    LaunchedEffect(currentUser?.uid) {
+        val uid = currentUser?.uid ?: return@LaunchedEffect
+        val snap = FirebaseDatabase.getInstance().getReference("users").child(uid).get().await()
+        val rtdPhoto = snap.child("profile_photo_url").getValue(String::class.java)
+        val sanitized = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rtdPhoto)
+        if (!sanitized.isNullOrBlank()) currentUserPhotoUrl = sanitized
+    }
+
     // ── Load comments ──────────────────────────────────────────────────────────
     LaunchedEffect(videoId) {
         isLoading = true
@@ -211,7 +221,7 @@ fun CommentsBottomSheet(
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(currentUser?.photoUrl)
+                        .data(currentUserPhotoUrl)
                         .crossfade(true)
                         .placeholder(android.R.drawable.ic_menu_gallery)
                         .error(android.R.drawable.ic_menu_gallery)
@@ -242,8 +252,9 @@ fun CommentsBottomSheet(
                                         val name = userSnap.child("full_name").getValue(String::class.java)
                                             ?: userSnap.child("username").getValue(String::class.java)
                                             ?: currentUser.displayName ?: "User"
-                                        val photo = userSnap.child("profile_photo_url").getValue(String::class.java)
-                                            ?: currentUser.photoUrl?.toString() ?: ""
+                                        val photo = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
+                                            userSnap.child("profile_photo_url").getValue(String::class.java)
+                                        ) ?: currentUser.photoUrl?.toString() ?: ""
 
                                         if (target != null) {
                                             repository.postReply(

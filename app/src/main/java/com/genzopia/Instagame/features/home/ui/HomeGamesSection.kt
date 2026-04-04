@@ -69,33 +69,57 @@ fun HomeGamesSection(modifier: Modifier = Modifier) {
                         val gameId = gameSnap.key ?: continue
                         val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
                         val description = gameSnap.child("description").getValue(String::class.java) ?: ""
-                        val imageUrl = gameSnap.child("image_url").getValue(String::class.java) ?: ""
-                        val devId = gameSnap.child("developer_id").getValue(String::class.java)
-                            ?: gameSnap.child("user_id").getValue(String::class.java) ?: ""
+                        val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
 
-                        if (devId.isEmpty()) {
-                            list.add(HomeGameItem(gameId, gameName, description, imageUrl, "", "", ""))
+                        // Resolve thumbnail: look up /photos/{photo_id} for the URL
+                        val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+
+                        fun addGame(imageUrl: String, devName: String, devPhoto: String) {
+                            list.add(HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
                             pending--
                             if (pending == 0) { games = list.toList(); isLoading = false }
-                            continue
                         }
 
-                        FirebaseDatabase.getInstance().getReference("users").child(devId)
-                            .addListenerForSingleValueEvent(object : ValueEventListener {
-                                override fun onDataChange(userSnap: DataSnapshot) {
-                                    val devName = userSnap.child("full_name").getValue(String::class.java)
-                                        ?: userSnap.child("username").getValue(String::class.java) ?: "Developer"
-                                    val devPhoto = userSnap.child("profile_photo_url").getValue(String::class.java) ?: ""
-                                    list.add(HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
-                                    pending--
-                                    if (pending == 0) { games = list.toList(); isLoading = false }
-                                }
-                                override fun onCancelled(e: DatabaseError) {
-                                    list.add(HomeGameItem(gameId, gameName, description, imageUrl, devId, "", ""))
-                                    pending--
-                                    if (pending == 0) { games = list.toList(); isLoading = false }
-                                }
-                            })
+                        fun fetchWithPhoto(imageUrl: String) {
+                            if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }
+                            FirebaseDatabase.getInstance().getReference("users").child(devId)
+                                .addListenerForSingleValueEvent(object : ValueEventListener {
+                                    override fun onDataChange(userSnap: DataSnapshot) {
+                                        val devName = userSnap.child("full_name").getValue(String::class.java)
+                                            ?: userSnap.child("username").getValue(String::class.java) ?: "Developer"
+                                        val rawDevPhoto = userSnap.child("profile_photo_url").getValue(String::class.java) ?: ""
+                                        val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawDevPhoto) ?: ""
+                                        addGame(imageUrl, devName, devPhoto)
+                                    }
+                                    override fun onCancelled(e: DatabaseError) { addGame(imageUrl, "", "") }
+                                })
+                        }
+
+                        if (photoId.isNotEmpty()) {
+                            FirebaseDatabase.getInstance().getReference("photos").child(photoId)
+                                .addListenerForSingleValueEvent(object : ValueEventListener {
+                                    override fun onDataChange(photoSnap: DataSnapshot) {
+                                        // Always use worker URL (pre-signed photo_url is expired)
+                                        // Priority: r2_key → construct from photo_id + file_ext
+                                        val photoUrl = run {
+                                            val r2Key = photoSnap.child("r2_key").getValue(String::class.java)
+                                            if (!r2Key.isNullOrEmpty()) {
+                                                "https://file-upload-worker.genzopia.workers.dev/?key=$r2Key"
+                                            } else {
+                                                val ext = photoSnap.child("file_ext").getValue(String::class.java)
+                                                    ?: photoSnap.child("file_name").getValue(String::class.java)
+                                                        ?.substringAfterLast('.', "jpg")
+                                                    ?: "jpg"
+                                                "https://file-upload-worker.genzopia.workers.dev/?key=photo/$photoId.$ext"
+                                            }
+                                        }
+                                        fetchWithPhoto(photoUrl)
+                                    }
+                                    override fun onCancelled(e: DatabaseError) { fetchWithPhoto("") }
+                                })
+                        } else {
+                            fetchWithPhoto("")
+                        }
                     }
                 }
                 override fun onCancelled(e: DatabaseError) { isLoading = false }

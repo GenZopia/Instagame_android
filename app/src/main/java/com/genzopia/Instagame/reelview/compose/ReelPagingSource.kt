@@ -208,14 +208,14 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     private suspend fun fetchDeveloperInfo(userId: String): Pair<String, String?> {
         return try {
             val userSnapshot = database.reference.child("users").child(userId).get().await()
-            // Match ChannelActivity: use full_name first, then fallbacks
             val name = userSnapshot.child("full_name").getValue(String::class.java)
                 ?: userSnapshot.child("name").getValue(String::class.java) 
                 ?: userSnapshot.child("username").getValue(String::class.java) 
                 ?: "User"
-            val photoUrl = userSnapshot.child("profile_photo_url").getValue(String::class.java)
+            val rawPhoto = userSnapshot.child("profile_photo_url").getValue(String::class.java)
                 ?: userSnapshot.child("profile_image_url").getValue(String::class.java)
                 ?: userSnapshot.child("photoUrl").getValue(String::class.java)
+            val photoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhoto)
             
             Log.d(TAG, "Fetched developer info for $userId: name=$name, photoUrl=$photoUrl")
             Pair(name, photoUrl)

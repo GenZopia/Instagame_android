@@ -39,7 +39,7 @@ class FollowingRepository {
             return@callbackFlow
         }
 
-        val followsRef = database.reference.child("follows").child(currentUserId)
+        val followsRef = database.reference.child("users").child(currentUserId).child("following_list")
 
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -67,12 +67,14 @@ class FollowingRepository {
                                         .getValue(String::class.java)
                                     ?: "User"
 
-                                val profilePhotoUrl = userSnapshot.child("profile_photo_url")
-                                    .getValue(String::class.java)
-                                    ?: userSnapshot.child("profile_image_url")
+                                val profilePhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
+                                    userSnapshot.child("profile_photo_url")
                                         .getValue(String::class.java)
-                                    ?: userSnapshot.child("photoUrl")
-                                        .getValue(String::class.java)
+                                        ?: userSnapshot.child("profile_image_url")
+                                            .getValue(String::class.java)
+                                        ?: userSnapshot.child("photoUrl")
+                                            .getValue(String::class.java)
+                                )
 
                                 users.add(
                                     FollowedUser(
