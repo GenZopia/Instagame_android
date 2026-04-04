@@ -26,7 +26,7 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
         void onReply(@NonNull Comment c);
         void onToggleLike(@NonNull Comment c);
         void checkLiked(@NonNull Comment c, @NonNull LikeState state);
-        void onReport(@NonNull Comment c);
+        void onMenuClick(@NonNull Comment c, @NonNull android.view.View anchor);
     }
 
     public interface LikeState { void setInitial(boolean liked); }
@@ -190,9 +190,9 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
                 });
             }
 
-            // Report
+            // Three-dot menu — pass anchor view so PopupMenu positions correctly
             if (menuIcon != null) menuIcon.setOnClickListener(v -> {
-                if (listener != null) listener.onReport(c);
+                if (listener != null) listener.onMenuClick(c, v);
             });
         }
 

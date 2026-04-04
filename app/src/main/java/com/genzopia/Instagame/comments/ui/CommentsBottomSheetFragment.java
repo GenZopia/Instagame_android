@@ -1,27 +1,38 @@
 package com.genzopia.Instagame.comments.ui;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.PopupMenu;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.genzopia.Instagame.comments.models.Comment;
 import com.genzopia.Instagame.comments.models.Reply;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ServerValue;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -187,10 +198,28 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
             }
 
             @Override
-            public void onReport(@NonNull Comment c) {
-                vm.reportComment(c.comment_id);
-                if (getContext() != null)
-                    Toast.makeText(getContext(), "Reported", Toast.LENGTH_SHORT).show();
+            public void onMenuClick(@NonNull Comment c, @NonNull android.view.View anchor) {
+                PopupMenu popup = new PopupMenu(requireContext(), anchor);
+                popup.getMenu().add(0, 1, 0, "View Profile");
+                popup.getMenu().add(0, 2, 1, "Report");
+                popup.setOnMenuItemClickListener(item -> {
+                    if (item.getItemId() == 1) {
+                        // View Profile → open ChannelActivity
+                        if (c.user_id != null && !c.user_id.isEmpty()) {
+                            Intent intent = new Intent(requireContext(), ChannelActivity.class);
+                            intent.putExtra("developer_id", c.user_id);
+                            startActivity(intent);
+                        } else {
+                            Toast.makeText(requireContext(), "Profile not available", Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+                    } else if (item.getItemId() == 2) {
+                        showReportDialog(c);
+                        return true;
+                    }
+                    return false;
+                });
+                popup.show();
             }
         };
     }
@@ -212,5 +241,122 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
         InputMethodManager imm = (InputMethodManager) getContext()
                 .getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private void showReportDialog(@NonNull Comment comment) {
+        if (getContext() == null) return;
+
+        final String[] reasons = {
+            "Select a reason…",
+            "Hate speech or discrimination",
+            "Harassment or bullying",
+            "Spam or misleading content",
+            "Nudity or sexual content",
+            "Violence or dangerous content",
+            "Misinformation",
+            "Impersonation",
+            "Other"
+        };
+
+        // Build dialog view
+        View dialogView = LayoutInflater.from(requireContext())
+                .inflate(android.R.layout.select_dialog_item, null, false);
+
+        // Use AlertDialog.Builder with a custom layout
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(requireContext());
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        layout.setPadding(pad, pad, pad, 0);
+
+        // Comment preview
+        TextView commentPreview = new TextView(requireContext());
+        commentPreview.setText("\"" + (comment.text != null ? comment.text : "") + "\"");
+        commentPreview.setTextSize(13f);
+        commentPreview.setMaxLines(3);
+        commentPreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        commentPreview.setTextColor(0xFF9E9E9E);
+        commentPreview.setPadding(0, 0, 0, pad);
+        layout.addView(commentPreview);
+
+        // Reason label
+        TextView reasonLabel = new TextView(requireContext());
+        reasonLabel.setText("Reason for reporting");
+        reasonLabel.setTextSize(13f);
+        reasonLabel.setTextColor(0xFF757575);
+        reasonLabel.setPadding(0, 0, 0, (int)(6 * getResources().getDisplayMetrics().density));
+        layout.addView(reasonLabel);
+
+        // Spinner
+        Spinner spinner = new Spinner(requireContext());
+        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(
+                requireContext(),
+                android.R.layout.simple_spinner_item,
+                reasons
+        );
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(spinnerAdapter);
+        layout.addView(spinner);
+
+        AlertDialog dialog = new AlertDialog.Builder(requireContext())
+                .setTitle("Report Comment")
+                .setView(layout)
+                .setPositiveButton("Submit", null) // set below to prevent auto-dismiss on invalid
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                int selectedPos = spinner.getSelectedItemPosition();
+                if (selectedPos == 0) {
+                    Toast.makeText(requireContext(), "Please select a reason", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String selectedReason = reasons[selectedPos];
+                submitReport(comment, selectedReason);
+                dialog.dismiss();
+            });
+        });
+
+        dialog.show();
+
+        // Style the positive button orange
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(0xFFFF6B35);
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(0xFF9E9E9E);
+    }
+
+    private void submitReport(@NonNull Comment comment, @NonNull String reason) {
+        String reporterId = FirebaseAuth.getInstance().getCurrentUser() != null
+                ? FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
+
+        if (reporterId == null) {
+            Toast.makeText(requireContext(), "You must be logged in to report", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String reportedUserId = comment.user_id != null ? comment.user_id : "unknown";
+        String reportKey = reporterId + "_" + comment.comment_id + "_" + System.currentTimeMillis();
+
+        Map<String, Object> report = new HashMap<>();
+        report.put("reporter_user_id", reporterId);
+        report.put("reported_user_id", reportedUserId);
+        report.put("comment_id", comment.comment_id);
+        report.put("comment_text", comment.text != null ? comment.text : "");
+        report.put("reason", reason);
+        report.put("timestamp", ServerValue.TIMESTAMP);
+
+        FirebaseDatabase.getInstance()
+                .getReference("reports/comments_report")
+                .child(reportKey)
+                .setValue(report)
+                .addOnSuccessListener(unused ->
+                        Toast.makeText(requireContext(),
+                                "Report submitted. Thank you for keeping the community safe.",
+                                Toast.LENGTH_LONG).show())
+                .addOnFailureListener(e ->
+                        Toast.makeText(requireContext(),
+                                "Failed to submit report. Please try again.",
+                                Toast.LENGTH_SHORT).show());
     }
 }
