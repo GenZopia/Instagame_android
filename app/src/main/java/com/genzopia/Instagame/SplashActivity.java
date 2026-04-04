@@ -107,22 +107,14 @@ public class SplashActivity extends AppCompatActivity {
      */
     @OptIn(markerClass = UnstableApi.class)
     private void startDataPrefetch() {
+        // Non-blocking: prefetch fires in background, callback returns immediately
+        // so navigation is driven purely by the splash animation completing
         DataPrefetchService.INSTANCE.startPrefetch(this, () -> {
-            // This callback is already called on main thread from DataPrefetchService
-            Log.d(TAG, "Data prefetch complete - callback received");
+            Log.d(TAG, "Prefetch callback received (immediate)");
             dataLoaded = true;
             checkAndNavigate();
             return Unit.INSTANCE;
         });
-        
-        // Safety timeout - navigate after 10 seconds even if data isn't loaded
-        handler.postDelayed(() -> {
-            if (!dataLoaded) {
-                Log.w(TAG, "Data prefetch timeout - navigating anyway");
-                dataLoaded = true;
-                checkAndNavigate();
-            }
-        }, 10000);
     }
 
     /**

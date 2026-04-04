@@ -62,21 +62,27 @@ class ReelViewModel : ViewModel() {
     fun getPlayerForVideo(videoId: String, videoUrl: String?): ExoPlayer? {
         if (videoUrl == null) return null
 
+        // Return from our own pool first (already taken ownership)
+        playerPool[videoId]?.let { return it }
+
+        // Check prefetch pool — take ownership
         val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
-        if (preloaded != null) {
-            android.util.Log.d("ReelViewModel", "=== USING PRELOADED PLAYER === $videoId")
-            if (preloaded.playbackState != Player.STATE_IDLE) {
-                com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
-                preloaded.volume = 1f
-                attachErrorRecovery(preloaded, videoId, videoUrl)
-                playerPool[videoId] = preloaded
-                return preloaded
-            } else {
-                preloaded.release()
-                com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
-            }
+        if (preloaded != null && preloaded.playbackState != Player.STATE_IDLE) {
+            com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
+            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            preloaded.volume = 1f
+            attachErrorRecovery(preloaded, videoId, videoUrl)
+            playerPool[videoId] = preloaded
+            android.util.Log.d("ReelViewModel", "Prefetched player ready for $videoId state=${preloaded.playbackState}")
+            return preloaded
+        } else if (preloaded != null) {
+            preloaded.release()
+            com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
+            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
         }
 
+        // Fallback: create fresh player
+        android.util.Log.d("ReelViewModel", "Creating fresh player for $videoId")
         return playerPool.getOrPut(videoId) { createPlayer(videoId, videoUrl) }
     }
 

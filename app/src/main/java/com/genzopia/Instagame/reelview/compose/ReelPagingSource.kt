@@ -61,18 +61,16 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             
             // For first page, try to use prefetched data for instant display
             if (startKey == null) {
-                Log.d(TAG, "First page load - checking prefetch cache")
                 val prefetchedReels = tryLoadFromPrefetchCache()
                 if (prefetchedReels.isNotEmpty()) {
-                    Log.d(TAG, "Returning ${prefetchedReels.size} prefetched reels INSTANTLY")
+                    Log.d(TAG, "Returning ${prefetchedReels.size} reels INSTANTLY from cache")
                     return LoadResult.Page(
                         data = prefetchedReels,
                         prevKey = null,
                         nextKey = prefetchedReels.lastOrNull()?.videoId
                     )
-                } else {
-                    Log.d(TAG, "No prefetched data available, loading from Firebase")
                 }
+                Log.d(TAG, "Cache empty, loading from Firebase")
             }
             
             // Query Firebase for videos
@@ -370,66 +368,29 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     }
     
     /**
-     * Try to load reels from prefetch cache for instant display
+     * Instant load from in-memory prefetch cache — zero network calls.
+     * Returns ReelData built entirely from DataPrefetchService caches.
      */
-    private suspend fun tryLoadFromPrefetchCache(): List<ReelData> {
-        return try {
-            // First, check if we have prefetched videos
-            val cachedVideos = DataPrefetchService.getAllCachedVideos()
-            
-            if (cachedVideos.isEmpty()) {
-                Log.d(TAG, "No prefetched videos found")
-                return emptyList()
-            }
-            
-            Log.d(TAG, "Found ${cachedVideos.size} prefetched videos")
-            
-            // Get the first 3 videos from Firebase to get full metadata
-            // This is still needed but should be fast since we're only getting metadata
-            val snapshot = database.reference.child("videos")
-                .orderByKey()
-                .limitToFirst(3)
-                .get()
-                .await()
-            
-            if (!snapshot.exists()) {
-                Log.d(TAG, "No videos in Firebase")
-                return emptyList()
-            }
-            
-            val reels = mutableListOf<ReelData>()
-            
-            // Process videos sequentially for the first page to ensure order
-            for (videoSnapshot in snapshot.children) {
-                val videoId = videoSnapshot.key ?: continue
-                
-                try {
-                    // Parse the video data
-                    val reel = parseVideoSnapshot(videoSnapshot)
-                    if (reel != null) {
-                        // Use prefetched URL if available
-                        val signedUrl = DataPrefetchService.getCachedSignedUrl(videoId)
-                        
-                        if (signedUrl != null) {
-                            reels.add(reel.copy(videoUrl = signedUrl))
-                            Log.d(TAG, "✓ Using prefetched URL for video $videoId")
-                        } else {
-                            // If not prefetched, fetch it now (shouldn't happen for first 3)
-                            Log.w(TAG, "⚠ Video $videoId not prefetched, fetching now")
-                            val (mp4Url, hlsUrl) = fetchSignedUrl(videoId)
-                            reels.add(reel.copy(videoUrl = mp4Url, hlsManifestUrl = hlsUrl))
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading reel $videoId", e)
-                }
-            }
-            
-            Log.d(TAG, "✓✓✓ Returning ${reels.size} reels from prefetch cache INSTANTLY")
-            reels
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading from prefetch cache", e)
-            emptyList()
+    private fun tryLoadFromPrefetchCache(): List<ReelData> {
+        val cached = DataPrefetchService.getAllCachedVideos()
+        if (cached.isEmpty()) {
+            Log.d(TAG, "Prefetch cache empty")
+            return emptyList()
         }
+        val reels = cached.values.mapNotNull { meta ->
+            val url = DataPrefetchService.getCachedSignedUrl(meta.videoId) ?: return@mapNotNull null
+            // Determine if it's HLS by checking the URL extension
+            val isHls = url.contains(".m3u8")
+            ReelData(
+                videoId = meta.videoId,
+                videoUrl = if (isHls) null else url,
+                hlsManifestUrl = if (isHls) url else null,
+                title = meta.title,
+                developerId = meta.userId,
+                gameId = meta.gameId
+            )
+        }
+        Log.d(TAG, "Returning ${reels.size} reels from prefetch cache INSTANTLY (0 network calls)")
+        return reels
     }
 }

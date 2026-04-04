@@ -127,14 +127,22 @@ fun ReelScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (reels.loadState.refresh is LoadState.Loading) {
+        // Only show spinner if paging is loading AND we have no prefetched data at all
+        val isInitialLoading = reels.loadState.refresh is LoadState.Loading && reels.itemCount == 0
+        if (isInitialLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color.White)
+                CircularProgressIndicator(
+                    color = Color(0xFFFF6B35),
+                    modifier = Modifier.size(36.dp),
+                    strokeWidth = 3.dp
+                )
             }
-        } else {
+        }
+        // Always show pager — it renders as soon as items arrive
+        if (reels.itemCount > 0) {
             VerticalPager(
                 count = reels.itemCount,
                 state = pagerState,
@@ -176,26 +184,49 @@ fun ReelItem(
         mutableStateOf(viewModel.getFollowState(reel.developerId, reel.isFollowing)) 
     }
     var showThumbnail by remember { mutableStateOf(true) }
-    var isLoading by remember { mutableStateOf(true) }
+    // Don't show spinner if player is already buffered (prefetch case)
+    var isLoading by remember(reel.videoId) {
+        mutableStateOf(viewModel.getPlayerForVideo(reel.videoId, reel.playbackUrl)
+            ?.let { it.playbackState != androidx.media3.common.Player.STATE_READY } ?: true)
+    }
     var showComments by remember { mutableStateOf(false) }
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    
+
     // Get player for this video — use playbackUrl (HLS manifest preferred over MP4)
     val player = remember(reel.videoId) {
         viewModel.getPlayerForVideo(reel.videoId, reel.playbackUrl)
     }
-    
+
+    // Hide spinner as soon as player reaches STATE_READY
+    DisposableEffect(player) {
+        if (player == null) return@DisposableEffect onDispose {}
+        // Already ready — hide immediately
+        if (player.playbackState == androidx.media3.common.Player.STATE_READY) {
+            isLoading = false
+            showThumbnail = false
+        }
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) {
+                    isLoading = false
+                    showThumbnail = false
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
     // Control playback based on active state
     LaunchedEffect(isActive, player) {
         if (player != null) {
             if (isActive) {
-                // Start playing immediately
                 player.playWhenReady = true
-                // Hide thumbnail quickly once buffering starts
-                delay(100)  // Reduced from 300ms
-                showThumbnail = false
+                // Fallback: hide loading after 1.5s even if STATE_READY hasn't fired
+                delay(1500)
                 isLoading = false
+                showThumbnail = false
             } else {
                 player.playWhenReady = false
             }
@@ -259,8 +290,8 @@ fun ReelItem(
             }
         }
         
-        // Loading indicator - only for initial load
-        if (isLoading && player == null) {
+        // Loading indicator
+        if (isLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -268,8 +299,9 @@ fun ReelItem(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
-                    color = Color.White,
-                    modifier = Modifier.size(48.dp)
+                    color = Color(0xFFFF6B35),
+                    modifier = Modifier.size(40.dp),
+                    strokeWidth = 3.dp
                 )
             }
         }
