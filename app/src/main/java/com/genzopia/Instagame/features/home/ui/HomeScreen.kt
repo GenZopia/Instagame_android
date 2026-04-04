@@ -144,6 +144,11 @@ fun HomeScreen(
                 )
             }
 
+            // Games section
+            item(key = "games_section") {
+                com.genzopia.Instagame.features.home.ui.HomeGamesSection()
+            }
+
             items(
                 count = videos.itemCount,
                 key = { index -> videos[index]?.videoId ?: index }

@@ -1,10 +1,10 @@
 package com.genzopia.Instagame.channel_view.Fragment.DetailFragment;
 
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -15,7 +15,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.genzopia.Instagame.R;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
@@ -29,6 +28,8 @@ public class DetailsFragment extends Fragment {
     private List<LinkItem> linkList;
     private String developerId;
 
+    private TextView tvBio, tvFollowersCount, tvVideosCount, tvGamesCount;
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_details, container, false);
@@ -38,105 +39,87 @@ public class DetailsFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        tvBio            = view.findViewById(R.id.tvBio);
+        tvFollowersCount = view.findViewById(R.id.tvFollowersCount);
+        tvVideosCount    = view.findViewById(R.id.tvVideosCount);
+        tvGamesCount     = view.findViewById(R.id.tvGamesCount);
+
         recyclerView = view.findViewById(R.id.linksRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
-
-        // Initialize link list
         linkList = new ArrayList<>();
-
         adapter = new LinkAdapter(linkList);
         recyclerView.setAdapter(adapter);
-        
-        // Load developer details if developer ID is set
-        if (developerId != null) {
-            loadDeveloperDetails();
-        }
+
+        if (developerId != null) loadDeveloperDetails();
     }
-    
+
     public void setDeveloperId(String developerId) {
         this.developerId = developerId;
-        if (isAdded() && recyclerView != null) {
-            loadDeveloperDetails();
-        }
+        if (isAdded() && recyclerView != null) loadDeveloperDetails();
     }
-    
+
     private void loadDeveloperDetails() {
-        if (developerId == null) {
-            Log.e("DetailsFragment", "Developer ID is null");
-            return;
-        }
-        
-        Log.d("DetailsFragment", "Loading details for developer: " + developerId);
-        
-        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId);
-        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                linkList.clear();
-                
-                if (snapshot.exists()) {
-                    // Add developer details as link items
-                    String email = snapshot.child("email").getValue(String.class);
-                    String mobileNo = snapshot.child("mobile_no").getValue(String.class);
-                    String fullName = snapshot.child("full_name").getValue(String.class);
-                    String followers = snapshot.child("followers").getValue(String.class);
-                    String dateOfBirth = snapshot.child("date_of_birth").getValue(String.class);
-                    
-                    // Add basic info
-                    if (fullName != null && !fullName.isEmpty()) {
-                        linkList.add(new LinkItem("Full Name", fullName));
+        if (developerId == null) return;
+
+        FirebaseDatabase.getInstance().getReference("users").child(developerId)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        if (!snapshot.exists()) return;
+
+                        // Bio
+                        String bio = snapshot.child("bio").getValue(String.class);
+                        if (bio == null || bio.isEmpty())
+                            bio = snapshot.child("description").getValue(String.class);
+                        if (tvBio != null)
+                            tvBio.setText(bio != null && !bio.isEmpty() ? bio : "No bio yet.");
+
+                        // Stats
+                        Long followersCount = snapshot.child("followers_count").getValue(Long.class);
+                        if (followersCount == null) {
+                            String fs = snapshot.child("followers").getValue(String.class);
+                            try { followersCount = fs != null ? Long.parseLong(fs) : 0L; }
+                            catch (NumberFormatException e) { followersCount = 0L; }
+                        }
+                        int videoCount = snapshot.child("videos").exists()
+                                ? (int) snapshot.child("videos").getChildrenCount() : 0;
+                        int gameCount = snapshot.child("games").exists()
+                                ? (int) snapshot.child("games").getChildrenCount() : 0;
+
+                        if (tvFollowersCount != null) tvFollowersCount.setText(formatCount(followersCount.intValue()));
+                        if (tvVideosCount != null) tvVideosCount.setText(String.valueOf(videoCount));
+                        if (tvGamesCount != null) tvGamesCount.setText(String.valueOf(gameCount));
+
+                        // Info rows
+                        linkList.clear();
+                        String email = snapshot.child("email").getValue(String.class);
+                        String username = snapshot.child("username").getValue(String.class);
+                        String dob = snapshot.child("date_of_birth").getValue(String.class);
+                        String website = snapshot.child("website").getValue(String.class);
+                        String location = snapshot.child("location").getValue(String.class);
+
+                        if (username != null && !username.isEmpty())
+                            linkList.add(new LinkItem("Username", "@" + username));
+                        if (email != null && !email.isEmpty())
+                            linkList.add(new LinkItem("Email", email));
+                        if (dob != null && !dob.isEmpty())
+                            linkList.add(new LinkItem("Joined", dob));
+                        if (website != null && !website.isEmpty())
+                            linkList.add(new LinkItem("Website", website));
+                        if (location != null && !location.isEmpty())
+                            linkList.add(new LinkItem("Location", location));
+
+                        adapter.notifyDataSetChanged();
                     }
-                    
-                    if (email != null && !email.isEmpty()) {
-                        linkList.add(new LinkItem("Email", email));
-                    }
-                    
-                    if (mobileNo != null && !mobileNo.isEmpty()) {
-                        linkList.add(new LinkItem("Mobile", mobileNo));
-                    }
-                    
-                    if (followers != null && !followers.isEmpty()) {
-                        linkList.add(new LinkItem("Followers", followers));
-                    }
-                    
-                    if (dateOfBirth != null && !dateOfBirth.isEmpty()) {
-                        linkList.add(new LinkItem("Date of Birth", dateOfBirth));
-                    }
-                    
-                    // Count videos and games
-                    DataSnapshot videosSnapshot = snapshot.child("videos");
-                    DataSnapshot gamesSnapshot = snapshot.child("games");
-                    
-                    int videoCount = 0;
-                    int gameCount = 0;
-                    
-                    if (videosSnapshot.exists()) {
-                        videoCount = (int) videosSnapshot.getChildrenCount();
-                    }
-                    
-                    if (gamesSnapshot.exists()) {
-                        gameCount = (int) gamesSnapshot.getChildrenCount();
-                    }
-                    
-                    linkList.add(new LinkItem("Total Videos", String.valueOf(videoCount)));
-                    linkList.add(new LinkItem("Total Games", String.valueOf(gameCount)));
-                    
-                    Log.d("DetailsFragment", "Loaded details for developer: " + fullName+dateOfBirth);
-                } else {
-                    Log.d("DetailsFragment", "Developer not found: " + developerId);
-                    linkList.add(new LinkItem("Error", "Developer not found"));
-                }
-                
-                adapter.notifyDataSetChanged();
-            }
-            
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("DetailsFragment", "Error loading developer details: " + error.getMessage());
-                linkList.clear();
-                linkList.add(new LinkItem("Error", "Failed to load details"));
-                adapter.notifyDataSetChanged();
-            }
-        });
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {}
+                });
+    }
+
+    private String formatCount(int count) {
+        if (count >= 1_000_000) return String.format("%.1fM", count / 1_000_000.0);
+        if (count >= 1_000) return String.format("%.1fK", count / 1_000.0);
+        return String.valueOf(count);
     }
 }

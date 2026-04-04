@@ -2,6 +2,7 @@ package com.genzopia.Instagame.channel_view;
 
 import android.os.Bundle;
 import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.ImageView;
 import android.util.Log;
@@ -15,6 +16,7 @@ import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.channel_view.Fragment.DetailFragment.DetailsFragment;
 import com.genzopia.Instagame.channel_view.Fragment.GamesFragment.GamesFragment;
 import com.genzopia.Instagame.channel_view.Fragment.VideosFragment.VideosFragment;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -30,6 +32,8 @@ public class ChannelActivity extends AppCompatActivity {
     private TextView channelName;
     private TextView subscriberCount;
     private ImageView bannerImage;
+    private Button followButton;
+    private boolean isFollowing = false;
     private GamesFragment gamesFragment;
     private VideosFragment videosFragment;
     private DetailsFragment detailsFragment;
@@ -38,53 +42,36 @@ public class ChannelActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_channel);
-        
-        // Get developer ID from intent
+
         developerId = getIntent().getStringExtra("developer_id");
         if (developerId == null) {
             Log.e("ChannelActivity", "No developer ID provided");
             finish();
             return;
         }
-        
-        // Initialize views
-        profileImage = findViewById(R.id.profileImage);
-        channelName = findViewById(R.id.channelName);
+
+        profileImage    = findViewById(R.id.profileImage);
+        channelName     = findViewById(R.id.channelName);
         subscriberCount = findViewById(R.id.subscriberCount);
-        bannerImage = findViewById(R.id.bannerImage);
-        
-        TextView tabGames = findViewById(R.id.tabGames);
-        TextView tabVideos = findViewById(R.id.tabVideos);
+        bannerImage     = findViewById(R.id.bannerImage);
+        followButton    = findViewById(R.id.followButton);
+
+        TextView tabGames   = findViewById(R.id.tabGames);
+        TextView tabVideos  = findViewById(R.id.tabVideos);
         TextView tabDetails = findViewById(R.id.tabDetails);
 
-        // Load developer data
         loadDeveloperData();
-
-        // Initialize fragments
         initializeFragments();
-
-        // Set initial fragment
         loadFragment(gamesFragment);
         setActiveTab(tabGames);
 
-        // Tab click listeners
-        tabGames.setOnClickListener(v -> {
-            loadFragment(gamesFragment);
-            setActiveTab(tabGames);
-        });
+        tabGames.setOnClickListener(v -> { loadFragment(gamesFragment); setActiveTab(tabGames); });
+        tabVideos.setOnClickListener(v -> { loadFragment(videosFragment); setActiveTab(tabVideos); });
+        tabDetails.setOnClickListener(v -> { loadFragment(detailsFragment); setActiveTab(tabDetails); });
 
-        tabVideos.setOnClickListener(v -> {
-            loadFragment(videosFragment);
-            setActiveTab(tabVideos);
-        });
-
-        tabDetails.setOnClickListener(v -> {
-            loadFragment(detailsFragment);
-            setActiveTab(tabDetails);
-        });
+        setupFollowButton();
     }
     
     private void initializeFragments() {
@@ -110,88 +97,121 @@ public class ChannelActivity extends AppCompatActivity {
         currentFragment = gamesFragment;
     }
     
+    private void setupFollowButton() {
+        String currentUid = FirebaseAuth.getInstance().getCurrentUser() != null
+                ? FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
+        if (currentUid == null || currentUid.equals(developerId)) {
+            if (followButton != null) followButton.setVisibility(View.GONE);
+            return;
+        }
+        // Check current follow state
+        FirebaseDatabase.getInstance().getReference("users").child(currentUid)
+                .child("following_list").child(developerId)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override public void onDataChange(DataSnapshot snapshot) {
+                        isFollowing = snapshot.exists();
+                        updateFollowButton();
+                    }
+                    @Override public void onCancelled(DatabaseError error) {}
+                });
+
+        followButton.setOnClickListener(v -> {
+            if (currentUid == null) return;
+            isFollowing = !isFollowing;
+            updateFollowButton();
+            DatabaseReference followRef = FirebaseDatabase.getInstance().getReference("users")
+                    .child(currentUid).child("following_list").child(developerId);
+            DatabaseReference followersCountRef = FirebaseDatabase.getInstance().getReference("users")
+                    .child(developerId).child("followers_count");
+            if (isFollowing) {
+                followRef.setValue(true);
+                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override public void onDataChange(DataSnapshot s) {
+                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 0L;
+                        followersCountRef.setValue(count + 1);
+                    }
+                    @Override public void onCancelled(DatabaseError e) {}
+                });
+            } else {
+                followRef.removeValue();
+                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override public void onDataChange(DataSnapshot s) {
+                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 1L;
+                        followersCountRef.setValue(Math.max(0, count - 1));
+                    }
+                    @Override public void onCancelled(DatabaseError e) {}
+                });
+            }
+        });
+    }
+
+    private void updateFollowButton() {
+        if (followButton == null) return;
+        if (isFollowing) {
+            followButton.setText("Following");
+            followButton.setBackgroundTintList(
+                    android.content.res.ColorStateList.valueOf(
+                            getResources().getColor(R.color.text_secondary, getTheme())));
+        } else {
+            followButton.setText("Follow");
+            followButton.setBackgroundTintList(
+                    android.content.res.ColorStateList.valueOf(
+                            getResources().getColor(R.color.instagram_orange, getTheme())));
+        }
+    }
+
     private void loadDeveloperData() {
         DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId);
         userRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
-                if (snapshot.exists()) {
-                    // Load profile image
-                    String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
-                    if (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) {
-                        Glide.with(ChannelActivity.this)
-                                .load(profilePhotoUrl)
-                                .placeholder(R.drawable.demo_user)
-                                .error(R.drawable.demo_user)
-                                .into(profileImage);
-                    } else {
-                        profileImage.setImageResource(R.drawable.demo_user);
-                    }
-                    
-                    // Load channel name
-                    String fullName = snapshot.child("full_name").getValue(String.class);
-                    if (fullName != null && !fullName.isEmpty()) {
-                        channelName.setText(fullName);
-                    } else {
-                        channelName.setText("Unknown Developer");
-                    }
-                    
-                    // Load subscriber count and video count
-                    String followers = snapshot.child("followers").getValue(String.class);
-                    int followerCount = 0;
-                    if (followers != null && !followers.isEmpty()) {
-                        try {
-                            followerCount = Integer.parseInt(followers);
-                        } catch (NumberFormatException e) {
-                            Log.e("ChannelActivity", "Error parsing follower count: " + followers);
-                        }
-                    }
-                    
-                    // Count videos - check if videos node exists and count its children
-                    DataSnapshot videosSnapshot = snapshot.child("videos");
-                    int videoCount = 0;
-                    if (videosSnapshot.exists()) {
-                        videoCount = (int) videosSnapshot.getChildrenCount();
-                        Log.d("ChannelActivity", "Found " + videoCount + " videos for developer: " + developerId);
-                        // Debug: log all video IDs
-                        for (DataSnapshot videoSnapshot : videosSnapshot.getChildren()) {
-                            Log.d("ChannelActivity", "Video ID: " + videoSnapshot.getKey());
-                        }
-                    } else {
-                        Log.d("ChannelActivity", "No videos node found for developer: " + developerId);
-                    }
-                    
-                    // Count games - check if games node exists and count its children
-                    DataSnapshot gamesSnapshot = snapshot.child("games");
-                    int gameCount = 0;
-                    if (gamesSnapshot.exists()) {
-                        gameCount = (int) gamesSnapshot.getChildrenCount();
-                        Log.d("ChannelActivity", "Found " + gameCount + " games for developer: " + developerId);
-                        // Debug: log all game IDs
-                        for (DataSnapshot gameSnapshot : gamesSnapshot.getChildren()) {
-                            Log.d("ChannelActivity", "Game ID: " + gameSnapshot.getKey());
-                        }
-                    } else {
-                        Log.d("ChannelActivity", "No games node found for developer: " + developerId);
-                    }
-                    
-                    // Format subscriber count
-                    String formattedCount = formatCount(followerCount);
-                    subscriberCount.setText(formattedCount + " followers • " + videoCount + " videos • " + gameCount + " games");
-                    
-                    Log.d("ChannelActivity", "Loaded developer data: " + fullName + ", " + followerCount + " followers, " + videoCount + " videos, " + gameCount + " games");
-                } else {
-                    Log.e("ChannelActivity", "Developer not found: " + developerId);
+                if (!snapshot.exists()) {
                     channelName.setText("Developer Not Found");
-                    subscriberCount.setText("0 followers • 0 videos • 0 games");
+                    subscriberCount.setText("0 followers");
+                    return;
                 }
+
+                // Profile photo
+                String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                if (profilePhotoUrl != null && !profilePhotoUrl.isEmpty()) {
+                    Glide.with(ChannelActivity.this).load(profilePhotoUrl)
+                            .placeholder(R.drawable.demo_user).error(R.drawable.demo_user)
+                            .into(profileImage);
+                }
+
+                // Banner photo
+                String bannerUrl = snapshot.child("banner_url").getValue(String.class);
+                if (bannerUrl != null && !bannerUrl.isEmpty() && bannerImage != null) {
+                    Glide.with(ChannelActivity.this).load(bannerUrl)
+                            .centerCrop().into(bannerImage);
+                }
+
+                // Name
+                String fullName = snapshot.child("full_name").getValue(String.class);
+                channelName.setText(fullName != null && !fullName.isEmpty() ? fullName : "Unknown Developer");
+
+                // Follower count
+                Long followersCount = snapshot.child("followers_count").getValue(Long.class);
+                if (followersCount == null) {
+                    // fallback to old field
+                    String followersStr = snapshot.child("followers").getValue(String.class);
+                    try { followersCount = followersStr != null ? Long.parseLong(followersStr) : 0L; }
+                    catch (NumberFormatException e) { followersCount = 0L; }
+                }
+
+                int videoCount = snapshot.child("videos").exists()
+                        ? (int) snapshot.child("videos").getChildrenCount() : 0;
+                int gameCount = snapshot.child("games").exists()
+                        ? (int) snapshot.child("games").getChildrenCount() : 0;
+
+                subscriberCount.setText(formatCount(followersCount.intValue()) + " followers  •  "
+                        + videoCount + " videos  •  " + gameCount + " games");
             }
-            
+
             @Override
             public void onCancelled(DatabaseError error) {
-                Log.e("ChannelActivity", "Error loading developer data: " + error.getMessage());
-                channelName.setText("Error Loading Data");
-                subscriberCount.setText("0 followers • 0 videos • 0 games");
+                channelName.setText("Error Loading");
+                subscriberCount.setText("0 followers");
             }
         });
     }

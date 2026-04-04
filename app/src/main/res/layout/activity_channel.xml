@@ -1,163 +1,187 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?android:colorBackground">
 
-    <!-- Scrollable Content -->
-    <ScrollView
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fillViewport="true">
+        android:layout_height="wrap_content"
+        android:background="?android:colorBackground"
+        app:elevation="0dp">
 
-        <LinearLayout
+        <com.google.android.material.appbar.CollapsingToolbarLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:layout_height="wrap_content"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed"
+            app:titleEnabled="false">
 
-            <!-- Banner -->
-            <ImageView
-                android:id="@+id/bannerImage"
-                android:layout_width="match_parent"
-                android:layout_height="150dp"
-                android:scaleType="centerCrop" />
-
-            <!-- Profile Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:gravity="center_vertical">
+                android:orientation="vertical">
 
-                <de.hdodenhof.circleimageview.CircleImageView
-                    android:id="@+id/profileImage"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:layout_marginEnd="12dp"
-                    android:src="@drawable/profile"
-                    android:background="@drawable/circle_background"
-                    android:scaleType="centerCrop" />
+                <!-- Banner -->
+                <ImageView
+                    android:id="@+id/bannerImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="140dp"
+                    android:scaleType="centerCrop"
+                    android:background="#1A1A1A"/>
 
+                <!-- Profile Section -->
                 <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <de.hdodenhof.circleimageview.CircleImageView
+                        android:id="@+id/profileImage"
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:layout_marginEnd="14dp"
+                        android:src="@drawable/demo_user"
+                        android:scaleType="centerCrop"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/channelName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Channel Name"
+                            android:textStyle="bold"
+                            android:textSize="20sp"
+                            android:textColor="?android:attr/textColorPrimary"/>
+
+                        <TextView
+                            android:id="@+id/subscriberCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="0 followers"
+                            android:textSize="13sp"
+                            android:textColor="?android:attr/textColorSecondary"/>
+
+                        <!-- Follow Button -->
+                        <Button
+                            android:id="@+id/followButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:layout_marginTop="8dp"
+                            android:text="Follow"
+                            android:textSize="13sp"
+                            android:textColor="@color/white"
+                            android:backgroundTint="@color/instagram_orange"
+                            android:paddingHorizontal="20dp"
+                            style="@style/Widget.MaterialComponents.Button"/>
+
+                    </LinearLayout>
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.appbar.CollapsingToolbarLayout>
+
+        <!-- Sticky Tab Bar -->
+        <LinearLayout
+            android:id="@+id/menuTabs"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:background="?android:colorBackground"
+            android:weightSum="3"
+            app:layout_scrollFlags="noScroll">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <TextView
+                    android:id="@+id/tabGames"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/channelName"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="DualWielded"
-                        android:textStyle="bold"
-                        android:textSize="18sp"
-                        android:textColor="?android:attr/textColorPrimary" />
-
-                    <TextView
-                        android:id="@+id/subscriberCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="44.5K subscribers • 48 videos"
-                        android:textSize="14sp"
-                        android:textColor="?android:attr/textColorSecondary" />
-                </LinearLayout>
+                    android:text="Games"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorPrimary"/>
+                <View
+                    android:id="@+id/underlineGames"
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:background="@color/instagram_orange"
+                    android:visibility="visible"/>
             </LinearLayout>
 
-            <!-- Menu Tabs -->
             <LinearLayout
-                android:id="@+id/menuTabs"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:orientation="horizontal"
-                android:weightSum="3">
-
-                <!-- Games Tab -->
-                <LinearLayout
-                    android:layout_width="0dp"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <TextView
+                    android:id="@+id/tabVideos"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <TextView
-                        android:id="@+id/tabGames"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Games"
-                        android:textStyle="bold"
-                        android:padding="12dp"
-                        android:textColor="?android:attr/textColorPrimary" />
-
-                    <View
-                        android:id="@+id/underlineGames"
-                        android:layout_width="match_parent"
-                        android:layout_height="2dp"
-                        android:background="@color/instagram_orange"
-                        android:visibility="visible" />
-                </LinearLayout>
-
-                <!-- Videos Tab -->
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <TextView
-                        android:id="@+id/tabVideos"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Videos"
-                        android:textStyle="bold"
-                        android:padding="12dp"
-                        android:textColor="?android:attr/textColorPrimary" />
-
-                    <View
-                        android:id="@+id/underlineVideos"
-                        android:layout_width="match_parent"
-                        android:layout_height="2dp"
-                        android:background="@color/instagram_orange"
-                        android:visibility="gone" />
-                </LinearLayout>
-
-                <!-- Details Tab -->
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <TextView
-                        android:id="@+id/tabDetails"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Details"
-                        android:textStyle="bold"
-                        android:padding="12dp"
-                        android:textColor="?android:attr/textColorPrimary" />
-
-                    <View
-                        android:id="@+id/underlineDetails"
-                        android:layout_width="match_parent"
-                        android:layout_height="2dp"
-                        android:background="@color/instagram_orange"
-                        android:visibility="gone" />
-                </LinearLayout>
+                    android:text="Videos"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorPrimary"/>
+                <View
+                    android:id="@+id/underlineVideos"
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:background="@color/instagram_orange"
+                    android:visibility="gone"/>
             </LinearLayout>
 
-            <!-- Fragment Container -->
-            <FrameLayout
-                android:id="@+id/fragmentContainer"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <TextView
+                    android:id="@+id/tabDetails"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="About"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorPrimary"/>
+                <View
+                    android:id="@+id/underlineDetails"
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:background="@color/instagram_orange"
+                    android:visibility="gone"/>
+            </LinearLayout>
 
         </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+
+        <!-- Tab divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?android:attr/listDivider"/>
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- Fragment container scrolls independently -->
+    <FrameLayout
+        android:id="@+id/fragmentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"/>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

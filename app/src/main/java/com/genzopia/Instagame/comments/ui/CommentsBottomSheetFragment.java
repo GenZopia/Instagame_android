@@ -84,9 +84,15 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
         // ── Observe comments ──────────────────────────────────────────────────
         vm.getComments().observe(getViewLifecycleOwner(), comments -> adapter.submitList(comments));
 
-        // Re-bind icons when liked set changes
-        vm.getLikedComments().observe(getViewLifecycleOwner(), s -> adapter.notifyDataSetChanged());
-        vm.getInFlightComments().observe(getViewLifecycleOwner(), s -> adapter.notifyDataSetChanged());
+        // No notifyDataSetChanged on like changes — ViewHolder manages its own local state
+
+        // ── Auto-expand replies after posting a reply ─────────────────────────
+        vm.getReplyPostedEvent().observe(getViewLifecycleOwner(), commentId -> {
+            if (commentId != null) {
+                adapter.expandReplies(commentId);
+                vm.clearReplyPostedEvent();
+            }
+        });
 
         // ── Observe replyingTo — mirrors web replyingTo state ─────────────────
         vm.getReplyingTo().observe(getViewLifecycleOwner(), replyingTo -> {
@@ -165,17 +171,19 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
 
             @Override
             public void onLoadReplies(@NonNull Comment c, @NonNull RecyclerView repliesList) {
-                vm.loadReplies(c.comment_id);
-                repliesList.setLayoutManager(new LinearLayoutManager(getContext()));
-                RepliesAdapter repliesAdapter = new RepliesAdapter(buildReplyListener(c.comment_id));
-                repliesList.setAdapter(repliesAdapter);
+                // Only set up layout + adapter once per RecyclerView instance
+                if (repliesList.getLayoutManager() == null) {
+                    repliesList.setLayoutManager(new LinearLayoutManager(getContext()));
+                    RepliesAdapter repliesAdapter = new RepliesAdapter(buildReplyListener(c.comment_id));
+                    repliesList.setAdapter(repliesAdapter);
 
-                vm.getRepliesMap().observe(getViewLifecycleOwner(), map -> {
-                    List<Reply> replies = map.get(c.comment_id);
-                    if (replies != null) repliesAdapter.submitList(replies);
-                });
-                vm.getLikedReplies().observe(getViewLifecycleOwner(), s -> repliesAdapter.notifyDataSetChanged());
-                vm.getInFlightReplies().observe(getViewLifecycleOwner(), s -> repliesAdapter.notifyDataSetChanged());
+                    vm.getRepliesMap().observe(getViewLifecycleOwner(), map -> {
+                        List<Reply> replies = map.get(c.comment_id);
+                        if (replies != null) repliesAdapter.submitList(replies);
+                    });
+                }
+                // Always trigger a fresh load from Firebase
+                vm.loadReplies(c.comment_id);
             }
 
             @Override

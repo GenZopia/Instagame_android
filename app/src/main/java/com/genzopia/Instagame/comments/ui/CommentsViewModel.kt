@@ -47,6 +47,11 @@ class CommentsViewModel : ViewModel() {
     private val _repliesMap = MutableLiveData<Map<String, List<Reply>>>(emptyMap())
     val repliesMap: LiveData<Map<String, List<Reply>>> = _repliesMap
 
+    // ── Reply posted event — fires commentId so Fragment can auto-expand replies ─
+    private val _replyPostedEvent = MutableLiveData<String?>()
+    val replyPostedEvent: LiveData<String?> = _replyPostedEvent
+    fun clearReplyPostedEvent() { _replyPostedEvent.value = null }
+
     // ── Reply-to state (mirrors web replyingTo state) ─────────────────────────
     private val _replyingTo = MutableLiveData<Comment?>(null)
     val replyingTo: LiveData<Comment?> = _replyingTo
@@ -107,6 +112,7 @@ class CommentsViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         val vid = videoId ?: return
         list.forEach { c ->
+            if (c.comment_id == null) return@forEach
             repo.isCommentLiked(vid, c.comment_id, uid) { liked ->
                 if (liked) _likedComments.postValue((_likedComments.value ?: emptySet()) + c.comment_id)
             }
@@ -121,33 +127,16 @@ class CommentsViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         val vid = videoId ?: return
         val cid = comment.comment_id ?: return
-        if ((_inFlightComments.value ?: emptySet()).contains(cid)) return
 
-        _inFlightComments.value = (_inFlightComments.value ?: emptySet()) + cid
         val wasLiked = (_likedComments.value ?: emptySet()).contains(cid)
-        val prevCount = comment.like_count ?: 0L
 
-        // Optimistic
+        // Update liked set
         _likedComments.value = if (!wasLiked)
             (_likedComments.value ?: emptySet()) + cid
         else
             (_likedComments.value ?: emptySet()) - cid
-        comment.like_count = maxOf(0L, prevCount + if (!wasLiked) 1L else -1L)
-        notifyCommentChanged(comment)
 
-        repo.setCommentLike(vid, cid, uid, !wasLiked) { success, _ ->
-            _inFlightComments.postValue((_inFlightComments.value ?: emptySet()) - cid)
-            if (!success) {
-                // Revert
-                _likedComments.postValue(
-                    if (wasLiked) (_likedComments.value ?: emptySet()) + cid
-                    else (_likedComments.value ?: emptySet()) - cid
-                )
-                comment.like_count = prevCount
-                notifyCommentChanged(comment)
-                _errorEvent.postValue("Failed to update like")
-            }
-        }
+        repo.setCommentLike(vid, cid, uid, !wasLiked) { _, _ -> }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -158,31 +147,15 @@ class CommentsViewModel : ViewModel() {
         val uid = auth.currentUser?.uid ?: return
         val vid = videoId ?: return
         val rid = reply.reply_id ?: return
-        if ((_inFlightReplies.value ?: emptySet()).contains(rid)) return
 
-        _inFlightReplies.value = (_inFlightReplies.value ?: emptySet()) + rid
         val wasLiked = (_likedReplies.value ?: emptySet()).contains(rid)
-        val prevCount = reply.like_count ?: 0L
 
         _likedReplies.value = if (!wasLiked)
             (_likedReplies.value ?: emptySet()) + rid
         else
             (_likedReplies.value ?: emptySet()) - rid
-        reply.like_count = maxOf(0L, prevCount + if (!wasLiked) 1L else -1L)
-        notifyReplyChanged(commentId, reply)
 
-        repo.setReplyLike(vid, commentId, rid, uid, !wasLiked) { success, _ ->
-            _inFlightReplies.postValue((_inFlightReplies.value ?: emptySet()) - rid)
-            if (!success) {
-                _likedReplies.postValue(
-                    if (wasLiked) (_likedReplies.value ?: emptySet()) + rid
-                    else (_likedReplies.value ?: emptySet()) - rid
-                )
-                reply.like_count = prevCount
-                notifyReplyChanged(commentId, reply)
-                _errorEvent.postValue("Failed to update reply like")
-            }
-        }
+        repo.setReplyLike(vid, commentId, rid, uid, !wasLiked) { _, _ -> }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -258,6 +231,7 @@ class CommentsViewModel : ViewModel() {
                     }
                     _comments.postValue(updated)
                     loadReplies(commentId)
+                    _replyPostedEvent.postValue(commentId)
                 } else {
                     _errorEvent.postValue(error ?: "Failed to post reply")
                 }

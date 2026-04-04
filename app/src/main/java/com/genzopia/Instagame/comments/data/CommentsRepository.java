@@ -205,6 +205,7 @@ public class CommentsRepository {
     }
 
     public void isCommentLiked(String videoId, String commentId, String uid, final BooleanCallback cb) {
+        if (videoId == null || commentId == null || uid == null) { cb.onResult(false); return; }
         DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
                 .child("comment_likes").child(commentId).child(uid);
         ref.addListenerForSingleValueEvent(new ValueEventListener() {
@@ -214,64 +215,38 @@ public class CommentsRepository {
     }
 
     public void setCommentLike(String videoId, String commentId, String uid, boolean like, final CompletionCallback cb) {
+        if (videoId == null || commentId == null || uid == null) { cb.onComplete(false, "null argument"); return; }
         DatabaseReference root = FirebaseDatabase.getInstance().getReference();
         DatabaseReference likeRef = root.child("videos").child(videoId).child("comment_likes").child(commentId).child(uid);
         DatabaseReference likeCountRef = root.child("videos").child(videoId).child("comments").child(commentId).child("like_count");
 
-        likeRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot likedSnap) {
-                boolean currentlyLiked = likedSnap.exists();
-                if (currentlyLiked == like) { cb.onComplete(true, null); return; }
-
-                // Apply like/unlike
+        // Write directly — no pre-read, ViewModel already tracks liked state optimistically
         likeRef.setValue(like ? Boolean.TRUE : null, (error, ref) -> {
-                    if (error != null) { cb.onComplete(false, error.getMessage()); return; }
+            if (error != null) { cb.onComplete(false, error.getMessage()); return; }
 
-                    likeCountRef.runTransaction(new Transaction.Handler() {
-                    @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                        Long v = currentData.getValue(Long.class);
-                        long base = v == null ? 0L : v;
-                        currentData.setValue(Math.max(0L, base + (like ? 1L : -1L)));
-                        return Transaction.success(currentData);
+            likeCountRef.runTransaction(new Transaction.Handler() {
+                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
+                    Long v = currentData.getValue(Long.class);
+                    long base = v == null ? 0L : v;
+                    currentData.setValue(Math.max(0L, base + (like ? 1L : -1L)));
+                    return Transaction.success(currentData);
+                }
+                @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
+                    if (e != null) { cb.onComplete(false, e.getMessage()); return; }
+
+                    // Mirror under users
+                    DatabaseReference userLikeRef = root.child("users").child(uid).child("comment_likes").child(commentId);
+                    DatabaseReference userLikedCommentsRef = root.child("users").child(uid).child("liked_comments").child(videoId).child(commentId);
+                    if (like) {
+                        userLikeRef.setValue(Boolean.TRUE);
+                        userLikedCommentsRef.setValue(Boolean.TRUE);
+                    } else {
+                        userLikeRef.removeValue();
+                        userLikedCommentsRef.removeValue();
                     }
-                    @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
-                        if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-
-                            // Mirror under users
-                            DatabaseReference userLikeRef = root.child("users").child(uid).child("comment_likes").child(commentId);
-                            if (like) userLikeRef.setValue(Boolean.TRUE); else userLikeRef.removeValue();
-
-                        if (like) {
-                                // If previously disliked, remove it and decrement dislike count
-                                DatabaseReference dislikeRef = root.child("videos").child(videoId).child("comment_dislikes").child(commentId).child(uid);
-                                DatabaseReference dislikeCountRef = root.child("videos").child(videoId).child("comments").child(commentId).child("dislike_count");
-                                dislikeRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override public void onDataChange(@NonNull DataSnapshot ds) {
-                                        if (ds.exists()) {
-                                            dislikeRef.removeValue();
-                                            dislikeCountRef.runTransaction(new Transaction.Handler() {
-                                                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
-                                                    Long val = d.getValue(Long.class);
-                                                    long base = val == null ? 0L : val;
-                                                    d.setValue(Math.max(0L, base - 1L));
-                                                    return Transaction.success(d);
-                                                }
-                                                @Override public void onComplete(DatabaseError de, boolean c, DataSnapshot s) {}
-                                            });
-                                            root.child("users").child(uid).child("comment_dislikes").child(commentId).removeValue();
-                                        }
-                                        cb.onComplete(true, null);
-                                    }
-                                    @Override public void onCancelled(@NonNull DatabaseError error1) { cb.onComplete(true, null); }
-                                });
-                            } else {
-                                cb.onComplete(true, null);
-                            }
-                        }
-                    });
-                });
-            }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(false, error.getMessage()); }
+                    cb.onComplete(true, null);
+                }
+            });
         });
     }
 
@@ -328,6 +303,7 @@ public class CommentsRepository {
                                                 @Override public void onComplete(DatabaseError de, boolean c, DataSnapshot s) {}
                                             });
                                             root.child("users").child(uid).child("comment_likes").child(commentId).removeValue();
+                                            root.child("users").child(uid).child("liked_comments").child(videoId).child(commentId).removeValue();
                                         }
                                         cb.onComplete(true, null);
                                     }
@@ -350,6 +326,7 @@ public class CommentsRepository {
     }
 
     public void isReplyLiked(String videoId, String commentId, String replyId, String uid, final BooleanCallback cb) {
+        if (videoId == null || replyId == null || uid == null) { cb.onResult(false); return; }
         DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
                 .child("reply_likes").child(replyId).child(uid);
         ref.addListenerForSingleValueEvent(new ValueEventListener() {
@@ -368,56 +345,30 @@ public class CommentsRepository {
     }
 
     public void setReplyLike(String videoId, String commentId, String replyId, String uid, boolean like, final CompletionCallback cb) {
+        if (videoId == null || commentId == null || replyId == null || uid == null) { cb.onComplete(false, "null argument"); return; }
         DatabaseReference root = FirebaseDatabase.getInstance().getReference();
         DatabaseReference likeRef = root.child("videos").child(videoId).child("reply_likes").child(replyId).child(uid);
         DatabaseReference likeCountRef = replyRef(videoId, commentId).child(replyId).child("like_count");
 
-        likeRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snap) {
-                boolean cur = snap.exists();
-                if (cur == like) { cb.onComplete(true, null); return; }
-
-                likeRef.setValue(like ? Boolean.TRUE : null, (error, ref) -> {
-                    if (error != null) { cb.onComplete(false, error.getMessage()); return; }
-                    likeCountRef.runTransaction(new Transaction.Handler() {
-                        @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
-                            Long v = d.getValue(Long.class);
-                            long base = v == null ? 0L : v;
-                            d.setValue(Math.max(0L, base + (like ? 1L : -1L)));
-                            return Transaction.success(d);
-                        }
-                        @Override public void onComplete(DatabaseError e, boolean c, DataSnapshot s) {
-                            if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-                            // Remove dislike if switching
-                            if (like) {
-                                DatabaseReference dRef = root.child("videos").child(videoId).child("reply_dislikes").child(replyId).child(uid);
-                                DatabaseReference dCount = replyRef(videoId, commentId).child(replyId).child("dislike_count");
-                                dRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override public void onDataChange(@NonNull DataSnapshot ds) {
-                                        if (ds.exists()) {
-                                            dRef.removeValue();
-                                            dCount.runTransaction(new Transaction.Handler() {
-                                                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData md) {
-                                                    Long vv = md.getValue(Long.class);
-                                                    long b = vv == null ? 0L : vv;
-                                                    md.setValue(Math.max(0L, b - 1L));
-                                                    return Transaction.success(md);
-                                                }
-                                                @Override public void onComplete(DatabaseError de, boolean cc, DataSnapshot ss) {}
-                                            });
-                                            // remove mirror
-                                            root.child("users").child(uid).child("reply_dislikes").child(replyId).removeValue();
-                                        }
-                                        cb.onComplete(true, null);
-                                    }
-                                    @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(true, null); }
-                                });
-                            } else { cb.onComplete(true, null); }
-                        }
-                    });
-                });
-            }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(false, error.getMessage()); }
+        // Write directly — no pre-read, ViewModel already tracks liked state optimistically
+        likeRef.setValue(like ? Boolean.TRUE : null, (error, ref) -> {
+            if (error != null) { cb.onComplete(false, error.getMessage()); return; }
+            likeCountRef.runTransaction(new Transaction.Handler() {
+                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
+                    Long v = d.getValue(Long.class);
+                    long base = v == null ? 0L : v;
+                    d.setValue(Math.max(0L, base + (like ? 1L : -1L)));
+                    return Transaction.success(d);
+                }
+                @Override public void onComplete(DatabaseError e, boolean c, DataSnapshot s) {
+                    if (e != null) { cb.onComplete(false, e.getMessage()); return; }
+                    DatabaseReference userReplyLikeRef = root.child("users").child(uid)
+                            .child("liked_replies").child(videoId).child(commentId).child(replyId);
+                    if (like) userReplyLikeRef.setValue(Boolean.TRUE);
+                    else userReplyLikeRef.removeValue();
+                    cb.onComplete(true, null);
+                }
+            });
         });
     }
 

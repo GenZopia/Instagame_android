@@ -6,7 +6,7 @@
     android:paddingTop="4dp"
     android:paddingBottom="4dp">
 
-    <ImageView
+    <de.hdodenhof.circleimageview.CircleImageView
         android:id="@+id/reply_avatar"
         android:layout_width="28dp"
         android:layout_height="28dp"

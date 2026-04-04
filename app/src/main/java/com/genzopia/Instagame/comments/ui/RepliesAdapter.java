@@ -62,6 +62,11 @@ public class RepliesAdapter extends ListAdapter<Reply, RepliesAdapter.ReplyVH> {
         TextView name, text, meta, likeCount;
         View likeContainer, dislikeContainer;
 
+        // Local like state — toggled instantly on click
+        private boolean localLiked = false;
+        private long localLikeCount = 0L;
+        private String boundReplyId = null;
+
         ReplyVH(@NonNull View v) {
             super(v);
             avatar          = v.findViewById(R.id.reply_avatar);
@@ -90,12 +95,25 @@ public class RepliesAdapter extends ListAdapter<Reply, RepliesAdapter.ReplyVH> {
                     .error(R.drawable.demo_user)
                     .into(avatar);
 
-            long lc = r.like_count != null ? r.like_count : 0L;
-            if (likeCount != null) likeCount.setText(lc > 0 ? String.valueOf(lc) : "");
+            // Only reset local state when binding a NEW reply
+            boolean isNewReply = !r.reply_id.equals(boundReplyId);
+            if (isNewReply) {
+                boundReplyId = r.reply_id;
+                localLikeCount = r.like_count != null ? r.like_count : 0L;
+                if (listener != null) listener.checkLiked(r, liked -> {
+                    localLiked = liked;
+                    updateLikeIcon(localLiked);
+                });
+            }
 
-            if (listener != null) listener.checkLiked(r, liked -> updateLikeIcon(liked));
+            if (likeCount != null) likeCount.setText(localLikeCount > 0 ? String.valueOf(localLikeCount) : "");
+            updateLikeIcon(localLiked);
 
             View.OnClickListener likeClick = v -> {
+                localLiked = !localLiked;
+                localLikeCount = Math.max(0L, localLikeCount + (localLiked ? 1L : -1L));
+                updateLikeIcon(localLiked);
+                if (likeCount != null) likeCount.setText(localLikeCount > 0 ? String.valueOf(localLikeCount) : "");
                 if (listener != null) listener.onToggleLike(r);
             };
             if (likeContainer != null) likeContainer.setOnClickListener(likeClick);

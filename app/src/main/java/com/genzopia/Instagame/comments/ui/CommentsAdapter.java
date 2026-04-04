@@ -49,6 +49,35 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
         private boolean eq(Object a, Object b) { return a == b || (a != null && a.equals(b)); }
     };
 
+    /** Called externally (e.g. after posting a reply) to expand a comment's replies. */
+    public void expandReplies(String commentId) {
+        for (int i = 0; i < getCurrentList().size(); i++) {
+            Comment c = getCurrentList().get(i);
+            if (commentId.equals(c.comment_id)) {
+                // notifyItemChanged will trigger onBindViewHolder but ViewHolder keeps its state
+                // We need to find the ViewHolder directly
+                notifyItemChanged(i, "expand_replies");
+                break;
+            }
+        }
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull CommentVH h, int pos, @NonNull java.util.List<Object> payloads) {
+        if (!payloads.isEmpty() && "expand_replies".equals(payloads.get(0))) {
+            // Only expand replies, don't rebind everything
+            Comment c = getItem(pos);
+            if (c != null && !h.repliesExpanded) {
+                h.repliesExpanded = true;
+                if (h.repliesList != null) h.repliesList.setVisibility(View.VISIBLE);
+                h.updateViewRepliesLabel(c);
+                if (listener != null) listener.onLoadReplies(c, h.repliesList);
+            }
+            return;
+        }
+        super.onBindViewHolder(h, pos, payloads);
+    }
+
     @Override public long getItemId(int position) {
         Comment c = getItem(position);
         return c != null && c.comment_id != null ? c.comment_id.hashCode() : position;
@@ -68,6 +97,13 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
         View likeContainer, dislikeContainer;
         RecyclerView repliesList;
 
+        // Local like state — toggled instantly on click, not driven by adapter rebind
+        private boolean localLiked = false;
+        private long localLikeCount = 0L;
+        private String boundCommentId = null;
+        // Track replies expanded state per ViewHolder
+        private boolean repliesExpanded = false;
+
         CommentVH(@NonNull View v) {
             super(v);
             avatar        = v.findViewById(R.id.comment_avatar);
@@ -80,7 +116,6 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
             likeCount     = v.findViewById(R.id.comment_like_count);
             likeContainer = v.findViewById(R.id.comment_like_container);
             menuIcon      = v.findViewById(R.id.comment_menu);
-            dislikeContainer = v.findViewById(R.id.comment_dislike_container);
             repliesList   = v.findViewById(R.id.replies_list);
         }
 
@@ -100,15 +135,30 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
                     .error(R.drawable.demo_user)
                     .into(avatar);
 
-            // Like count
-            long count = c.like_count != null ? c.like_count : 0L;
-            if (likeCount != null) likeCount.setText(count > 0 ? String.valueOf(count) : "");
+            // Reset expanded state when binding a new comment
+            boolean isNewComment = !c.comment_id.equals(boundCommentId);
+            if (isNewComment) {
+                boundCommentId = c.comment_id;
+                localLikeCount = c.like_count != null ? c.like_count : 0L;
+                repliesExpanded = false;
+                if (repliesList != null) repliesList.setVisibility(View.GONE);
+                // Fetch initial liked state from ViewModel once
+                if (listener != null) listener.checkLiked(c, liked -> {
+                    localLiked = liked;
+                    updateLikeIcon(localLiked);
+                });
+            }
 
-            // Like state from ViewModel (via listener)
-            if (listener != null) listener.checkLiked(c, liked -> updateLikeIcon(liked));
+            // Always refresh count display from local state
+            if (likeCount != null) likeCount.setText(localLikeCount > 0 ? String.valueOf(localLikeCount) : "");
+            updateLikeIcon(localLiked);
 
-            // Like click — delegate to ViewModel (optimistic handled there)
+            // Like click — instant local toggle, fire ViewModel in background
             View.OnClickListener likeClick = v -> {
+                localLiked = !localLiked;
+                localLikeCount = Math.max(0L, localLikeCount + (localLiked ? 1L : -1L));
+                updateLikeIcon(localLiked);
+                if (likeCount != null) likeCount.setText(localLikeCount > 0 ? String.valueOf(localLikeCount) : "");
                 if (listener != null) listener.onToggleLike(c);
             };
             if (likeContainer != null) likeContainer.setOnClickListener(likeClick);
@@ -119,12 +169,24 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
                 if (listener != null) listener.onReply(c);
             });
 
-            // View replies
+            // View replies — toggle open/close
             boolean hasReplies = c.reply_count != null && c.reply_count > 0L;
             if (viewRepliesBtn != null) {
                 viewRepliesBtn.setVisibility(hasReplies ? View.VISIBLE : View.GONE);
+                updateViewRepliesLabel(c);
                 viewRepliesBtn.setOnClickListener(v -> {
-                    if (listener != null) listener.onLoadReplies(c, repliesList);
+                    if (repliesExpanded) {
+                        // Collapse
+                        repliesExpanded = false;
+                        if (repliesList != null) repliesList.setVisibility(View.GONE);
+                        updateViewRepliesLabel(c);
+                    } else {
+                        // Expand — load and show
+                        repliesExpanded = true;
+                        if (repliesList != null) repliesList.setVisibility(View.VISIBLE);
+                        updateViewRepliesLabel(c);
+                        if (listener != null) listener.onLoadReplies(c, repliesList);
+                    }
                 });
             }
 
@@ -132,6 +194,16 @@ public class CommentsAdapter extends ListAdapter<Comment, CommentsAdapter.Commen
             if (menuIcon != null) menuIcon.setOnClickListener(v -> {
                 if (listener != null) listener.onReport(c);
             });
+        }
+
+        void updateViewRepliesLabel(Comment c) {
+            if (viewRepliesBtn == null) return;
+            if (repliesExpanded) {
+                viewRepliesBtn.setText("Hide replies");
+            } else {
+                long count = c.reply_count != null ? c.reply_count : 0L;
+                viewRepliesBtn.setText("View " + count + (count == 1 ? " reply" : " replies"));
+            }
         }
 
         private void updateLikeIcon(boolean liked) {
