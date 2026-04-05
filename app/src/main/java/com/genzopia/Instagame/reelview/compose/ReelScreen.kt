@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
@@ -69,11 +70,6 @@ fun ReelScreen(
     val pagerState = rememberPagerState()
     val context = LocalContext.current
     var shouldPauseAll by remember { mutableStateOf(false) }
-    
-    // Convert paging items to list for preloading
-    val reelsList = remember(reels.itemCount) {
-        (0 until reels.itemCount).mapNotNull { reels[it] }
-    }
 
     // Initialize the player when the screen first appears
     LaunchedEffect(Unit) {
@@ -96,9 +92,10 @@ fun ReelScreen(
         }
     }
 
-    // Lifecycle observer for pause/resume
-    DisposableEffect(Unit) {
-        val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
+    // Lifecycle observer for pause/resume — use LocalLifecycleOwner (Fragment lifecycle)
+    // instead of casting context to LifecycleOwner (Activity), so it respects fragment navigation
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
@@ -116,9 +113,9 @@ fun ReelScreen(
                 else -> {}
             }
         }
-        lifecycleOwner?.lifecycle?.addObserver(observer)
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            lifecycleOwner?.lifecycle?.removeObserver(observer)
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 

@@ -1,5 +1,7 @@
 package com.genzopia.Instagame.reelview.compose
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
@@ -7,9 +9,7 @@ import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.genzopia.Instagame.utils.DataPrefetchService
 import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
@@ -31,12 +31,30 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     
     companion object {
         private const val TAG = "ReelPagingSource"
-        private const val PAGE_SIZE = 5  // Reduced from 10 for faster initial load
+        private const val PAGE_SIZE = 5
         
-        // Cache for signed URLs (video_id -> signed_url)
+        // In-memory signed URL cache (video_id -> url, timestamp)
         private val urlCache = mutableMapOf<String, Pair<String, Long>>()
-        private const val CACHE_DURATION = 3600000L // 1 hour in milliseconds
-        
+        private const val CACHE_DURATION = 3600000L // 1 hour
+
+        // Option 3: Persistent cache for HLS vs MP4 decision
+        // Key: "url_type_<videoId>" → "hls:<manifestUrl>" or "mp4"
+        // This survives app restarts — no HEAD probing on repeat visits
+        private var prefs: SharedPreferences? = null
+
+        fun init(context: Context) {
+            if (prefs == null) {
+                prefs = context.applicationContext
+                    .getSharedPreferences("reel_url_type_cache", Context.MODE_PRIVATE)
+            }
+        }
+
+        private fun getCachedUrlType(videoId: String): String? = prefs?.getString("url_type_$videoId", null)
+
+        private fun cacheUrlType(videoId: String, value: String) {
+            prefs?.edit()?.putString("url_type_$videoId", value)?.apply()
+        }
+
         fun getCachedUrl(videoId: String): String? {
             val cached = urlCache[videoId]
             return if (cached != null && System.currentTimeMillis() - cached.second < CACHE_DURATION) {
@@ -290,29 +308,42 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     
     private suspend fun fetchSignedUrl(videoId: String): Pair<String?, String?> {
         // Returns Pair(mp4Url, hlsManifestUrl)
-        // Check cache first
+        // Check in-memory cache first
         getCachedUrl(videoId)?.let { return Pair(it, null) }
 
         return withContext(Dispatchers.IO) {
             try {
-                // Mirror web's getSignedVideoUrlWithType():
-                // 1. Resolve base path: video/video_xxx  (strip extensions, add prefix)
-                val basePath = resolveVideoBasePath(videoId)
-                val hlsDir   = "${basePath}_hls"
-
-                // 2. Check if HLS manifest exists on the public R2 bucket (same as web HEAD check)
                 val R2_PUBLIC = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
-                val manifestName = checkHlsManifest(R2_PUBLIC, hlsDir)
+                val basePath = resolveVideoBasePath(videoId)
+                val hlsDir = "${basePath}_hls"
 
+                // Option 3: check persistent cache — skip HEAD probing entirely if we've seen this video before
+                val cachedType = getCachedUrlType(videoId)
+                if (cachedType != null) {
+                    if (cachedType.startsWith("hls:")) {
+                        val hlsUrl = cachedType.removePrefix("hls:")
+                        Log.d(TAG, "Video $videoId → HLS (persistent cache): $hlsUrl")
+                        return@withContext Pair(null, hlsUrl)
+                    } else {
+                        // "mp4" — go straight to signer, no HEAD check
+                        val mp4Url = fetchSignerUrl(videoId)
+                        Log.d(TAG, "Video $videoId → MP4 (persistent cache): $mp4Url")
+                        if (mp4Url != null) cacheUrl(videoId, mp4Url)
+                        return@withContext Pair(mp4Url, null)
+                    }
+                }
+
+                // First time seeing this video — do the HEAD check once, then persist the result
+                val manifestName = checkHlsManifest(R2_PUBLIC, hlsDir)
                 if (manifestName != null) {
-                    // HLS exists — build manifest URL directly from public R2
                     val hlsUrl = "$R2_PUBLIC/$hlsDir/$manifestName"
-                    Log.d(TAG, "Video $videoId → HLS: $hlsUrl")
+                    cacheUrlType(videoId, "hls:$hlsUrl") // persist so we never HEAD-check again
+                    Log.d(TAG, "Video $videoId → HLS (discovered): $hlsUrl")
                     Pair(null, hlsUrl)
                 } else {
-                    // No HLS — get signed MP4 URL from the signer worker
+                    cacheUrlType(videoId, "mp4") // persist: no HLS exists for this video
                     val mp4Url = fetchSignerUrl(videoId)
-                    Log.d(TAG, "Video $videoId → MP4: $mp4Url")
+                    Log.d(TAG, "Video $videoId → MP4 (discovered): $mp4Url")
                     if (mp4Url != null) cacheUrl(videoId, mp4Url)
                     Pair(mp4Url, null)
                 }

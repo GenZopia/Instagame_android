@@ -7,6 +7,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.paging.Pager
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class ReelViewModel : ViewModel() {
@@ -81,7 +84,7 @@ class ReelViewModel : ViewModel() {
             com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
         }
 
-        // Fallback: create fresh player
+        // Fallback: create fresh player — must run on main thread
         android.util.Log.d("ReelViewModel", "Creating fresh player for $videoId")
         return playerPool.getOrPut(videoId) { createPlayer(videoId, videoUrl) }
     }
@@ -89,10 +92,10 @@ class ReelViewModel : ViewModel() {
     private fun createPlayer(videoId: String, videoUrl: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                5000,   // min buffer
+                2000,   // min buffer — reduced from 5000
                 30000,  // max buffer
-                500,    // playback buffer - low for instant start
-                1000    // rebuffer
+                100,    // playback start threshold — reduced from 500 for instant start (Option 1)
+                500     // rebuffer threshold — reduced from 1000 (Option 1)
             )
             .build()
 
@@ -104,6 +107,9 @@ class ReelViewModel : ViewModel() {
                 setMediaItem(mediaItem)
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
                 volume = 1f
+                // Option 2: CLOSEST_SYNC seek — snaps to nearest keyframe instantly
+                // avoids decoding delay when seeking or starting mid-stream
+                setSeekParameters(SeekParameters.CLOSEST_SYNC)
                 prepare()
                 attachErrorRecovery(this, videoId, videoUrl)
             }
@@ -136,20 +142,28 @@ class ReelViewModel : ViewModel() {
 
     fun preloadVideos(currentIndex: Int, reels: List<ReelData>) {
         viewModelScope.launch {
-            for (i in 1..2) {
+            // Preload next 10 reels
+            for (i in 1..10) {
                 val nextIndex = currentIndex + i
                 if (nextIndex < reels.size) {
                     val reel = reels[nextIndex]
                     if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
-                        getPlayerForVideo(reel.videoId, reel.playbackUrl)
+                        withContext(Dispatchers.Main) {
+                            getPlayerForVideo(reel.videoId, reel.playbackUrl)
+                        }
                     }
                 }
             }
-            val prevIndex = currentIndex - 1
-            if (prevIndex >= 0) {
-                val reel = reels[prevIndex]
-                if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
-                    getPlayerForVideo(reel.videoId, reel.playbackUrl)
+            // Preload previous 10 reels
+            for (i in 1..10) {
+                val prevIndex = currentIndex - i
+                if (prevIndex >= 0) {
+                    val reel = reels[prevIndex]
+                    if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
+                        withContext(Dispatchers.Main) {
+                            getPlayerForVideo(reel.videoId, reel.playbackUrl)
+                        }
+                    }
                 }
             }
             cleanupDistantPlayers(currentIndex, reels)
@@ -157,7 +171,7 @@ class ReelViewModel : ViewModel() {
     }
     
     private fun cleanupDistantPlayers(currentIndex: Int, reels: List<ReelData>) {
-        val keepRange = (currentIndex - 2)..(currentIndex + 3)
+        val keepRange = (currentIndex - 10)..(currentIndex + 10)
         val idsToKeep = reels.filterIndexed { index, _ -> index in keepRange }
             .map { it.videoId }
             .toSet()

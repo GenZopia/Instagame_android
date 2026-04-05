@@ -22,6 +22,10 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class VideoUploadForegroundService extends Service {
     public static final String CHANNEL_ID = "video_upload_channel";
@@ -40,6 +44,8 @@ public class VideoUploadForegroundService extends Service {
 
     private boolean isCancelled = false;
     private int notificationId = 1001;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private Future<?> uploadFuture;
 
     @Nullable
     @Override
@@ -59,14 +65,21 @@ public class VideoUploadForegroundService extends Service {
             uploadVideo(title, description, gameId, videoUriString, fileExtension,devid);
         } else if (intent != null && ACTION_CANCEL.equals(intent.getAction())) {
             isCancelled = true;
+            if (uploadFuture != null) uploadFuture.cancel(true);
             stopForeground(true);
             stopSelf();
         }
         return START_NOT_STICKY;
     }
 
-    private void uploadVideo(String title, String description, String gameId, String videoUriString, String fileExtension,String devid) {
-        new Thread(() -> {
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        executor.shutdownNow();
+    }
+
+    private void uploadVideo(String title, String description, String gameId, String videoUriString, String fileExtension, String devid) {
+        uploadFuture = executor.submit(() -> {
             try {
                 String videoUniqueId = "video_" + UUID.randomUUID().toString().replace("-", "");
                 File originalFile = FileUtils.getFileFromUri(this, android.net.Uri.parse(videoUriString));
@@ -89,7 +102,7 @@ public class VideoUploadForegroundService extends Service {
                         "game_id", gameId
                 ), (success, response) -> {
                     if (success) {
-                        saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId,devid);
+                        saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId, devid);
                         renamedFile.delete();
                         showNotification(100, true);
                         sendResult("success");
@@ -109,7 +122,7 @@ public class VideoUploadForegroundService extends Service {
                 stopForeground(true);
                 stopSelf();
             }
-        }).start();
+        });
     }
 
     private void showNotification(int progress, boolean done) {

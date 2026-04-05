@@ -199,9 +199,14 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     private void handleLikeClick() {
         if (currentItem == null) return;
-        
+
+        com.google.firebase.auth.FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            Toast.makeText(itemView.getContext(), "Please login to like", Toast.LENGTH_SHORT).show();
+            return;
+        }
         String videoId = currentItem.id;
-        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        String currentUserId = user.getUid();
         
         // Prevent multiple rapid clicks
         if (likeButton.isEnabled()) {
@@ -315,9 +320,14 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
 
     private void handleFollowClick() {
         if (currentItem == null) return;
-        
-        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        String developerId = currentItem.developerId; // Use the actual developer ID
+
+        com.google.firebase.auth.FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            Toast.makeText(itemView.getContext(), "Please login to follow", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String currentUserId = user.getUid();
+        String developerId = currentItem.developerId;
         
         // Prevent following yourself
         if (currentUserId.equals(developerId)) {
@@ -553,9 +563,10 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
 
     private void checkIfLiked(String videoId) {
-        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        
-        // Use a more efficient approach - check if the user has liked this video
+        com.google.firebase.auth.FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
+        String currentUserId = user.getUid();
+
         DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
                 .getReference("users")
                 .child(currentUserId)
@@ -565,24 +576,26 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         userLikedVideosRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                boolean liked = snapshot.exists();
-                updateLikeUI(liked);
+                updateLikeUI(snapshot.exists());
             }
             
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                // On error, assume not liked
                 updateLikeUI(false);
             }
         });
     }
 
     private void checkFollowState(String developerId) {
-        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        
-        // Prevent checking if trying to follow yourself
+        com.google.firebase.auth.FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            followButton.setVisibility(View.VISIBLE);
+            return;
+        }
+        String currentUserId = user.getUid();
+
         if (currentUserId.equals(developerId)) {
-            followButton.setVisibility(View.GONE); // Hide follow button for own videos
+            followButton.setVisibility(View.GONE);
             return;
         }
         

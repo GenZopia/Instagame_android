@@ -26,6 +26,9 @@ class ReelComposeFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        // Option 3: init persistent URL-type cache so HEAD probing is skipped on repeat visits
+        ReelPagingSource.init(requireContext())
+
         return ComposeView(requireContext()).apply {
             // Dispose of the Composition when the view's LifecycleOwner is destroyed
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)

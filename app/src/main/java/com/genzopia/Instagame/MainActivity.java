@@ -83,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 
                 // Navigate to dashboard after a short delay to ensure activity is ready
-                new android.os.Handler().postDelayed(() -> {
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                     navigateToDashboard();
                 }, 1000);
             }

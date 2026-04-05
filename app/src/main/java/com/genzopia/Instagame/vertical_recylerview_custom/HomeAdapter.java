@@ -50,7 +50,6 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private List<ImageItem> profileItems = new ArrayList<>();
     private List<VideoItem> videoItems = new ArrayList<>();
     private Context context;
-    private final PlayerManager playerManager = PlayerManager.getInstance();
     private View.OnTouchListener globalTouchListener;
     private String currentlyPlayingVideoId = null;
     public boolean isLoading = false;
@@ -265,6 +264,12 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             android.util.Log.d("HomeAdapter", "Invalid position: " + position);
             return;
         }
+
+        // Guard: ignore tap if this position is already playing
+        if (position == currentPlayingPosition) {
+            android.util.Log.d("HomeAdapter", "Already playing at position: " + position);
+            return;
+        }
         
         // Check if we need to force a complete reset
         if (sharedPlayer != null) {
@@ -441,8 +446,8 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         // Reset all visible view holders
         resetAllVisibleViewHolders();
         
-        // Force notify data set changed to refresh all views
-        notifyDataSetChanged();
+        // Targeted notify — avoid full rebind of every item
+        notifyItemRangeChanged(0, getItemCount());
         
         android.util.Log.d("HomeAdapter", "Complete reset completed");
     }

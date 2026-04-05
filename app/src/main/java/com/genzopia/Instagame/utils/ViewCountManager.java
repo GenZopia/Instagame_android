@@ -88,47 +88,41 @@ public class ViewCountManager {
     }
     
     /**
-     * Increment view count in Firebase Realtime Database
-     * @param videoId The unique video ID
+     * Increment view count in Firebase Realtime Database using a transaction
+     * to prevent lost updates when multiple devices watch simultaneously.
      */
     private static void incrementViewCountInFirebase(String videoId) {
-        final String finalVideoId = videoId;
         DatabaseReference videoRef = FirebaseDatabase.getInstance()
                 .getReference("videos")
                 .child(videoId)
                 .child("view_count");
-        
-        videoRef.get().addOnCompleteListener(task -> {
-            if (task.isSuccessful()) {
-                String currentViewCount = task.getResult().getValue(String.class);
-                long newViewCount = 1; // Default to 1 if no previous count
-                
-                if (currentViewCount != null && !currentViewCount.isEmpty()) {
-                    try {
-                        newViewCount = Long.parseLong(currentViewCount) + 1;
-                    } catch (NumberFormatException e) {
-                        Log.e(TAG, "Error parsing view count: " + currentViewCount, e);
-                        newViewCount = 1;
-                    }
+
+        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+            @Override
+            public com.google.firebase.database.Transaction.Result doTransaction(
+                    com.google.firebase.database.MutableData mutableData) {
+                String current = mutableData.getValue(String.class);
+                long newCount = 1;
+                if (current != null && !current.isEmpty()) {
+                    try { newCount = Long.parseLong(current) + 1; }
+                    catch (NumberFormatException ignored) { newCount = 1; }
                 }
-                
-                final long finalNewViewCount = newViewCount;
-                
-                // Update the view count
-                videoRef.setValue(String.valueOf(newViewCount))
-                        .addOnSuccessListener(aVoid -> {
-                            Log.d(TAG, "Successfully incremented view count for video " + finalVideoId + 
-                                  " to " + finalNewViewCount);
-                        })
-                        .addOnFailureListener(e -> {
-                            Log.e(TAG, "Failed to increment view count for video " + finalVideoId, e);
-                            // Reset tracking so user can try again
-                            viewedVideos.remove(finalVideoId);
-                        });
-            } else {
-                Log.e(TAG, "Failed to get current view count for video " + finalVideoId, task.getException());
-                // Reset tracking so user can try again
-                viewedVideos.remove(finalVideoId);
+                mutableData.setValue(String.valueOf(newCount));
+                return com.google.firebase.database.Transaction.success(mutableData);
+            }
+
+            @Override
+            public void onComplete(com.google.firebase.database.DatabaseError error,
+                                   boolean committed,
+                                   com.google.firebase.database.DataSnapshot snapshot) {
+                if (committed && error == null) {
+                    Log.d(TAG, "View count incremented for " + videoId);
+                } else {
+                    Log.e(TAG, "View count transaction failed for " + videoId +
+                            (error != null ? ": " + error.getMessage() : ""));
+                    // Reset so the next playback can retry
+                    viewedVideos.remove(videoId);
+                }
             }
         });
     }

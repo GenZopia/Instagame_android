@@ -26,6 +26,9 @@ class DashboardFragmentCompose : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        // Init persistent URL-type cache (same as ReelComposeFragment)
+        com.genzopia.Instagame.reelview.compose.ReelPagingSource.init(requireContext())
+
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             

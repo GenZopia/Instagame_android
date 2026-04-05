@@ -121,7 +121,6 @@ object DataPrefetchService {
                     Log.e(TAG, "[$index] Player failed: $videoId", e)
                 }
             }
-            kotlinx.coroutines.delay(800)
             firstVideoReady = true
             Log.d(TAG, "All ${playerPool.size} players buffering")
         }
@@ -129,7 +128,7 @@ object DataPrefetchService {
 
     private fun buildPlayer(context: Context, url: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5000, 30000, 500, 1000)
+            .setBufferDurationsMs(2000, 30000, 100, 500) // Option 1: low thresholds for instant start
             .build()
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
@@ -138,11 +137,12 @@ object DataPrefetchService {
                 setMediaItem(MediaItem.fromUri(url))
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
                 volume = 0f
+                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC) // Option 2
                 prepare()
             }
     }
 
-    // ── URL resolution (HLS-first, 3 retries) ────────────────────────────────
+    // ── URL resolution (HLS-first, persistent cache, 3 retries) ─────────────
 
     private suspend fun fetchSignedUrl(videoId: String): String? {
         signedUrlCache[videoId]?.let { return it }
@@ -150,6 +150,13 @@ object DataPrefetchService {
         val R2 = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
         val base = resolveBasePath(videoId)
         val hlsDir = "${base}_hls"
+
+        // Option 3: check persistent cache from ReelPagingSource — skip HEAD probing
+        val cachedType = com.genzopia.Instagame.reelview.compose.ReelPagingSource.getCachedUrl(videoId)
+        if (cachedType != null) {
+            signedUrlCache[videoId] = cachedType
+            return cachedType
+        }
 
         repeat(3) { attempt ->
             try {

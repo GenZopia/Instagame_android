@@ -26,6 +26,7 @@ import kotlin.Unit;
 
 public class SplashActivity extends AppCompatActivity {
     private static final String TAG = "SplashActivity";
+    private static final long MAX_WAIT_MS = 8000; // 8s hard timeout — never hang forever
     private boolean hasNavigated = false;
     private boolean animationComplete = false;
     private boolean dataLoaded = false;
@@ -40,6 +41,16 @@ public class SplashActivity extends AppCompatActivity {
         
         // Start prefetching data immediately in background with callback
         startDataPrefetch();
+
+        // Hard timeout: if data never loads (bad network / Firebase cold start),
+        // navigate anyway after MAX_WAIT_MS so the user is never stuck forever
+        handler.postDelayed(() -> {
+            if (!hasNavigated) {
+                Log.w(TAG, "Timeout reached — navigating without full prefetch");
+                dataLoaded = true;
+                checkAndNavigate();
+            }
+        }, MAX_WAIT_MS);
 
         // Make splash fullscreen for immersive experience
         getWindow().getDecorView().setSystemUiVisibility(
