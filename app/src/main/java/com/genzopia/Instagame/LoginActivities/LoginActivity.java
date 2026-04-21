@@ -21,6 +21,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.MainActivity;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.databinding.ActivityLoginBinding;
@@ -42,7 +43,7 @@ import com.google.firebase.database.FirebaseDatabase;
 
 
 
-public class LoginActivity extends AppCompatActivity {
+public class LoginActivity extends BaseActivity {
 
     private ActivityLoginBinding binding;
     private FirebaseAuth firebaseAuth;

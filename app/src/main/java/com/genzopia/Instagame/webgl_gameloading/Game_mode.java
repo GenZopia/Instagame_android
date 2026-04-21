@@ -17,6 +17,7 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -40,7 +41,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class Game_mode extends AppCompatActivity {
+public class Game_mode extends BaseActivity {
     private static final String TAG = "Game_mode";
     private static final int CAMERA_PERMISSION_REQUEST = 100;
     private static final int MICROPHONE_PERMISSION_REQUEST = 101;

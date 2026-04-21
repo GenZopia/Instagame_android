@@ -10,6 +10,7 @@ import android.widget.Toast;
 
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 import androidx.core.content.ContextCompat;
 import com.genzopia.Instagame.R;
 import com.google.android.material.button.MaterialButton;
@@ -38,7 +39,7 @@ import android.widget.AutoCompleteTextView;
 import android.content.Context;
 import android.util.Log;
 
-public class VideoDetailActivity extends AppCompatActivity {
+public class VideoDetailActivity extends BaseActivity {
 
     // Result codes
     public static final int RESULT_VIDEO_DELETED = 1001;

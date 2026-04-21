@@ -22,6 +22,7 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 
 import com.genzopia.Instagame.R;
 import com.google.android.material.button.MaterialButton;
@@ -31,7 +32,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-public class VideoPreviewActivity extends AppCompatActivity {
+public class VideoPreviewActivity extends BaseActivity {
 
     private VideoView videoView;
     private MaterialButton uploadBtn;

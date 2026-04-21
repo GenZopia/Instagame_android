@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.genzopia.Instagame.common.BaseActivity
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.R
 import com.genzopia.Instagame.databinding.ActivityProfileCompletionBinding
@@ -19,7 +20,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import java.util.*
 
-class ProfileCompletionActivity : AppCompatActivity() {
+class ProfileCompletionActivity : BaseActivity() {
     private val TAG = "ProfileCompletion"
     
     private lateinit var binding: ActivityProfileCompletionBinding

@@ -14,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.AutoCompleteTextView;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.R;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
@@ -44,7 +45,7 @@ import android.content.Context;
 import android.content.IntentFilter;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-public class VideoUploadInfoActivity extends AppCompatActivity {
+public class VideoUploadInfoActivity extends BaseActivity {
     private VideoView videoView;
     private TextInputEditText inputTitle;
     private TextInputEditText inputDescription;
