@@ -16,3 +16,4 @@ local.properties
 
 # Sensitive config with API keys
 gradle.properties
+/.idea/deploymentTargetSelector.xml
