@@ -15,6 +15,7 @@ import android.text.InputType
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.TakePicture
 import androidx.appcompat.app.AppCompatActivity
+import com.genzopia.Instagame.common.BaseActivity
 import androidx.core.content.FileProvider
 import com.genzopia.Instagame.BuildConfig
 import com.genzopia.Instagame.MainActivity
@@ -35,7 +36,7 @@ import java.io.IOException
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-class RegisterActivity : AppCompatActivity(), AvatarBottomSheetFragment.Listener {
+class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
 
     private val TAG = "RegisterActivity"
 

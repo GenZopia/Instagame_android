@@ -6,12 +6,13 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.databinding.ActivityFullScreenImageBinding;
 
 
-public class FullScreenImageActivity extends AppCompatActivity {
+public class FullScreenImageActivity extends BaseActivity {
 
     private ActivityFullScreenImageBinding binding;
 

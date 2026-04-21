@@ -92,11 +92,12 @@ class ReelViewModel : ViewModel() {
     private fun createPlayer(videoId: String, videoUrl: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                2000,   // min buffer — reduced from 5000
+                1000,   // min buffer
                 30000,  // max buffer
-                100,    // playback start threshold — reduced from 500 for instant start (Option 1)
-                500     // rebuffer threshold — reduced from 1000 (Option 1)
+                50,     // playback start threshold — 50ms for near-instant start
+                200     // rebuffer threshold
             )
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         return ExoPlayer.Builder(appContext!!)

@@ -19,12 +19,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.util.UnstableApi;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
 import com.genzopia.Instagame.MainActivity;
+import com.genzopia.Instagame.common.BaseActivity;
 import com.google.firebase.auth.FirebaseAuth;
 import com.genzopia.Instagame.utils.DataPrefetchService;
 
 import kotlin.Unit;
 
-public class SplashActivity extends AppCompatActivity {
+public class SplashActivity extends BaseActivity {
     private static final String TAG = "SplashActivity";
     private static final long MAX_WAIT_MS = 8000; // 8s hard timeout — never hang forever
     private boolean hasNavigated = false;

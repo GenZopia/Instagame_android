@@ -13,6 +13,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import com.genzopia.Instagame.common.BaseActivity
 import com.genzopia.Instagame.R
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
@@ -25,7 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.Executors
 
 
-class ForgotPassword : AppCompatActivity() {
+class ForgotPassword : BaseActivity() {
 
     private lateinit var emailaddress: EditText
     private lateinit var resetPasswordButton: Button
