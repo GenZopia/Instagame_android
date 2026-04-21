@@ -164,10 +164,10 @@
                         android:hint="eg: 7822851019"
                         android:layout_weight="1"
                         android:inputType="phone"
-                        android:maxLength="15"
+                        android:maxLength="10"
                         android:digits="0123456789"
                         android:textColor="?attr/colorOnSurface"
-                        android:textColorHint="?attr/colorOnSurfaceVariant" />
+                        android:textColorHint="#9E9E9E" />
 
                 </LinearLayout>
             </com.google.android.material.textfield.TextInputLayout>

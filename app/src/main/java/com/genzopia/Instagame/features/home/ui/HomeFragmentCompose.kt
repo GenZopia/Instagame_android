@@ -10,17 +10,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import com.genzopia.Instagame.ui.home.compose.HomeScreen
 
 /**
  * Modern Home Fragment using Jetpack Compose
- * Replaces the old RecyclerView-based implementation
+ * Uses activityViewModels so the ViewModel (and its paging cache) survives
+ * fragment navigation — no reload when switching tabs and coming back.
  */
 class HomeFragmentCompose : Fragment() {
-    
-    private val viewModel: HomeViewModel by viewModels()
-    
+
+    // activityViewModels scopes to the Activity — survives fragment back-stack navigation
+    private val viewModel: HomeViewModel by activityViewModels()
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -28,7 +30,7 @@ class HomeFragmentCompose : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            
+
             setContent {
                 MaterialTheme {
                     Surface {

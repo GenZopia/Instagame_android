@@ -235,67 +235,44 @@ public class LoginActivity extends AppCompatActivity {
     void checkUserStatusAndNavigate() {
         FirebaseUser currentUser = mAuth.getCurrentUser();
         if (currentUser == null) {
-            // No user, go to login
             startActivity(new Intent(LoginActivity.this, LoginActivity.class));
             finish();
             return;
         }
-        
-        // Reload user to get latest verification status
-        currentUser.reload().addOnCompleteListener(reloadTask -> {
-            if (!reloadTask.isSuccessful()) {
-                Toast.makeText(LoginActivity.this, "Failed to verify user status", Toast.LENGTH_SHORT).show();
-                binding.btnLoginNow.clearAnimation();
-                binding.btnLoginNow.setText("Login");
-                return;
-            }
-            
-            // Check if email is verified
-            if (!currentUser.isEmailVerified()) {
-                // Email not verified, go to profile completion activity
-                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
-                finish();
-                return;
-            }
-            
-            // Check if profile data is complete
-            database.getReference()
-                    .child("users")
-                    .child(currentUser.getUid())
-                    .get()
-                    .addOnCompleteListener(task -> {
-                        if (task.isSuccessful() && task.getResult() != null) {
-                            if (!task.getResult().exists()) {
-                                // User data doesn't exist, go to profile completion
-                                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
-                                finish();
-                                return;
-                            }
-                            
-                            String dob = task.getResult().child("date_of_birth").getValue(String.class);
-                            String mobile = task.getResult().child("mobile_no").getValue(String.class);
-                            String fullName = task.getResult().child("full_name").getValue(String.class);
-                            
-                            boolean needsCompletion = (dob == null || dob.isEmpty()) ||
-                                    (mobile == null || mobile.isEmpty() || mobile.equals("-1")) ||
-                                    (fullName == null || fullName.isEmpty());
-                            
-                            if (needsCompletion) {
-                                // Profile incomplete, go to profile completion
-                                startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
-                                finish();
-                            } else {
-                                // Everything is complete, go to main activity
-                                startActivity(new Intent(LoginActivity.this, MainActivity.class));
-                                finish();
-                            }
-                        } else {
-                            // Error checking profile, go to profile completion to be safe
+
+        // Check if profile data is complete — no email verification check
+        database.getReference()
+                .child("users")
+                .child(currentUser.getUid())
+                .get()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        if (!task.getResult().exists()) {
                             startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
                             finish();
+                            return;
                         }
-                    });
-        });
+
+                        String dob = task.getResult().child("date_of_birth").getValue(String.class);
+                        String mobile = task.getResult().child("mobile_no").getValue(String.class);
+                        String fullName = task.getResult().child("full_name").getValue(String.class);
+
+                        boolean needsCompletion = (dob == null || dob.isEmpty()) ||
+                                (mobile == null || mobile.isEmpty() || mobile.equals("-1")) ||
+                                (fullName == null || fullName.isEmpty());
+
+                        if (needsCompletion) {
+                            startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                            finish();
+                        } else {
+                            startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                            finish();
+                        }
+                    } else {
+                        startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
+                        finish();
+                    }
+                });
     }
 
     public static String replacePeriods(String input) {

@@ -279,8 +279,14 @@ public class ProfileFragment extends Fragment {
     }
 
     private void showProfileMenu() {
-        // TODO: Implement menu UI and handle option selection
-        logout(); // Temporary: directly calling logout for now
+        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("Options")
+                .setItems(new String[]{"Logout"}, (dialog, which) -> {
+                    // only one item, so which == 0 is always logout
+                    logout();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
 

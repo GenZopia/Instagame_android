@@ -40,12 +40,12 @@ class HomePagingSource(
         // Cache for followed user IDs
         private var followedUserIdsCache: Set<String>? = null
         private var followedUserIdsCacheTime: Long = 0
-        private const val FOLLOWED_USERS_CACHE_DURATION = 60000L // 1 minute
+        private const val FOLLOWED_USERS_CACHE_DURATION = 1800000L // 30 minutes
 
         // Cache for all followed users' videos (parsed data, not DataSnapshot)
         private var allFollowedVideosCache: List<HomeVideoData>? = null
         private var allFollowedVideosCacheTime: Long = 0
-        private const val VIDEOS_CACHE_DURATION = 120000L // 2 minutes
+        private const val VIDEOS_CACHE_DURATION = 1800000L // 30 minutes
 
         fun getCachedUrl(videoId: String): String? {
             val cached = urlCache[videoId]
