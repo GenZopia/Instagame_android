@@ -32,10 +32,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.genzopia.Instagame.channel_view.ChannelActivity
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 
 private val Orange = Color(0xFFFF6B35)
 private val OrangeLight = Color(0xFFFF8C5A)
@@ -51,14 +47,16 @@ data class HomeGameItem(
 )
 
 @Composable
-fun HomeGamesSection(modifier: Modifier = Modifier) {
+fun HomeGamesSection(
+    games: List<HomeGameItem>,
+    isLoading: Boolean,
+    modifier: Modifier = Modifier
+) {
     val isDark = isSystemInDarkTheme()
     val bg = if (isDark) Color(0xFF0E0E0E) else Color(0xFFFAFAFA)
     val textColor = if (isDark) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
     val subColor = if (isDark) Color(0xFF9E9E9E) else Color(0xFF757575)
 
-    var games by remember { mutableStateOf<List<HomeGameItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
     var selectedGame by remember { mutableStateOf<HomeGameItem?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -69,66 +67,6 @@ fun HomeGamesSection(modifier: Modifier = Modifier) {
             it.developerName.contains(searchQuery, ignoreCase = true) ||
             it.description.contains(searchQuery, ignoreCase = true)
         }
-    }
-
-    LaunchedEffect(Unit) {
-        FirebaseDatabase.getInstance().getReference("games")
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val list = mutableListOf<HomeGameItem>()
-                    var pending = snapshot.childrenCount.toInt()
-                    if (pending == 0) { isLoading = false; return }
-
-                    for (gameSnap in snapshot.children) {
-                        val gameId = gameSnap.key ?: continue
-                        val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
-                        val description = gameSnap.child("description").getValue(String::class.java) ?: ""
-                        val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
-                        val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
-
-                        fun addGame(imageUrl: String, devName: String, devPhoto: String) {
-                            list.add(HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
-                            pending--
-                            if (pending == 0) { games = list.toList(); isLoading = false }
-                        }
-
-                        fun fetchWithPhoto(imageUrl: String) {
-                            if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }
-                            FirebaseDatabase.getInstance().getReference("users").child(devId)
-                                .addListenerForSingleValueEvent(object : ValueEventListener {
-                                    override fun onDataChange(userSnap: DataSnapshot) {
-                                        val devName = userSnap.child("full_name").getValue(String::class.java)
-                                            ?: userSnap.child("username").getValue(String::class.java) ?: "Developer"
-                                        val rawDevPhoto = userSnap.child("profile_photo_url").getValue(String::class.java) ?: ""
-                                        val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawDevPhoto) ?: ""
-                                        addGame(imageUrl, devName, devPhoto)
-                                    }
-                                    override fun onCancelled(e: DatabaseError) { addGame(imageUrl, "", "") }
-                                })
-                        }
-
-                        if (photoId.isNotEmpty()) {
-                            FirebaseDatabase.getInstance().getReference("photos").child(photoId)
-                                .addListenerForSingleValueEvent(object : ValueEventListener {
-                                    override fun onDataChange(photoSnap: DataSnapshot) {
-                                        val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
-                                            ?: photoSnap.child("file_name").getValue(String::class.java)
-                                                ?.substringAfterLast('.', "jpg")
-                                            ?: "jpg"
-                                        Thread {
-                                            val signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt)
-                                            fetchWithPhoto(signedUrl ?: "")
-                                        }.start()
-                                    }
-                                    override fun onCancelled(e: DatabaseError) { fetchWithPhoto("") }
-                                })
-                        } else {
-                            fetchWithPhoto("")
-                        }
-                    }
-                }
-                override fun onCancelled(e: DatabaseError) { isLoading = false }
-            })
     }
 
     if (isLoading || games.isEmpty()) return

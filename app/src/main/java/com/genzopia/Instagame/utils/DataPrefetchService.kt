@@ -90,7 +90,7 @@ object DataPrefetchService {
             }
             // prefetchVideos now calls onComplete itself once metadata is ready
             try {
-                prefetchVideos(context, 10, onComplete)
+                prefetchVideos(context, 30, onComplete)
             } catch (e: Exception) {
                 Log.e(TAG, "videos failed", e)
                 // Still notify so the splash doesn't hang if prefetch crashes
@@ -112,7 +112,7 @@ object DataPrefetchService {
      * as reel titles/names/photos are available, even if URLs are still resolving.
      */
     private suspend fun prefetchVideos(context: Context, count: Int, onMetadataReady: (() -> Unit)? = null) {
-        Log.d(TAG, "Querying Firebase for $count videos")
+        Log.d(TAG, "Querying Firebase for $count videos (will filter to verified only)")
         val snapshot = database.reference.child("videos").orderByKey().limitToFirst(count).get().await()
         Log.d(TAG, "Got ${snapshot.childrenCount} videos from Firebase")
 
@@ -120,6 +120,19 @@ object DataPrefetchService {
         data class RawVideo(val index: Int, val videoId: String, val title: String, val userId: String, val gameId: String)
         val rawVideos = snapshot.children.mapIndexedNotNull { index, snap ->
             val videoId = snap.key ?: return@mapIndexedNotNull null
+            // Only prefetch verified videos
+            val isVerifiedRaw = snap.child("is_verified").value
+            val isVerified = when (isVerifiedRaw) {
+                is Boolean -> isVerifiedRaw
+                is String  -> isVerifiedRaw.equals("true", ignoreCase = true)
+                is Long    -> isVerifiedRaw == 1L
+                is Int     -> isVerifiedRaw == 1
+                else       -> false
+            }
+            if (!isVerified) {
+                Log.d(TAG, "Prefetch: skipping unverified video $videoId")
+                return@mapIndexedNotNull null
+            }
             val title  = snap.child("video_title").getValue(String::class.java) ?: ""
             val userId = snap.child("user_id").getValue(String::class.java) ?: ""
             val gameId = snap.child("game_id").getValue(String::class.java) ?: ""

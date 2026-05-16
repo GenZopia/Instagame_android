@@ -32,6 +32,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     companion object {
         private const val TAG = "ReelPagingSource"
         private const val PAGE_SIZE = 5
+        private const val FETCH_SIZE = 20  // fetch more to account for unverified videos being filtered out
         
         // In-memory signed URL cache (video_id -> url, timestamp)
         private val urlCache = mutableMapOf<String, Pair<String, Long>>()
@@ -91,16 +92,16 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 Log.d(TAG, "Cache empty, loading from Firebase")
             }
             
-            // Query Firebase for videos
+            // Query Firebase for videos — fetch more than PAGE_SIZE to account for unverified ones
             val query = if (startKey == null) {
                 database.reference.child("videos")
                     .orderByKey()
-                    .limitToFirst(PAGE_SIZE)
+                    .limitToFirst(FETCH_SIZE)
             } else {
                 database.reference.child("videos")
                     .orderByKey()
                     .startAfter(startKey)
-                    .limitToFirst(PAGE_SIZE)
+                    .limitToFirst(FETCH_SIZE)
             }
             
             // Fetch videos from Firebase
@@ -117,12 +118,14 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             
             val reels = mutableListOf<ReelData>()
             var lastKey: String? = null
-            
-            // Parse all videos first
+            var rawCount = 0
+
+            // Parse all videos first — lastKey tracks ALL fetched keys for correct pagination cursor
             for (videoSnapshot in snapshot.children) {
                 val videoId = videoSnapshot.key ?: continue
-                lastKey = videoId
-                
+                lastKey = videoId  // always advance cursor, even for unverified videos
+                rawCount++
+
                 try {
                     val reel = parseVideoSnapshot(videoSnapshot)
                     if (reel != null) {
@@ -154,12 +157,13 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 }.map { it.await() }
             }
             
-            Log.d(TAG, "Loaded ${reelsWithUrls.size} reels, nextKey: $lastKey")
-            
+            Log.d(TAG, "Fetched $rawCount raw videos, ${reelsWithUrls.size} verified, nextKey: $lastKey")
+
             LoadResult.Page(
                 data = reelsWithUrls,
                 prevKey = null,
-                nextKey = if (reelsWithUrls.size < PAGE_SIZE) null else lastKey
+                // Stop pagination only when Firebase returned fewer items than we asked for
+                nextKey = if (rawCount < FETCH_SIZE) null else lastKey
             )
 
             
@@ -176,7 +180,21 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     
     private suspend fun parseVideoSnapshot(snapshot: DataSnapshot): ReelData? {
         val videoId = snapshot.key ?: return null
-        
+
+        // Only show verified videos
+        val isVerifiedRaw = snapshot.child("is_verified").value
+        val isVerified = when (isVerifiedRaw) {
+            is Boolean -> isVerifiedRaw
+            is String  -> isVerifiedRaw.equals("true", ignoreCase = true)
+            is Long    -> isVerifiedRaw == 1L
+            is Int     -> isVerifiedRaw == 1
+            else       -> false
+        }
+        if (!isVerified) {
+            Log.d(TAG, "Skipping unverified video: $videoId")
+            return null
+        }
+
         val title = snapshot.child("video_title").getValue(String::class.java) ?: "Untitled"
         val description = snapshot.child("description").getValue(String::class.java) ?: ""
         val likeCount = snapshot.child("like_count").getValue(Long::class.java).toString() ?: "0"

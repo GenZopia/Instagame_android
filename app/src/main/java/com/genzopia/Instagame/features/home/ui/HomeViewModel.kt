@@ -58,8 +58,90 @@ class HomeViewModel : ViewModel() {
     private val _followedUsersLoading = MutableStateFlow(true)
     val followedUsersLoading = _followedUsersLoading.asStateFlow()
 
+    // Games list — loaded once, survives fragment navigation
+    private val _games = MutableStateFlow<List<com.genzopia.Instagame.features.home.ui.HomeGameItem>>(emptyList())
+    val games = _games.asStateFlow()
+    private val _gamesLoading = MutableStateFlow(true)
+    val gamesLoading = _gamesLoading.asStateFlow()
+
     init {
         loadFollowedUsers()
+        loadGames()
+    }
+
+    fun loadGames() {
+        // Already loaded — don't reload
+        if (_games.value.isNotEmpty()) return
+
+        _gamesLoading.value = true
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
+
+        db.getReference("games").addListenerForSingleValueEvent(object :
+            com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val list = mutableListOf<com.genzopia.Instagame.features.home.ui.HomeGameItem>()
+                var pending = snapshot.childrenCount.toInt()
+                if (pending == 0) { _gamesLoading.value = false; return }
+
+                for (gameSnap in snapshot.children) {
+                    val gameId = gameSnap.key
+                    if (gameId == null) {
+                        pending--
+                        if (pending == 0) { _games.value = list.toList(); _gamesLoading.value = false }
+                        continue
+                    }
+                    val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
+                    val description = gameSnap.child("description").getValue(String::class.java) ?: ""
+                    val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
+                    val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+
+                    fun addGame(imageUrl: String, devName: String, devPhoto: String) {
+                        synchronized(list) {
+                            list.add(com.genzopia.Instagame.features.home.ui.HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
+                            pending--
+                            if (pending == 0) { _games.value = list.toList(); _gamesLoading.value = false }
+                        }
+                    }
+
+                    fun fetchWithPhoto(imageUrl: String) {
+                        if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }
+                        db.getReference("users").child(devId)
+                            .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                override fun onDataChange(userSnap: com.google.firebase.database.DataSnapshot) {
+                                    val devName = userSnap.child("full_name").getValue(String::class.java)
+                                        ?: userSnap.child("username").getValue(String::class.java) ?: "Developer"
+                                    val rawDevPhoto = userSnap.child("profile_photo_url").getValue(String::class.java) ?: ""
+                                    val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawDevPhoto) ?: ""
+                                    addGame(imageUrl, devName, devPhoto)
+                                }
+                                override fun onCancelled(e: com.google.firebase.database.DatabaseError) { addGame(imageUrl, "", "") }
+                            })
+                    }
+
+                    if (photoId.isNotEmpty()) {
+                        db.getReference("photos").child(photoId)
+                            .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                override fun onDataChange(photoSnap: com.google.firebase.database.DataSnapshot) {
+                                    val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
+                                        ?: photoSnap.child("file_name").getValue(String::class.java)
+                                            ?.substringAfterLast('.', "jpg")
+                                        ?: "jpg"
+                                    Thread {
+                                        val signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt)
+                                        fetchWithPhoto(signedUrl ?: "")
+                                    }.start()
+                                }
+                                override fun onCancelled(e: com.google.firebase.database.DatabaseError) { fetchWithPhoto("") }
+                            })
+                    } else {
+                        fetchWithPhoto("")
+                    }
+                }
+            }
+            override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
+                _gamesLoading.value = false
+            }
+        })
     }
 
     private fun loadFollowedUsers() {

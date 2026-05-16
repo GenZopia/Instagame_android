@@ -60,6 +60,8 @@ fun HomeScreen(
 
     val followedUsers by viewModel.followedUsers.collectAsState()
     val followedUsersLoading by viewModel.followedUsersLoading.collectAsState()
+    val games by viewModel.games.collectAsState()
+    val gamesLoading by viewModel.gamesLoading.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.initializePlayer(context) }
 
@@ -110,7 +112,7 @@ fun HomeScreen(
 
         // ── Games grid ─────────────────────────────────────────────────────────
         item(key = "games_section") {
-            HomeGamesSection()
+            HomeGamesSection(games = games, isLoading = gamesLoading)
         }
 
         // ── Videos section header ──────────────────────────────────────────────
