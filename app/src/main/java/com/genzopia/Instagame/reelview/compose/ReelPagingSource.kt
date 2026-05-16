@@ -420,6 +420,8 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                 hlsManifestUrl = if (isHls) url else null,
                 title = meta.title,
                 developerId = meta.userId,
+                developerName = meta.developerName,
+                developerPhotoUrl = meta.developerPhotoUrl,
                 gameId = meta.gameId
             )
         }

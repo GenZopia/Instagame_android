@@ -12,8 +12,11 @@ import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -43,7 +46,9 @@ object DataPrefetchService {
         val title: String,
         val userId: String,
         val gameId: String,
-        val signedUrl: String? = null
+        val signedUrl: String? = null,
+        val developerName: String = "",
+        val developerPhotoUrl: String? = null
     )
 
     fun isFirstVideoReady(): Boolean = firstVideoReady
@@ -89,7 +94,7 @@ object DataPrefetchService {
             } catch (e: Exception) {
                 Log.e(TAG, "videos failed", e)
                 // Still notify so the splash doesn't hang if prefetch crashes
-                kotlinx.coroutines.withContext(Dispatchers.Main) { onComplete?.invoke() }
+                withContext(Dispatchers.Main) { onComplete?.invoke() }
             }
             followJob.join()
             Log.d(TAG, "Background prefetch done")
@@ -99,36 +104,73 @@ object DataPrefetchService {
     // ── Video prefetch ────────────────────────────────────────────────────────
 
     /**
-     * Phase 1 – fetch video metadata from Firebase (fast, just key/value reads).
+     * Phase 1 – fetch video metadata + developer info from Firebase in parallel.
      * Phase 2 – resolve signed URLs in parallel (network, can be slow).
      * Phase 3 – create ExoPlayers on the main thread (CPU only).
      *
      * [onMetadataReady] is called after Phase 1 so the splash can navigate as soon
-     * as reel titles/names are available, even if URLs are still resolving.
+     * as reel titles/names/photos are available, even if URLs are still resolving.
      */
     private suspend fun prefetchVideos(context: Context, count: Int, onMetadataReady: (() -> Unit)? = null) {
         Log.d(TAG, "Querying Firebase for $count videos")
         val snapshot = database.reference.child("videos").orderByKey().limitToFirst(count).get().await()
         Log.d(TAG, "Got ${snapshot.childrenCount} videos from Firebase")
 
-        val entries = snapshot.children.mapIndexedNotNull { index, snap ->
+        // Collect raw video data first (no network calls yet)
+        data class RawVideo(val index: Int, val videoId: String, val title: String, val userId: String, val gameId: String)
+        val rawVideos = snapshot.children.mapIndexedNotNull { index, snap ->
             val videoId = snap.key ?: return@mapIndexedNotNull null
-            val title   = snap.child("video_title").getValue(String::class.java) ?: ""
-            val userId  = snap.child("user_id").getValue(String::class.java) ?: ""
-            val gameId  = snap.child("game_id").getValue(String::class.java) ?: ""
-            val meta    = VideoMetadata(videoId, title, userId, gameId)
-            // Store metadata immediately — titles are available right away
-            videoCache[videoId] = meta
-            Triple(index, videoId, meta)
+            val title  = snap.child("video_title").getValue(String::class.java) ?: ""
+            val userId = snap.child("user_id").getValue(String::class.java) ?: ""
+            val gameId = snap.child("game_id").getValue(String::class.java) ?: ""
+            RawVideo(index, videoId, title, userId, gameId)
         }
 
-        Log.d(TAG, "Phase 1 complete — ${entries.size} reel titles cached")
+        // Phase 1: fetch developer info for all videos in parallel
+        val entries: List<Triple<Int, String, VideoMetadata>> = coroutineScope {
+            rawVideos.map { raw ->
+                async {
+                    val (devName, devPhoto) = if (raw.userId.isNotEmpty()) {
+                        try {
+                            val userSnap = database.reference.child("users").child(raw.userId).get().await()
+                            val name = userSnap.child("full_name").getValue(String::class.java)
+                                ?: userSnap.child("name").getValue(String::class.java)
+                                ?: userSnap.child("username").getValue(String::class.java)
+                                ?: "User"
+                            val rawPhoto = userSnap.child("profile_photo_url").getValue(String::class.java)
+                                ?: userSnap.child("profile_image_url").getValue(String::class.java)
+                                ?: userSnap.child("photoUrl").getValue(String::class.java)
+                            val photo = ProfilePhotoUtils.sanitize(rawPhoto)
+                            Pair(name, photo)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "fetchDeveloperInfo failed for ${raw.userId}", e)
+                            Pair("User", null as String?)
+                        }
+                    } else {
+                        Pair("User", null as String?)
+                    }
+
+                    val meta = VideoMetadata(
+                        videoId = raw.videoId,
+                        title = raw.title,
+                        userId = raw.userId,
+                        gameId = raw.gameId,
+                        developerName = devName,
+                        developerPhotoUrl = devPhoto
+                    )
+                    videoCache[raw.videoId] = meta
+                    Triple(raw.index, raw.videoId, meta)
+                }
+            }.map { it.await() }
+        }
+
+        Log.d(TAG, "Phase 1 complete — ${entries.size} reels with developer info cached")
 
         // ── Phase 1 done: metadata is ready → unblock the splash screen ──────
-        kotlinx.coroutines.withContext(Dispatchers.Main) { onMetadataReady?.invoke() }
+        withContext(Dispatchers.Main) { onMetadataReady?.invoke() }
 
         // ── Phase 2: resolve URLs in parallel (continues after navigation) ───
-        kotlinx.coroutines.coroutineScope {
+        coroutineScope {
             entries.map { (index, videoId, meta) ->
                 launch {
                     try {
@@ -143,7 +185,7 @@ object DataPrefetchService {
         }
 
         // ── Phase 3: create ExoPlayers on main thread ─────────────────────────
-        kotlinx.coroutines.withContext(Dispatchers.Main) {
+        withContext(Dispatchers.Main) {
             val appCtx = context.applicationContext
             entries.forEach { (index, videoId, _) ->
                 val url = signedUrlCache[videoId] ?: return@forEach
@@ -163,7 +205,7 @@ object DataPrefetchService {
 
     private fun buildPlayer(context: Context, url: String): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2000, 30000, 100, 500) // Option 1: low thresholds for instant start
+            .setBufferDurationsMs(2000, 30000, 100, 500)
             .build()
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
@@ -172,7 +214,7 @@ object DataPrefetchService {
                 setMediaItem(MediaItem.fromUri(url))
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
                 volume = 0f
-                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC) // Option 2
+                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                 prepare()
             }
     }
@@ -186,7 +228,7 @@ object DataPrefetchService {
         val base = resolveBasePath(videoId)
         val hlsDir = "${base}_hls"
 
-        // Option 3: check persistent cache from ReelPagingSource — skip HEAD probing
+        // Check persistent cache from ReelPagingSource — skip HEAD probing
         val cachedType = com.genzopia.Instagame.reelview.compose.ReelPagingSource.getCachedUrl(videoId)
         if (cachedType != null) {
             signedUrlCache[videoId] = cachedType
@@ -201,9 +243,11 @@ object DataPrefetchService {
                     Log.d(TAG, "[$videoId] HLS: $url")
                     return url
                 }
-                val resp = httpClient.newCall(Request.Builder()
-                    .url("https://video-signer.genzopia.workers.dev/?path=video/$videoId")
-                    .build()).execute()
+                val resp = httpClient.newCall(
+                    Request.Builder()
+                        .url("https://video-signer.genzopia.workers.dev/?path=video/$videoId")
+                        .build()
+                ).execute()
                 val body = resp.body?.string()
                 resp.close()
                 val json = body?.let { JSONObject(it) }
@@ -235,7 +279,9 @@ object DataPrefetchService {
     private fun checkHlsManifest(r2Base: String, hlsDir: String): String? {
         for (name in listOf("master.m3u8", "1080p.m3u8", "playlist.m3u8", "index.m3u8")) {
             try {
-                val resp = httpClient.newCall(Request.Builder().url("$r2Base/$hlsDir/$name").head().build()).execute()
+                val resp = httpClient.newCall(
+                    Request.Builder().url("$r2Base/$hlsDir/$name").head().build()
+                ).execute()
                 resp.close()
                 if (resp.isSuccessful) return name
             } catch (_: Exception) {}
