@@ -27,7 +27,7 @@ import kotlin.Unit;
 
 public class SplashActivity extends BaseActivity {
     private static final String TAG = "SplashActivity";
-    private static final long MAX_WAIT_MS = 8000; // 8s hard timeout — never hang forever
+    private static final long MAX_WAIT_MS = 20000; // 20s hard timeout — gives slow connections time to load reel metadata
     private boolean hasNavigated = false;
     private boolean animationComplete = false;
     private boolean dataLoaded = false;

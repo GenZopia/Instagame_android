@@ -179,7 +179,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         
         val title = snapshot.child("video_title").getValue(String::class.java) ?: "Untitled"
         val description = snapshot.child("description").getValue(String::class.java) ?: ""
-        val likeCount = snapshot.child("like_count").getValue(String::class.java) ?: "0"
+        val likeCount = snapshot.child("like_count").getValue(Long::class.java).toString() ?: "0"
         val developerId = snapshot.child("user_id").getValue(String::class.java) ?: ""
         val gameId = snapshot.child("game_id").getValue(String::class.java) ?: ""
         
@@ -401,27 +401,30 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     /**
      * Instant load from in-memory prefetch cache — zero network calls.
      * Returns ReelData built entirely from DataPrefetchService caches.
+     * Reels whose signed URL hasn't resolved yet are still included (videoUrl = null)
+     * so titles and metadata are always visible; the player will resolve the URL lazily.
      */
+    @OptIn(UnstableApi::class)
     private fun tryLoadFromPrefetchCache(): List<ReelData> {
         val cached = DataPrefetchService.getAllCachedVideos()
         if (cached.isEmpty()) {
             Log.d(TAG, "Prefetch cache empty")
             return emptyList()
         }
-        val reels = cached.values.mapNotNull { meta ->
-            val url = DataPrefetchService.getCachedSignedUrl(meta.videoId) ?: return@mapNotNull null
-            // Determine if it's HLS by checking the URL extension
-            val isHls = url.contains(".m3u8")
+        val reels = cached.values.map { meta ->
+            val url = DataPrefetchService.getCachedSignedUrl(meta.videoId)
+            val isHls = url?.contains(".m3u8") == true
             ReelData(
                 videoId = meta.videoId,
-                videoUrl = if (isHls) null else url,
+                videoUrl = if (isHls || url == null) null else url,
                 hlsManifestUrl = if (isHls) url else null,
                 title = meta.title,
                 developerId = meta.userId,
                 gameId = meta.gameId
             )
         }
-        Log.d(TAG, "Returning ${reels.size} reels from prefetch cache INSTANTLY (0 network calls)")
+        val withUrl = reels.count { it.videoUrl != null || it.hlsManifestUrl != null }
+        Log.d(TAG, "Returning ${reels.size} reels from prefetch cache ($withUrl with URLs, 0 network calls)")
         return reels
     }
 }

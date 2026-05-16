@@ -66,20 +66,47 @@ object DataPrefetchService {
 
     // ── Public entry point ────────────────────────────────────────────────────
 
+    /**
+     * Starts prefetching data in the background.
+     *
+     * [onComplete] is called on the main thread only after video metadata (titles, names)
+     * has been fetched from Firebase — so the reel list is always populated before
+     * navigation. URL resolution continues in the background after navigation.
+     *
+     * On slow connections the metadata fetch itself may be slow, but the splash
+     * hard-timeout in SplashActivity still guarantees the user is never stuck forever.
+     */
     fun startPrefetch(context: Context, onComplete: (() -> Unit)? = null) {
         Log.d(TAG, "startPrefetch: firing background jobs")
         scope.launch {
-            try { prefetchFollowedUsers() } catch (e: Exception) { Log.e(TAG, "followedUsers failed", e) }
-            try { prefetchVideos(context, 10) } catch (e: Exception) { Log.e(TAG, "videos failed", e) }
+            // Run both in parallel; followedUsers is best-effort
+            val followJob = launch {
+                try { prefetchFollowedUsers() } catch (e: Exception) { Log.e(TAG, "followedUsers failed", e) }
+            }
+            // prefetchVideos now calls onComplete itself once metadata is ready
+            try {
+                prefetchVideos(context, 10, onComplete)
+            } catch (e: Exception) {
+                Log.e(TAG, "videos failed", e)
+                // Still notify so the splash doesn't hang if prefetch crashes
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onComplete?.invoke() }
+            }
+            followJob.join()
             Log.d(TAG, "Background prefetch done")
         }
-        // Return immediately — navigation is driven by splash animation, not data
-        scope.launch(Dispatchers.Main) { onComplete?.invoke() }
     }
 
     // ── Video prefetch ────────────────────────────────────────────────────────
 
-    private suspend fun prefetchVideos(context: Context, count: Int) {
+    /**
+     * Phase 1 – fetch video metadata from Firebase (fast, just key/value reads).
+     * Phase 2 – resolve signed URLs in parallel (network, can be slow).
+     * Phase 3 – create ExoPlayers on the main thread (CPU only).
+     *
+     * [onMetadataReady] is called after Phase 1 so the splash can navigate as soon
+     * as reel titles/names are available, even if URLs are still resolving.
+     */
+    private suspend fun prefetchVideos(context: Context, count: Int, onMetadataReady: (() -> Unit)? = null) {
         Log.d(TAG, "Querying Firebase for $count videos")
         val snapshot = database.reference.child("videos").orderByKey().limitToFirst(count).get().await()
         Log.d(TAG, "Got ${snapshot.childrenCount} videos from Firebase")
@@ -89,10 +116,18 @@ object DataPrefetchService {
             val title   = snap.child("video_title").getValue(String::class.java) ?: ""
             val userId  = snap.child("user_id").getValue(String::class.java) ?: ""
             val gameId  = snap.child("game_id").getValue(String::class.java) ?: ""
-            Triple(index, videoId, VideoMetadata(videoId, title, userId, gameId))
+            val meta    = VideoMetadata(videoId, title, userId, gameId)
+            // Store metadata immediately — titles are available right away
+            videoCache[videoId] = meta
+            Triple(index, videoId, meta)
         }
 
-        // Resolve all URLs in parallel
+        Log.d(TAG, "Phase 1 complete — ${entries.size} reel titles cached")
+
+        // ── Phase 1 done: metadata is ready → unblock the splash screen ──────
+        kotlinx.coroutines.withContext(Dispatchers.Main) { onMetadataReady?.invoke() }
+
+        // ── Phase 2: resolve URLs in parallel (continues after navigation) ───
         kotlinx.coroutines.coroutineScope {
             entries.map { (index, videoId, meta) ->
                 launch {
@@ -107,7 +142,7 @@ object DataPrefetchService {
             }.forEach { it.join() }
         }
 
-        // Create ExoPlayers on main thread
+        // ── Phase 3: create ExoPlayers on main thread ─────────────────────────
         kotlinx.coroutines.withContext(Dispatchers.Main) {
             val appCtx = context.applicationContext
             entries.forEach { (index, videoId, _) ->

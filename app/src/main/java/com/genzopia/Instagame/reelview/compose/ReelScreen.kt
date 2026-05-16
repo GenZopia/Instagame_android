@@ -1,14 +1,13 @@
 package com.genzopia.Instagame.reelview.compose
 
 import ReelViewModel
-import VideoPlayer
+import com.genzopia.Instagame.VideoPlayer
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*

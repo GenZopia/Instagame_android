@@ -118,7 +118,7 @@ public class VideosFragment extends Fragment {
                 
                 if (snapshot.exists()) {
                     String title = snapshot.child("video_title").getValue(String.class);
-                    String viewCount = snapshot.child("view_count").getValue(String.class);
+                    String viewCount = String.valueOf(snapshot.child("view_count").getValue(Long.class));
                     
                     // Handle is_verified field - it might be stored as String or Boolean
                     Boolean isVerified = null;

@@ -345,8 +345,8 @@ public class VideoDetailActivity extends BaseActivity {
                     String title = snapshot.child("video_title").getValue(String.class);
                     String description = snapshot.child("description").getValue(String.class);
                     String gameId = snapshot.child("game_id").getValue(String.class);
-                    String viewCount = snapshot.child("view_count").getValue(String.class);
-                    String likeCount = snapshot.child("like_count").getValue(String.class);
+                    String viewCount = String.valueOf(snapshot.child("view_count").getValue(Long.class));
+                    String likeCount = String.valueOf(snapshot.child("like_count").getValue(Long.class));
                     String shareCount = snapshot.child("share_count").getValue(String.class);
                     String createdAt = snapshot.child("created_at").getValue(String.class);
                     isVerified = snapshot.child("is_verified").getValue(Boolean.class);
