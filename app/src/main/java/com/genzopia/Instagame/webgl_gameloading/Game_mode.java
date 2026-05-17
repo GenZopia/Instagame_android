@@ -75,14 +75,14 @@ public class Game_mode extends BaseActivity {
         // Get current user ID from Firebase Auth
         currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
 
-        // Retrieve intent extras - only game_id now
+        // Retrieve intent extras
         gameId = getIntent().getStringExtra("game_id");
         
         // Log the received values for debugging
         Log.d(TAG, "Game ID: " + gameId);
         Log.d(TAG, "Current User ID: " + currentUserId);
 
-        // Fetch game data to get the user_id and orientation, then get signed game URL
+        // Fetch game data to get the user_id, orientation, and game_link
         fetchGameDataAndGetSignedUrl();
     }
 
@@ -102,15 +102,25 @@ public class Game_mode extends BaseActivity {
                 if (snapshot.exists()) {
                     String gameUserId = snapshot.child("user_id").getValue(String.class);
                     String orientation = snapshot.child("orientation").getValue(String.class);
+                    String gameLink = snapshot.child("game_link").getValue(String.class);
                     
                     Log.d(TAG, "Game user_id from Firebase: " + gameUserId);
                     Log.d(TAG, "Game orientation from Firebase: " + orientation);
+                    Log.d(TAG, "Game link from Firebase: " + gameLink);
                     
                     // Set screen orientation based on Firebase data
                     setScreenOrientation(orientation);
                     
-                    if (gameUserId != null && !gameUserId.isEmpty()) {
-                        // Now get the signed game URL using the game's user_id
+                    // If game_link is available, load it directly — skip the worker
+                    if (gameLink != null && !gameLink.isEmpty()) {
+                        Log.d(TAG, "Using direct game_link: " + gameLink);
+                        runOnUiThread(() -> {
+                            if (!isFinishing() && !isDestroyed()) {
+                                setupWebView(gameLink);
+                            }
+                        });
+                    } else if (gameUserId != null && !gameUserId.isEmpty()) {
+                        // No game_link — fall back to signed URL from worker
                         getSignedGameUrl(gameUserId);
                     } else {
                         Log.e(TAG, "Game user_id is null or empty");
