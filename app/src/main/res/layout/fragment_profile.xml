@@ -249,13 +249,28 @@
             android:textSize="14sp"
             android:textColor="?android:attr/textColorPrimary"
             android:fontFamily="@font/inter_medium"
+            android:maxLines="3"
+            android:ellipsize="end"
             android:paddingLeft="2dp" />
+
+        <TextView
+            android:id="@+id/bioExpand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/bio"
+            app:layout_constraintStart_toStartOf="@id/bio"
+            android:layout_marginTop="2dp"
+            android:text="more"
+            android:textSize="13sp"
+            android:textColor="@color/instagram_orange"
+            android:fontFamily="@font/inter_medium"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/website"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toBottomOf="@id/bio"
+            app:layout_constraintTop_toBottomOf="@id/bioExpand"
             app:layout_constraintStart_toStartOf="@id/bio"
             app:layout_constraintEnd_toEndOf="@id/bio"
             android:layout_marginTop="6dp"
@@ -265,7 +280,21 @@
             android:fontFamily="@font/inter_bold"
             android:paddingLeft="2dp" />
 
-        <!-- Phone number (optional) - shown when available -->
+        <TextView
+            android:id="@+id/story"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/website"
+            app:layout_constraintStart_toStartOf="@id/bio"
+            app:layout_constraintEnd_toEndOf="@id/bio"
+            android:layout_marginTop="4dp"
+            android:text="Add your story"
+            android:textSize="13sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:fontFamily="@font/inter_medium"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:paddingLeft="2dp" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

@@ -32,6 +32,8 @@ public class ChannelActivity extends BaseActivity {
     private CircleImageView profileImage;
     private TextView channelName;
     private TextView subscriberCount;
+    private TextView channelWebsite;
+    private TextView channelStory;
     private ImageView bannerImage;
     private Button followButton;
     private boolean isFollowing = false;
@@ -58,6 +60,8 @@ public class ChannelActivity extends BaseActivity {
         subscriberCount = findViewById(R.id.subscriberCount);
         bannerImage     = findViewById(R.id.bannerImage);
         followButton    = findViewById(R.id.followButton);
+        channelWebsite  = findViewById(R.id.channelWebsite);
+        channelStory    = findViewById(R.id.channelStory);
 
         TextView tabGames   = findViewById(R.id.tabGames);
         TextView tabVideos  = findViewById(R.id.tabVideos);
@@ -208,6 +212,18 @@ public class ChannelActivity extends BaseActivity {
 
                 subscriberCount.setText(formatCount(followersCount.intValue()) + " followers  •  "
                         + videoCount + " videos  •  " + gameCount + " games");
+
+                String website = snapshot.child("website").getValue(String.class);
+                if (website != null && !website.isEmpty()) {
+                    channelWebsite.setText(website);
+                    channelWebsite.setVisibility(android.view.View.VISIBLE);
+                }
+
+                String story = snapshot.child("story").getValue(String.class);
+                if (story != null && !story.isEmpty()) {
+                    channelStory.setText(story);
+                    channelStory.setVisibility(android.view.View.VISIBLE);
+                }
             }
 
             @Override

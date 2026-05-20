@@ -88,7 +88,7 @@
                 android:layout_height="wrap_content"
                 android:hint="Phone (optional)"
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_marginBottom="20dp">
+                android:layout_marginBottom="12dp">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/inputPhone"
@@ -96,6 +96,22 @@
                     android:layout_height="wrap_content"
                     android:inputType="phone"
                     android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Story (max 30 words)"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputStory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textMultiLine"
+                    android:minLines="2"
+                    android:maxLines="4" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.button.MaterialButton

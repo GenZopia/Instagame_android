@@ -72,6 +72,24 @@
                             android:textSize="13sp"
                             android:textColor="?android:attr/textColorSecondary"/>
 
+                        <TextView
+                            android:id="@+id/channelWebsite"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textSize="13sp"
+                            android:textColor="@color/instagram_orange"
+                            android:visibility="gone"/>
+
+                        <TextView
+                            android:id="@+id/channelStory"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textSize="13sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:visibility="gone"/>
+
                         <!-- Follow Button -->
                         <Button
                             android:id="@+id/followButton"

@@ -29,7 +29,7 @@ import java.util.Map;
 public class EditProfileActivity extends BaseActivity {
 
     private MaterialToolbar topAppBar;
-    private TextInputEditText inputFullName, inputBio, inputWebsite, inputPhone;
+    private TextInputEditText inputFullName, inputBio, inputWebsite, inputPhone, inputStory;
     private MaterialButton btnSave;
     private ProgressBar progressBar;
 
@@ -48,6 +48,7 @@ public class EditProfileActivity extends BaseActivity {
         inputBio = findViewById(R.id.inputBio);
         inputWebsite = findViewById(R.id.inputWebsite);
         inputPhone = findViewById(R.id.inputPhone);
+        inputStory = findViewById(R.id.inputStory);
         btnSave = findViewById(R.id.btnSave);
         progressBar = findViewById(R.id.progressBar);
 
@@ -87,11 +88,13 @@ public class EditProfileActivity extends BaseActivity {
                     String bio = snapshot.child("bio").getValue(String.class);
                     String website = snapshot.child("website").getValue(String.class);
                     String phone = snapshot.child("mobile_no").getValue(String.class);
+                    String story = snapshot.child("story").getValue(String.class);
 
                     inputFullName.setText(fullName != null ? fullName : "");
                     inputBio.setText(bio != null ? bio : "");
                     inputWebsite.setText(website != null ? website : "");
                     inputPhone.setText(phone != null ? phone : "");
+                    inputStory.setText(story != null ? story : "");
                 }
                 progressBar.setVisibility(View.GONE);
             }
@@ -110,10 +113,17 @@ public class EditProfileActivity extends BaseActivity {
         String bio = inputBio.getText() != null ? inputBio.getText().toString().trim() : "";
         String website = inputWebsite.getText() != null ? inputWebsite.getText().toString().trim() : "";
         String phone = inputPhone.getText() != null ? inputPhone.getText().toString().trim() : "";
+        String story = inputStory.getText() != null ? inputStory.getText().toString().trim() : "";
 
         if (android.text.TextUtils.isEmpty(fullName)) {
             inputFullName.setError("Full name required");
             inputFullName.requestFocus();
+            return;
+        }
+
+        if (!story.isEmpty() && story.split("\\s+").length > 30) {
+            inputStory.setError("Story must be 30 words or less");
+            inputStory.requestFocus();
             return;
         }
 
@@ -128,6 +138,7 @@ public class EditProfileActivity extends BaseActivity {
         updates.put("bio", bio);
         updates.put("website", websiteFinal);
         updates.put("phone", phone);
+        updates.put("story", story);
 
         userRef.updateChildren(updates).addOnCompleteListener(task -> {
             progressBar.setVisibility(View.GONE);

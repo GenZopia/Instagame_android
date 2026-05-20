@@ -80,17 +80,13 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
         try { binding.btnVerifyEmail.visibility = View.GONE } catch (_: Exception) {}
         try { binding.imgEmailVerified.visibility = View.GONE } catch (_: Exception) {}
 
-        try {
-            binding.ccp.registerCarrierNumberEditText(binding.txtMobileNumber)
-        } catch (e: Exception) {
-            Log.w(TAG, "CCP register failed: ${e.message}")
-            binding.txtMobileNumber.filters = arrayOf(InputFilter.LengthFilter(10))
-        }
+        binding.txtMobileNumber.filters = arrayOf(InputFilter.LengthFilter(10))
 
         binding.profilePicture.setOnClickListener { getContent.launch("image/*") }
         binding.avatarPlus.setOnClickListener { getContent.launch("image/*") }
         binding.btnChooseAvatar.setOnClickListener {
-            AvatarBottomSheetFragment().show(supportFragmentManager, "avatarPicker")
+//            AvatarBottomSheetFragment().show(supportFragmentManager, "avatarPicker")
+            Toast.makeText(this, "Comming Soon", Toast.LENGTH_SHORT).show()
         }
 
         try {
@@ -177,6 +173,10 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
         if (email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ||
             fullName.isEmpty() || dob.isEmpty() || mobileNo.isEmpty()) {
             Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (mobileNo.length != 10) {
+            Toast.makeText(this, "Mobile number must be 10 digits", Toast.LENGTH_SHORT).show()
             return false
         }
         if (password != confirmPassword) {

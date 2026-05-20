@@ -39,10 +39,10 @@ public class ProfileFragment extends Fragment {
     private FirebaseAuth auth;
     private SharedPreferences sharedPreferences;
     private CircleImageView profileImage;
-    private TextView usernameTop, bio, website;
+    private TextView usernameTop, bio, bioExpand, website, story;
     private TextView phoneText;
     private TextView postsCount, followersCount, followingCount;
-    private MaterialButton editProfileBtn;
+    private MaterialButton editProfileBtn, genzLabBtn;
     private ImageView menuIcon, videos_ff, games_ff, details_ff;
     private DatabaseReference userRef;
     private ValueEventListener userListener;
@@ -66,7 +66,9 @@ public class ProfileFragment extends Fragment {
         profileImage = view.findViewById(R.id.profileImage);
         usernameTop = view.findViewById(R.id.usernameTop);
         bio = view.findViewById(R.id.bio);
+        bioExpand = view.findViewById(R.id.bioExpand);
         website = view.findViewById(R.id.website);
+        story = view.findViewById(R.id.story);
 
 
         // Stats section
@@ -76,6 +78,7 @@ public class ProfileFragment extends Fragment {
         
         // Buttons and icons
         editProfileBtn = view.findViewById(R.id.editProfileBtn);
+        genzLabBtn = view.findViewById(R.id.genzLabBtn);
         menuIcon = view.findViewById(R.id.menuIcon);
         
 
@@ -170,12 +173,36 @@ public class ProfileFragment extends Fragment {
         profileImage.setOnClickListener(v -> openFullScreenImage());
         
         editProfileBtn.setOnClickListener(v -> {
-            // Open EditProfileActivity to allow editing full name, bio, website, and phone
             Intent intent = new Intent(getActivity(), EditProfileActivity.class);
             startActivity(intent);
         });
 
+        website.setOnClickListener(v -> {
+            Intent intent = new Intent(getActivity(), EditProfileActivity.class);
+            startActivity(intent);
+        });
+
+        story.setOnClickListener(v -> {
+            Intent intent = new Intent(getActivity(), EditProfileActivity.class);
+            startActivity(intent);
+        });
+
+        bioExpand.setOnClickListener(v -> {
+            if (bio.getMaxLines() == 3) {
+                bio.setMaxLines(Integer.MAX_VALUE);
+                bio.setEllipsize(null);
+                bioExpand.setText("less");
+            } else {
+                bio.setMaxLines(3);
+                bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                bioExpand.setText("more");
+            }
+        });
+
         menuIcon.setOnClickListener(v -> showProfileMenu());
+
+        genzLabBtn.setOnClickListener(v ->
+                Toast.makeText(getContext(), "Coming soon!", Toast.LENGTH_SHORT).show());
 
         // Tab click listeners
         videos_ff.setOnClickListener(v -> switchTab("Videos"));
@@ -249,8 +276,20 @@ public class ProfileFragment extends Fragment {
                 // Bio and website
                 String userBio = dataSnapshot.child("bio").getValue(String.class);
                 String userWebsite = dataSnapshot.child("website").getValue(String.class);
+                String userStory = dataSnapshot.child("story").getValue(String.class);
                 bio.setText(userBio != null ? userBio : "Add a bio to tell your story!");
+                bio.setMaxLines(3);
+                bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                bio.post(() -> {
+                    if (bio.getLayout() != null && bio.getLayout().getLineCount() > 3) {
+                        bioExpand.setVisibility(View.VISIBLE);
+                        bioExpand.setText("more");
+                    } else {
+                        bioExpand.setVisibility(View.GONE);
+                    }
+                });
                 website.setText(userWebsite != null ? userWebsite : "Add your website");
+                story.setText(userStory != null ? userStory : "Add your story");
 
                 // Stats
                 long posts = dataSnapshot.child("posts").getChildrenCount();
@@ -279,14 +318,12 @@ public class ProfileFragment extends Fragment {
     }
 
     private void showProfileMenu() {
-        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                .setTitle("Options")
-                .setItems(new String[]{"Logout"}, (dialog, which) -> {
-                    // only one item, so which == 0 is always logout
-                    logout();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        com.google.android.material.bottomsheet.BottomSheetDialog sheet =
+                new com.google.android.material.bottomsheet.BottomSheetDialog(requireContext());
+        android.view.View v = getLayoutInflater().inflate(R.layout.bottom_sheet_profile_menu, null);
+        v.findViewById(R.id.menuLogout).setOnClickListener(x -> { sheet.dismiss(); logout(); });
+        sheet.setContentView(v);
+        sheet.show();
     }
 
 

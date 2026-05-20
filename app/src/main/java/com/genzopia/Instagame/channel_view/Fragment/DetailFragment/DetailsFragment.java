@@ -39,10 +39,7 @@ public class DetailsFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        tvBio            = view.findViewById(R.id.tvBio);
-        tvFollowersCount = view.findViewById(R.id.tvFollowersCount);
-        tvVideosCount    = view.findViewById(R.id.tvVideosCount);
-        tvGamesCount     = view.findViewById(R.id.tvGamesCount);
+
 
         recyclerView = view.findViewById(R.id.linksRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
@@ -97,17 +94,20 @@ public class DetailsFragment extends Fragment {
                         String dob = snapshot.child("date_of_birth").getValue(String.class);
                         String website = snapshot.child("website").getValue(String.class);
                         String location = snapshot.child("location").getValue(String.class);
+                        String story = snapshot.child("story").getValue(String.class);
 
                         if (username != null && !username.isEmpty())
                             linkList.add(new LinkItem("Username", "@" + username));
                         if (email != null && !email.isEmpty())
                             linkList.add(new LinkItem("Email", email));
                         if (dob != null && !dob.isEmpty())
-                            linkList.add(new LinkItem("Joined", dob));
+                            linkList.add(new LinkItem("Birthday", dob));
                         if (website != null && !website.isEmpty())
                             linkList.add(new LinkItem("Website", website));
                         if (location != null && !location.isEmpty())
                             linkList.add(new LinkItem("Location", location));
+                        if (story != null && !story.isEmpty())
+                            linkList.add(new LinkItem("Story", story));
 
                         adapter.notifyDataSetChanged();
                     }
