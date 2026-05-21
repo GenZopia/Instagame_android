@@ -133,6 +133,12 @@
             android:foregroundServiceType="dataSync"
             tools:ignore="ForegroundServicePermission" />
 
+        <!-- Privacy Policy screen — shown once after login until accepted -->
+        <activity
+            android:name=".LoginActivities.PrivacyPolicyActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- Edit profile activity -->
         <activity
             android:name=".ui.profile.EditProfileActivity"

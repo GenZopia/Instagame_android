@@ -23,8 +23,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.MainActivity;
-import com.genzopia.Instagame.R;
-import com.genzopia.Instagame.databinding.ActivityLoginBinding;
+import com.genzopia.Instagame.R;import com.genzopia.Instagame.databinding.ActivityLoginBinding;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 
@@ -266,7 +265,12 @@ public class LoginActivity extends BaseActivity {
                             startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
                             finish();
                         } else {
-                            startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                            // Show privacy policy once; skip if already accepted
+                            if (PrivacyPolicyActivity.hasAccepted(LoginActivity.this)) {
+                                startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                            } else {
+                                startActivity(PrivacyPolicyActivity.newIntent(LoginActivity.this));
+                            }
                             finish();
                         }
                     } else {

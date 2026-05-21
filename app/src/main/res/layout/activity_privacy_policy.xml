@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/colorBackground"
+        app:elevation="0dp">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Privacy Policy &amp; Terms"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold" />
+
+        </androidx.appcompat.widget.Toolbar>
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- Scrollable content -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:clipToPadding="false"
+        android:paddingBottom="160dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp">
+
+            <!-- App icon + header -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingBottom="24dp">
+
+                <ImageView
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:src="@mipmap/ic_launcher_round"
+                    android:contentDescription="App icon" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Welcome to Instagame"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:fontFamily="@font/inter_bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Please read and accept our Privacy Policy and Terms of Service before continuing."
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:gravity="center"
+                    android:lineSpacingMultiplier="1.4" />
+
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/border_light"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Data We Collect -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Data We Collect"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="We collect the following information to provide and improve our services:\n\n• Account information: name, email address, date of birth, mobile number, and profile photo.\n\n• Content you create: videos, comments, and interactions (likes, follows, shares) you make on the platform.\n\n• Device information: device type, operating system version, and unique device identifiers for analytics and crash reporting.\n\n• Usage data: how you interact with the app, including videos watched, features used, and time spent."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: How We Use Your Data -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2. How We Use Your Data"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Your data is used to:\n\n• Create and manage your account.\n\n• Display your profile and content to other users.\n\n• Personalise your feed and recommendations.\n\n• Send notifications about activity on your account.\n\n• Improve app performance, fix bugs, and develop new features.\n\n• Comply with legal obligations.\n\nWe do not sell your personal data to third parties."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Content & Videos -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3. Content &amp; Videos"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Videos and content you upload are stored on our servers and may be visible to other users of the platform. By uploading content you confirm:\n\n• You own or have the right to share the content.\n\n• The content does not violate any laws or third-party rights.\n\n• The content does not contain harmful, abusive, or illegal material.\n\nWe reserve the right to remove content that violates these terms."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Data Storage & Security -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4. Data Storage &amp; Security"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Your data is stored securely using Firebase (Google) and Cloudflare R2 infrastructure. We use industry-standard encryption for data in transit and at rest. While we take reasonable precautions, no system is completely secure and we cannot guarantee absolute security."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Your Rights -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="5. Your Rights"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="You have the right to:\n\n• Access the personal data we hold about you.\n\n• Request correction of inaccurate data.\n\n• Request deletion of your account and associated data.\n\n• Withdraw consent at any time by deleting your account.\n\nTo exercise these rights, contact us at privacy@genzopia.com."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Third-Party Services -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="6. Third-Party Services"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="We use the following third-party services which have their own privacy policies:\n\n• Firebase (Google) — authentication, database, analytics, and crash reporting.\n\n• Cloudflare R2 — video and image storage.\n\n• Google Play Services — app distribution and updates."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Children's Privacy -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="7. Children\'s Privacy"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Instagame is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Section: Changes to Policy -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="8. Changes to This Policy"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="We may update this Privacy Policy from time to time. We will notify you of significant changes through the app. Continued use of the app after changes constitutes acceptance of the updated policy.\n\nLast updated: May 2025"
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Contact -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="9. Contact Us"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:fontFamily="@font/inter_bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="If you have any questions about this Privacy Policy or how we handle your data, please contact us at:\n\nprivacy@genzopia.com"
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="8dp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Fixed bottom accept bar -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="bottom"
+        android:background="?android:attr/colorBackground"
+        android:elevation="8dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="20dp">
+
+        <!-- Divider above bottom bar -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/border_light"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Checkbox row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <CheckBox
+                android:id="@+id/checkboxAccept"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/primaryColor"
+                android:layout_marginEnd="10dp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="I have read and agree to the Privacy Policy and Terms of Service"
+                android:textSize="13sp"
+                android:textColor="?android:attr/textColorPrimary"
+                android:lineSpacingMultiplier="1.3" />
+
+        </LinearLayout>
+
+        <!-- Accept button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAccept"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="Accept &amp; Continue"
+            android:textSize="15sp"
+            android:enabled="false"
+            app:backgroundTint="@color/primaryColor" />
+
+        <!-- Decline link -->
+        <TextView
+            android:id="@+id/tvDecline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Decline — I don\'t want to use Instagame"
+            android:textSize="13sp"
+            android:textColor="@color/secondaryText"
+            android:gravity="center"
+            android:padding="4dp" />
+
+    </LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

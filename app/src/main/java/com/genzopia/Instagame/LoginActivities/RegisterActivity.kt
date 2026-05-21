@@ -322,7 +322,13 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
                     binding.btnRegisterProgress.visibility = View.GONE
                     binding.btnRegister.text = registerBtnOriginalText
                     Toast.makeText(this, "Registration successful", Toast.LENGTH_SHORT).show()
-                    startActivity(Intent(this, MainActivity::class.java))
+                    // Show privacy policy on first launch; skip if already accepted
+                    val next = if (PrivacyPolicyActivity.hasAccepted(this)) {
+                        Intent(this, MainActivity::class.java)
+                    } else {
+                        PrivacyPolicyActivity.newIntent(this)
+                    }
+                    startActivity(next)
                     finish()
                 }
             }

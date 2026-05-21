@@ -301,7 +301,13 @@ class ProfileCompletionActivity : BaseActivity() {
     }
     
     private fun goToMainActivity() {
-        startActivity(Intent(this, MainActivity::class.java))
+        // Show privacy policy once; skip if already accepted
+        val next = if (PrivacyPolicyActivity.hasAccepted(this)) {
+            Intent(this, MainActivity::class.java)
+        } else {
+            PrivacyPolicyActivity.newIntent(this)
+        }
+        startActivity(next)
         finish()
     }
 }
