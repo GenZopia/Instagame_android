@@ -152,6 +152,27 @@ public class SplashActivity extends BaseActivity {
         Intent intent = new Intent(SplashActivity.this,
                 isLoggedIn ? MainActivity.class : LoginActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+
+        // Forward deep link video ID if launched from a share link
+        android.net.Uri data = getIntent().getData();
+        if (data != null) {
+            String videoId = null;
+            String scheme = data.getScheme();
+            String host = data.getHost();
+
+            if ("https".equals(scheme) && "instagame.genzopia.com".equals(host)) {
+                // HTTPS App Link: https://instagame.genzopia.com/video/{videoId}
+                videoId = data.getLastPathSegment();
+            } else if ("instagame".equals(scheme) && "video".equals(host)) {
+                // Custom URI scheme: instagame://video/{videoId}
+                videoId = data.getLastPathSegment();
+            }
+
+            if (videoId != null && !videoId.isEmpty()) {
+                intent.putExtra("deep_link_video_id", videoId);
+            }
+        }
+
         startActivity(intent);
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         finish();

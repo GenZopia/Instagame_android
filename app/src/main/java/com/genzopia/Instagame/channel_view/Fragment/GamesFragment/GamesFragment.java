@@ -143,7 +143,9 @@ public class GamesFragment extends Fragment {
                                 // Resolve signed URL on background thread
                                 new Thread(() -> {
                                     String signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt);
-                                    addGameItem(gameName, description, signedUrl != null ? signedUrl : "", playStoreUrl);
+                                    final String url = signedUrl != null ? signedUrl : "";
+                                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                                        addGameItem(gameName, description, url, playStoreUrl));
                                 }).start();
                             }
                             @Override

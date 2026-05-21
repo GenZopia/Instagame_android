@@ -68,7 +68,21 @@ public class MainActivity extends BaseActivity {
         if (intent != null) {
             boolean shouldNavigateToDashboard = intent.getBooleanExtra("navigate_to_dashboard", false);
             String videoIdToPlay = intent.getStringExtra("play_video_id");
-            
+
+            // Handle deep link video ID forwarded from SplashActivity
+            String deepLinkVideoId = intent.getStringExtra("deep_link_video_id");
+            if (deepLinkVideoId != null && !deepLinkVideoId.isEmpty()) {
+                intent.removeExtra("deep_link_video_id");
+                com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
+                    .setPendingVideoId(deepLinkVideoId);
+                com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
+                    .setShouldPlayInReelView(true);
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    navigateToDashboard();
+                }, 1000);
+                return;
+            }
+
             if (shouldNavigateToDashboard) {
                 // Clear the flags
                 intent.removeExtra("navigate_to_dashboard");

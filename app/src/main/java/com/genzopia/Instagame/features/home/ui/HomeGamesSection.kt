@@ -69,7 +69,14 @@ fun HomeGamesSection(
         }
     }
 
-    if (isLoading || games.isEmpty()) return
+    if (isLoading || games.isEmpty()) {
+        if (isLoading) {
+            Box(modifier = modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Orange, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
+            }
+        }
+        return
+    }
 
     Column(modifier = modifier.fillMaxWidth().background(bg)) {
 

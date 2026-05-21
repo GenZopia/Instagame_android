@@ -289,21 +289,26 @@ fun ReelItem(
                 detectTapGestures(
                     onDoubleTap = {
                         if (reel.gameId.isNotEmpty()) {
-                            val intent = Intent(
-                                context,
-                                com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java
-                            )
+                            val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
                             intent.putExtra("game_id", reel.gameId)
                             context.startActivity(intent)
                         } else {
-                            android.widget.Toast.makeText(
-                                context,
-                                "No game associated with this video",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                            android.widget.Toast.makeText(context, "No game associated with this video", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 )
+            }
+            .pointerInput(player) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitFirstDown(requireUnconsumed = false)
+                        player?.playWhenReady = false
+                        do {
+                            val event = awaitPointerEvent()
+                        } while (event.changes.any { it.pressed })
+                        player?.playWhenReady = true
+                    }
+                }
             }
     ) {
         if (player != null) {
@@ -647,15 +652,43 @@ fun ReelOverlay(
                 icon = Icons.Filled.Share,
                 text = "Share",
                 onClick = {
+                    // Deep link: opens the app directly if installed,
+                    // falls back to Play Store if not installed
+                    val deepLink = "https://instagame.genzopia.com/video/${reel.videoId}"
+                    val customSchemeLink = "instagame://video/${reel.videoId}"
+                    val playStoreUrl = "https://play.google.com/store/apps/details?id=com.genzopia.Instagame"
+                    val shareText = buildString {
+                        append("🎮 Check out \"${reel.title}\" on Instagame!\n\n")
+                        append(deepLink)
+                        append("\n\nOpen in app: ")
+                        append(customSchemeLink)
+                        append("\n\nDon't have the app? Download it here:\n")
+                        append(playStoreUrl)
+                    }
                     val shareIntent = Intent().apply {
                         action = Intent.ACTION_SEND
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            "Check out this video: ${reel.title}\nVideo ID: ${reel.videoId}"
-                        )
+                        putExtra(Intent.EXTRA_TEXT, shareText)
                         type = "text/plain"
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share video"))
+
+                    // Increment share count in Firebase
+                    com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                        .child("videos").child(reel.videoId).child("share_count")
+                        .runTransaction(object : com.google.firebase.database.Transaction.Handler {
+                            override fun doTransaction(
+                                currentData: com.google.firebase.database.MutableData
+                            ): com.google.firebase.database.Transaction.Result {
+                                val count = currentData.getValue(Int::class.java) ?: 0
+                                currentData.value = count + 1
+                                return com.google.firebase.database.Transaction.success(currentData)
+                            }
+                            override fun onComplete(
+                                error: com.google.firebase.database.DatabaseError?,
+                                committed: Boolean,
+                                snapshot: com.google.firebase.database.DataSnapshot?
+                            ) { /* no-op */ }
+                        })
                 }
             )
         }

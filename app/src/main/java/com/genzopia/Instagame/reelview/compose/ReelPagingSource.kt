@@ -197,7 +197,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
 
         val title = snapshot.child("video_title").getValue(String::class.java) ?: "Untitled"
         val description = snapshot.child("description").getValue(String::class.java) ?: ""
-        val likeCount = snapshot.child("like_count").getValue(Long::class.java).toString() ?: "0"
+        val likeCount = snapshot.child("like_count").getValue(String::class.java) ?: "0"
         val developerId = snapshot.child("user_id").getValue(String::class.java) ?: ""
         val gameId = snapshot.child("game_id").getValue(String::class.java) ?: ""
         
