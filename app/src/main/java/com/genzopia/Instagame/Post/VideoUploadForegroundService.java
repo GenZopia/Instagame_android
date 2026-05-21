@@ -60,21 +60,23 @@ public class VideoUploadForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && ACTION_UPLOAD.equals(intent.getAction())) {
+        if (intent == null) { stopSelf(); return START_REDELIVER_INTENT; }
+        if (ACTION_UPLOAD.equals(intent.getAction())) {
             String title = intent.getStringExtra(EXTRA_TITLE);
             String description = intent.getStringExtra(EXTRA_DESCRIPTION);
             String gameId = intent.getStringExtra(EXTRA_GAME_ID);
             String videoUriString = intent.getStringExtra(EXTRA_VIDEO_URI);
             String fileExtension = intent.getStringExtra(EXTRA_FILE_EXTENSION);
-            String devid=intent.getStringExtra(DEVID);
-            uploadVideo(title, description, gameId, videoUriString, fileExtension,devid);
-        } else if (intent != null && ACTION_CANCEL.equals(intent.getAction())) {
+            String devid = intent.getStringExtra(DEVID);
+            showNotification(0, false); // must call startForeground immediately
+            uploadVideo(title, description, gameId, videoUriString, fileExtension, devid);
+        } else if (ACTION_CANCEL.equals(intent.getAction())) {
             isCancelled = true;
             if (uploadFuture != null) uploadFuture.cancel(true);
             stopForeground(true);
             stopSelf();
         }
-        return START_NOT_STICKY;
+        return START_REDELIVER_INTENT;
     }
 
     @Override
@@ -98,7 +100,6 @@ public class VideoUploadForegroundService extends Service {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     java.nio.file.Files.copy(originalFile.toPath(), renamedFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
-                showNotification(0, false);
                 // Upload to Cloudflare with real progress
                 FileUploader.uploadFileToWorker(renamedFile, "video", Map.of(
                         "video_id", videoUniqueId,

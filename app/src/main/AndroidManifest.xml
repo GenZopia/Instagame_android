@@ -116,6 +116,7 @@
         <service
             android:name=".Post.VideoUploadForegroundService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync"
             tools:ignore="ForegroundServicePermission" />
 
