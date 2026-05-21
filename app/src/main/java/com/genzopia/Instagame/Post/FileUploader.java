@@ -25,13 +25,7 @@ public class FileUploader {
         uploadFileToWorker(file, fileType, idMap, callback, null);
     }
 
-    public static void hlss_video_api(String video_id){
-        OkHttpClient client = new OkHttpClient();
 
-
-
-
-    }
 
     public static void uploadFileToWorker(File file, String fileType, Map<String, String> idMap, BiConsumer<Boolean, String> callback, Consumer<Integer> progressCallback) {
         OkHttpClient client = new OkHttpClient();

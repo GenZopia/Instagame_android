@@ -8,10 +8,14 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.VideoHlsConverter;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
@@ -45,6 +49,7 @@ public class VideoUploadForegroundService extends Service {
     private boolean isCancelled = false;
     private int notificationId = 1001;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService hlsExecutor = Executors.newSingleThreadExecutor();
     private Future<?> uploadFuture;
 
     @Nullable
@@ -102,6 +107,17 @@ public class VideoUploadForegroundService extends Service {
                         "game_id", gameId
                 ), (success, response) -> {
                     if (success) {
+                        hlsExecutor.submit(() -> {
+                            new Handler(Looper.getMainLooper()).post(() ->
+                                Toast.makeText(this, "HLS conversion started for " + videoUniqueId, Toast.LENGTH_SHORT).show());
+                            String manifestKey = VideoHlsConverter.triggerConversion(videoUniqueId);
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                String msg = manifestKey != null
+                                    ? "HLS ready: " + manifestKey
+                                    : "HLS conversion failed for " + videoUniqueId;
+                                Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+                            });
+                        });
                         saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId, devid);
                         renamedFile.delete();
                         showNotification(100, true);
