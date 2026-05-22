@@ -15,6 +15,14 @@ import org.mozilla.geckoview.GeckoRuntimeSettings;
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
 
+/**
+ * Application class.
+ *
+ * Sets up a custom Coil ImageLoader with an OkHttp interceptor that injects
+ * the x-api-key header for any request to file-upload-worker.genzopia.workers.dev.
+ * This is required because profile photos are served from that worker which
+ * requires authentication.
+ */
 public class MyApplication extends Application {
     private static GeckoRuntime geckoRuntime;
 
@@ -44,9 +52,11 @@ public class MyApplication extends Application {
             })
             .build();
 
-        Coil.setImageLoader(new ImageLoader.Builder(this)
-            .okHttpClient(coilClient)
-            .build());
+        Coil.setImageLoader(
+            new ImageLoader.Builder(this)
+                .callFactory(coilClient)
+                .build()
+        );
     }
 
     public static synchronized GeckoRuntime getGeckoRuntime(Context context) {

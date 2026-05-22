@@ -8,8 +8,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
-import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -31,7 +29,7 @@ class ReelViewModel : ViewModel() {
             pageSize = 5,
             prefetchDistance = 2,
             enablePlaceholders = false,
-            initialLoadSize = 3,  // Reduced from 5 to show content faster
+            initialLoadSize = 3,
             maxSize = 20
         ),
         pagingSourceFactory = { ReelPagingSource() }
@@ -40,43 +38,57 @@ class ReelViewModel : ViewModel() {
     // Player pool for smooth transitions
     private val playerPool = mutableMapOf<String, ExoPlayer>()
     private var currentVideoId: String? = null
-    
+
     // Track currently playing video
     private val _currentVideoUrl = MutableStateFlow<String?>(null)
     val currentVideoUrl = _currentVideoUrl.asStateFlow()
-    
+
     // Track follow states (developerId -> isFollowing)
     private val followStates = mutableMapOf<String, Boolean>()
-    
+
     // Track like states (videoId -> Pair(isLiked, likeCount))
     private val likeStates = mutableMapOf<String, Pair<Boolean, Int>>()
-    
+
     private var appContext: Context? = null
     private var isPlayerInitialized = false
 
-    // Initialize the player pool
+    // ── LoadControl ───────────────────────────────────────────────────────────
+    // One config for all players. Preload players stay paused+muted so they
+    // naturally buffer very little without needing a separate lean config.
+    private fun buildLoadControl(): DefaultLoadControl =
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                1500,   // min buffer before playback starts / resumes
+                15000,  // max buffer
+                50,     // playback start threshold — near-instant first frame
+                1500    // rebuffer threshold
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
     fun initializePlayer(context: Context) {
         if (isPlayerInitialized) return
         appContext = context.applicationContext
         isPlayerInitialized = true
     }
 
-    // Get or create player for a video
+    // Get or create player for a video — always returns the SAME instance for a videoId
     fun getPlayerForVideo(videoId: String, videoUrl: String?): ExoPlayer? {
         if (videoUrl == null) return null
 
-        // Return from our own pool first (already taken ownership)
+        // Return existing player — never swap it out (that caused the frozen-frame bug)
         playerPool[videoId]?.let { return it }
 
-        // Check prefetch pool — take ownership
+        // Take ownership from prefetch service if available
         val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
         if (preloaded != null && preloaded.playbackState != Player.STATE_IDLE) {
             com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
             com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
-            preloaded.volume = 1f
+            preloaded.volume = 0f
+            preloaded.playWhenReady = false
             attachErrorRecovery(preloaded, videoId, videoUrl)
             playerPool[videoId] = preloaded
-            android.util.Log.d("ReelViewModel", "Prefetched player ready for $videoId state=${preloaded.playbackState}")
+            android.util.Log.d("ReelViewModel", "Took prefetched player for $videoId")
             return preloaded
         } else if (preloaded != null) {
             preloaded.release()
@@ -84,57 +96,38 @@ class ReelViewModel : ViewModel() {
             com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
         }
 
-        // Fallback: create fresh player — must run on main thread
-        android.util.Log.d("ReelViewModel", "Creating fresh player for $videoId")
-        return playerPool.getOrPut(videoId) { createPlayer(videoId, videoUrl) }
+        android.util.Log.d("ReelViewModel", "Creating player for $videoId")
+        return createPlayer(videoId, videoUrl)
     }
 
     private fun createPlayer(videoId: String, videoUrl: String): ExoPlayer {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                1000,   // min buffer
-                30000,  // max buffer
-                50,     // playback start threshold — 50ms for near-instant start
-                200     // rebuffer threshold
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
-        return ExoPlayer.Builder(appContext!!)
-            .setLoadControl(loadControl)
+        val player = ExoPlayer.Builder(appContext!!)
+            .setLoadControl(buildLoadControl())
             .build()
             .apply {
-                val mediaItem = MediaItem.fromUri(videoUrl)
-                setMediaItem(mediaItem)
+                setMediaItem(MediaItem.fromUri(videoUrl))
                 repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                volume = 1f
-                // Option 2: CLOSEST_SYNC seek — snaps to nearest keyframe instantly
-                // avoids decoding delay when seeking or starting mid-stream
+                volume = 0f            // muted until activated
+                playWhenReady = false  // paused until activated
                 setSeekParameters(SeekParameters.CLOSEST_SYNC)
                 prepare()
-                attachErrorRecovery(this, videoId, videoUrl)
             }
+        attachErrorRecovery(player, videoId, videoUrl)
+        playerPool[videoId] = player
+        return player
     }
 
-    /**
-     * Attaches an error listener that recovers from codec crashes (e.g. AAC decoder failure)
-     * by releasing the broken player and creating a fresh one for the same video.
-     */
     private fun attachErrorRecovery(player: ExoPlayer, videoId: String, videoUrl: String) {
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                android.util.Log.e("ReelViewModel", "Player error for $videoId: ${error.message}")
-                // Remove the broken player from the pool
+                android.util.Log.e("ReelViewModel", "Player error $videoId: ${error.message}")
                 playerPool.remove(videoId)
                 player.removeListener(this)
                 player.release()
 
-                // Recreate a fresh player and put it back in the pool
                 val fresh = createPlayer(videoId, videoUrl)
-                playerPool[videoId] = fresh
-
-                // If this was the currently playing video, resume playback
                 if (currentVideoId == videoId) {
+                    fresh.volume = 1f
                     fresh.playWhenReady = true
                 }
             }
@@ -143,23 +136,13 @@ class ReelViewModel : ViewModel() {
 
     fun preloadVideos(currentIndex: Int, reels: List<ReelData>) {
         viewModelScope.launch {
-            // Preload next 10 reels
-            for (i in 1..10) {
-                val nextIndex = currentIndex + i
-                if (nextIndex < reels.size) {
-                    val reel = reels[nextIndex]
-                    if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
-                        withContext(Dispatchers.Main) {
-                            getPlayerForVideo(reel.videoId, reel.playbackUrl)
-                        }
-                    }
-                }
+            val indicesToPreload = buildList {
+                for (i in 1..3) add(currentIndex + i) // next 3
+                for (i in 1..2) add(currentIndex - i) // prev 2
             }
-            // Preload previous 10 reels
-            for (i in 1..10) {
-                val prevIndex = currentIndex - i
-                if (prevIndex >= 0) {
-                    val reel = reels[prevIndex]
+            for (index in indicesToPreload) {
+                if (index in reels.indices) {
+                    val reel = reels[index]
                     if (reel.playbackUrl != null && !playerPool.containsKey(reel.videoId)) {
                         withContext(Dispatchers.Main) {
                             getPlayerForVideo(reel.videoId, reel.playbackUrl)
@@ -170,13 +153,12 @@ class ReelViewModel : ViewModel() {
             cleanupDistantPlayers(currentIndex, reels)
         }
     }
-    
+
     private fun cleanupDistantPlayers(currentIndex: Int, reels: List<ReelData>) {
-        val keepRange = (currentIndex - 10)..(currentIndex + 10)
+        val keepRange = (currentIndex - 3)..(currentIndex + 4)
         val idsToKeep = reels.filterIndexed { index, _ -> index in keepRange }
-            .map { it.videoId }
-            .toSet()
-        
+            .map { it.videoId }.toSet()
+
         playerPool.keys.toList().forEach { videoId ->
             if (videoId !in idsToKeep) {
                 playerPool[videoId]?.release()
@@ -185,48 +167,49 @@ class ReelViewModel : ViewModel() {
         }
     }
 
-    // Set current playing video
     fun setCurrentVideo(videoId: String, videoUrl: String?) {
         if (currentVideoId == videoId) return
-        
-        // Pause previous video
+
+        // Mute + pause the previous video
         currentVideoId?.let { prevId ->
-            playerPool[prevId]?.playWhenReady = false
+            playerPool[prevId]?.let { prev ->
+                prev.playWhenReady = false
+                prev.volume = 0f
+            }
         }
-        
+
         currentVideoId = videoId
         _currentVideoUrl.value = videoUrl
     }
 
-    // Play current video
     fun playVideo(videoId: String) {
-        playerPool[videoId]?.playWhenReady = true
+        playerPool[videoId]?.let {
+            it.volume = 1f
+            it.playWhenReady = true
+        }
     }
 
-    // Pause current video
     fun pauseVideo(videoId: String) {
         playerPool[videoId]?.playWhenReady = false
     }
-    
-    // Pause all videos
+
     fun pauseAll() {
-        playerPool.values.forEach { it.playWhenReady = false }
+        playerPool.values.forEach {
+            it.playWhenReady = false
+            it.volume = 0f
+        }
     }
-    
-    // Follow state management
-    fun getFollowState(developerId: String, defaultState: Boolean): Boolean {
-        return followStates[developerId] ?: defaultState
-    }
-    
+
+    fun getFollowState(developerId: String, defaultState: Boolean) =
+        followStates[developerId] ?: defaultState
+
     fun updateFollowState(developerId: String, isFollowing: Boolean) {
         followStates[developerId] = isFollowing
     }
-    
-    // Like state management
-    fun getLikeState(videoId: String, defaultIsLiked: Boolean, defaultLikeCount: Int): Pair<Boolean, Int> {
-        return likeStates[videoId] ?: Pair(defaultIsLiked, defaultLikeCount)
-    }
-    
+
+    fun getLikeState(videoId: String, defaultIsLiked: Boolean, defaultLikeCount: Int) =
+        likeStates[videoId] ?: Pair(defaultIsLiked, defaultLikeCount)
+
     fun updateLikeState(videoId: String, isLiked: Boolean, likeCount: Int) {
         likeStates[videoId] = Pair(isLiked, likeCount)
     }

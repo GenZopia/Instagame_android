@@ -15,7 +15,8 @@ class VideoHlsConverter {
 
         private const val TAG = "VideoHlsConverter"
         private const val BASE_URL = "https://video-processor-531675723135.asia-south1.run.app/"
-        private const val API_KEY = "eyJhbGciOiJIUzUxMiJ9.eyJyb2xlcyI6IlJPTEVfVklERU9fUFJPQ0VTU09SIiwic3ViIjoicHJvY2Vzc29yIiwiaWF0IjoxNzcxMDY0Mzg4LCJleHAiOjE3NzExNTA3ODh9.vdLOxt5hI9pNmxRvcoJnU9tivrgYykRLbIu3dso_aAo9Y7GF-Zy7uiF41J12AyFacToEqA07cEVZ6nmMyGnULQ"
+        // Key is stored in gradle.properties (git-ignored) and injected via BuildConfig.
+        private val API_KEY get() = com.genzopia.Instagame.BuildConfig.VIDEO_PROCESSOR_API_KEY
         private const val MAX_POLL_ATTEMPTS = 60 // 5 min max (60 * 5s)
 
         private val api: VideoApi by lazy {

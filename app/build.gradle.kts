@@ -16,9 +16,13 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // Expose file upload API key from gradle.properties into BuildConfig
+        // Expose API keys from gradle.properties into BuildConfig.
+        // gradle.properties is in .gitignore — keys never enter source control.
         val fileUploadApiKey: String = (project.findProperty("file_upload_api_key") as String?) ?: ""
         buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"")
+
+        val videoProcessorApiKey: String = (project.findProperty("video_processor_api_key") as String?) ?: ""
+        buildConfigField("String", "VIDEO_PROCESSOR_API_KEY", "\"$videoProcessorApiKey\"")
     }
 
     buildFeatures {

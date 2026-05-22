@@ -112,6 +112,9 @@ fun ReelScreen(
             Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
             reel?.let {
                 viewModel.setCurrentVideo(it.videoId, it.playbackUrl)
+                // Note: actual play is driven by ReelItem's LaunchedEffect(isActive, player)
+                // which runs after the player is created. We still call playVideo here as
+                // a best-effort in case the player already exists in the pool.
                 if (!shouldPauseAll) {
                     viewModel.playVideo(it.videoId)
                 }
@@ -203,13 +206,6 @@ fun ReelScreen(
 
 /**
  * Single reel item with video and UI overlay.
- *
- * Key changes:
- *  • isLoading now starts false when the player is already STATE_READY
- *    (prefetch case) — no flash on fast scrolls.
- *  • Removed the 1 500 ms delay that caused the "stuck loading" feel.
- *  • showThumbnail defaults to `player == null` so it only shows when there
- *    is genuinely no player attached yet.
  */
 @Composable
 fun ReelItem(
@@ -228,18 +224,18 @@ fun ReelItem(
         mutableStateOf(viewModel.getFollowState(reel.developerId, reel.isFollowing))
     }
 
-    // Grab the player first so we can initialise loading state correctly.
+    // Get or create the player for this video. remember(videoId) is stable —
+    // the ViewModel always returns the same instance for a given videoId.
     val player = remember(reel.videoId) {
         viewModel.getPlayerForVideo(reel.videoId, reel.playbackUrl)
     }
 
-    // FIX 4 + 5: If the player is already ready (prefetched), start hidden immediately.
+    // Start loading=true unless the player is already buffered (prefetch case).
     var isLoading by remember(reel.videoId) {
         mutableStateOf(
-            player?.let { it.playbackState != androidx.media3.common.Player.STATE_READY } ?: true
+            player?.playbackState != androidx.media3.common.Player.STATE_READY
         )
     }
-    // FIX 5: Show thumbnail only when there is no player yet, not on every item.
     var showThumbnail by remember(reel.videoId) {
         mutableStateOf(player == null)
     }
@@ -248,25 +244,31 @@ fun ReelItem(
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // FIX 4: Player state listener — sole source of truth for hiding loading/thumbnail.
-    // No more 1 500 ms delay fallback.
+    // Player state listener — drives loading/thumbnail visibility.
     DisposableEffect(player) {
         if (player == null) return@DisposableEffect onDispose {}
 
+        // Already ready (prefetched) — hide loading immediately.
         if (player.playbackState == androidx.media3.common.Player.STATE_READY) {
             isLoading = false
             showThumbnail = false
         }
 
         val listener = object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() {
+                // First frame is actually painted — safe to hide loading UI.
+                isLoading = false
+                showThumbnail = false
+            }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == androidx.media3.common.Player.STATE_READY) {
-                    isLoading = false
-                    showThumbnail = false
-                }
-                // Show spinner again only if we're truly buffering mid-playback
-                if (state == androidx.media3.common.Player.STATE_BUFFERING && isActive) {
-                    isLoading = true
+                when (state) {
+                    androidx.media3.common.Player.STATE_READY -> {
+                        isLoading = false
+                        showThumbnail = false
+                    }
+                    androidx.media3.common.Player.STATE_BUFFERING -> {
+                        if (isActive) isLoading = true
+                    }
                 }
             }
         }
@@ -274,10 +276,20 @@ fun ReelItem(
         onDispose { player.removeListener(listener) }
     }
 
-    // FIX 4: Removed the 1 500 ms delay — play/pause is instant now.
+    // Drive play/pause from isActive.
+    // Also handles the race where the player is created AFTER ReelScreen's
+    // LaunchedEffect already called playVideo() — at that point playerPool was
+    // empty so nothing happened. This LaunchedEffect runs after composition
+    // (when the player definitely exists) and is the authoritative play trigger.
     LaunchedEffect(isActive, player) {
         if (player != null) {
-            player.playWhenReady = isActive
+            if (isActive) {
+                player.volume = 1f
+                player.playWhenReady = true
+            } else {
+                player.playWhenReady = false
+                player.volume = 0f
+            }
         }
     }
 
@@ -306,7 +318,7 @@ fun ReelItem(
                         do {
                             val event = awaitPointerEvent()
                         } while (event.changes.any { it.pressed })
-                        player?.playWhenReady = true
+                        if (isActive) player?.playWhenReady = true
                     }
                 }
             }

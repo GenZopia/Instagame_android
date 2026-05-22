@@ -17,37 +17,31 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
-    // Not used directly, kept for compatibility
     isPlaying: Boolean,
     player: ExoPlayer,
     modifier: Modifier = Modifier,
     onPlayerReady: () -> Unit = {},
     onPlayerError: (Exception) -> Unit = {}
 ) {
-    // Control play/pause based on visibility
-    LaunchedEffect(isPlaying) {
-        player.playWhenReady = isPlaying
-    }
+    // Note: play/pause and volume are controlled by ReelItem's LaunchedEffect.
+    // VideoPlayer only owns the surface (AndroidView) and event callbacks.
 
-    // Attach listener for state changes and errors
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                onPlayerReady()
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    onPlayerReady()
-                }
+                if (playbackState == Player.STATE_READY) onPlayerReady()
             }
             override fun onPlayerError(error: PlaybackException) {
                 onPlayerError(error)
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-        }
+        onDispose { player.removeListener(listener) }
     }
 
     Box(
@@ -64,14 +58,20 @@ fun VideoPlayer(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    // Attach the player immediately in the factory.
                     this.player = player
                 }
             },
             update = { view ->
-                // Only update if player changed — avoids unnecessary rebind
-                if (view.player != player) view.player = player
+                // Re-attach if the player instance changed (e.g. after error recovery).
+                // This is the critical fix: without this, a replaced player has no
+                // surface and renders nothing — causing the frozen-frame / black-screen bug.
+                if (view.player !== player) {
+                    view.player = player
+                }
             },
             onRelease = { view ->
+                // Detach cleanly so the player doesn't hold a dead surface reference.
                 view.player = null
             },
             modifier = Modifier.fillMaxSize()

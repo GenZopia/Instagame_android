@@ -1,3 +1,4 @@
+
 # 🎮 InstaGame - Social Gaming Video Platform
 
 A modern Android social media app for gaming content creators, featuring Instagram-style reels, video uploads, user profiles, and game discovery.
