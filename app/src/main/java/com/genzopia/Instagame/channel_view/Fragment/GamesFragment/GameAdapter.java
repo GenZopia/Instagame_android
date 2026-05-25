@@ -1,21 +1,21 @@
 package com.genzopia.Instagame.channel_view.Fragment.GamesFragment;
 
-import static android.widget.Toast.LENGTH_SHORT;
-
 import android.content.Context;
+import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.bumptech.glide.Glide;
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.webgl_gameloading.Game_mode;
+import com.google.android.material.button.MaterialButton;
 
 import java.util.List;
 
@@ -44,22 +44,37 @@ public class GameAdapter extends RecyclerView.Adapter<GameAdapter.GameViewHolder
         holder.tvShortDesc.setText(item.getShortDescription());
         holder.tvLongDesc.setText(item.getLongDescription());
 
-        // Use a proper placeholder and error image
         Glide.with(context)
                 .load(item.getThumbnailUrl())
                 .into(holder.imgThumbnail);
 
         boolean expanded = item.isExpanded();
-        holder.tvLongDesc.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        holder.expandedSection.setVisibility(expanded ? View.VISIBLE : View.GONE);
         holder.imgArrow.setRotation(expanded ? 180f : 0f);
-        holder.imgArrow.setOnClickListener(v->{
+
+        // Toggle expand/collapse on arrow click
+        holder.imgArrow.setOnClickListener(v -> {
             item.setExpanded(!item.isExpanded());
             notifyItemChanged(pos);
         });
 
-        // Add click listener to the whole item if you want
+        // Also allow tapping the collapsed header area to expand
         holder.itemView.setOnClickListener(v -> {
-            Toast.makeText(context,item.getGameLink(), LENGTH_SHORT).show();
+            if (!item.isExpanded()) {
+                item.setExpanded(true);
+                notifyItemChanged(pos);
+            }
+        });
+
+        // Play button — launches Game_mode with the game's ID
+        holder.btnPlay.setOnClickListener(v -> {
+            String gameId = item.getGameId();
+            if (gameId != null && !gameId.isEmpty()) {
+                Intent intent = new Intent(context, Game_mode.class);
+                intent.putExtra("game_id", gameId);
+                intent.putExtra("game_name", item.getTitle());
+                context.startActivity(intent);
+            }
         });
     }
 
@@ -69,16 +84,20 @@ public class GameAdapter extends RecyclerView.Adapter<GameAdapter.GameViewHolder
     }
 
     static class GameViewHolder extends RecyclerView.ViewHolder {
-        ImageView imgThumbnail, imgArrow;
-        TextView  tvTitle, tvShortDesc, tvLongDesc;
+        ImageView     imgThumbnail, imgArrow;
+        TextView      tvTitle, tvShortDesc, tvLongDesc;
+        LinearLayout  expandedSection;
+        MaterialButton btnPlay;
 
         public GameViewHolder(@NonNull View itemView) {
             super(itemView);
-            imgThumbnail = itemView.findViewById(R.id.imgThumbnail);
-            imgArrow     = itemView.findViewById(R.id.imgArrow);
-            tvTitle      = itemView.findViewById(R.id.tvTitle);
-            tvShortDesc  = itemView.findViewById(R.id.tvShortDesc);
-            tvLongDesc   = itemView.findViewById(R.id.tvLongDesc);
+            imgThumbnail    = itemView.findViewById(R.id.imgThumbnail);
+            imgArrow        = itemView.findViewById(R.id.imgArrow);
+            tvTitle         = itemView.findViewById(R.id.tvTitle);
+            tvShortDesc     = itemView.findViewById(R.id.tvShortDesc);
+            tvLongDesc      = itemView.findViewById(R.id.tvLongDesc);
+            expandedSection = itemView.findViewById(R.id.expandedSection);
+            btnPlay         = itemView.findViewById(R.id.btnPlay);
         }
     }
 }

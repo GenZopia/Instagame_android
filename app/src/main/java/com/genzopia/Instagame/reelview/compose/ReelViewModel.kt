@@ -20,9 +20,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class ReelViewModel : ViewModel() {
+
+    // Tracks how many videos in the prefetch cache now have a resolved URL.
+    // ReelScreen observes this and triggers pager.refresh() when it increases,
+    // so that reels which were emitted with null URLs get re-loaded with real URLs.
+    private val _urlsReadyCount = MutableStateFlow(0)
+    val urlsReadyCount = _urlsReadyCount.asStateFlow()
 
     val reelsFlow: Flow<PagingData<ReelData>> = Pager(
         config = PagingConfig(
@@ -34,6 +41,34 @@ class ReelViewModel : ViewModel() {
         ),
         pagingSourceFactory = { ReelPagingSource() }
     ).flow.cachedIn(viewModelScope)
+
+    /**
+     * Called by ReelScreen after initializePlayer(). Polls the prefetch cache
+     * until all URLs are resolved, then signals the UI to refresh the pager.
+     * This is the bridge between DataPrefetchService's background Phase-2 work
+     * and the Compose paging layer.
+     */
+    fun watchForUrlResolution() {
+        viewModelScope.launch(Dispatchers.IO) {
+            var lastCount = 0
+            // Poll every 500 ms for up to 60 s. Stop early once all cached
+            // videos have URLs (signedUrlCache count stops growing).
+            repeat(120) {
+                val allCached = com.genzopia.Instagame.utils.DataPrefetchService.getAllCachedVideos()
+                val withUrl = allCached.keys.count { videoId ->
+                    com.genzopia.Instagame.utils.DataPrefetchService.getCachedSignedUrl(videoId) != null
+                }
+                if (withUrl > lastCount) {
+                    lastCount = withUrl
+                    _urlsReadyCount.value = withUrl
+                    android.util.Log.d("ReelViewModel", "URL resolution progress: $withUrl/${allCached.size}")
+                }
+                // Stop polling once all videos have URLs
+                if (allCached.isNotEmpty() && withUrl >= allCached.size) return@launch
+                delay(500)
+            }
+        }
+    }
 
     // Player pool for smooth transitions
     private val playerPool = mutableMapOf<String, ExoPlayer>()

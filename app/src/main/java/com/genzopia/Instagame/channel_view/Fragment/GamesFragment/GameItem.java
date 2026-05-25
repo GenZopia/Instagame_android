@@ -2,6 +2,7 @@
 package com.genzopia.Instagame.channel_view.Fragment.GamesFragment;
 
 public class GameItem {
+    private String gameId;
     private String title;
     private String shortDescription;
     private String longDescription;
@@ -9,11 +10,13 @@ public class GameItem {
     private String gameLink;
     private boolean expanded = false;
 
-    public GameItem(String title,
+    public GameItem(String gameId,
+                    String title,
                     String shortDescription,
                     String longDescription,
                     String thumbnailUrl,
                     String gameLink) {
+        this.gameId           = gameId;
         this.title            = title;
         this.shortDescription = shortDescription;
         this.longDescription  = longDescription;
@@ -21,6 +24,7 @@ public class GameItem {
         this.gameLink         = gameLink;
     }
 
+    public String getGameId()            { return gameId; }
     public String getTitle()             { return title; }
     public String getShortDescription()  { return shortDescription; }
     public String getLongDescription()   { return longDescription; }

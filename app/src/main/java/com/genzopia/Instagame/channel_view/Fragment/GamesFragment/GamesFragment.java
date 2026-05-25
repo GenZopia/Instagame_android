@@ -145,16 +145,16 @@ public class GamesFragment extends Fragment {
                                     String signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt);
                                     final String url = signedUrl != null ? signedUrl : "";
                                     new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
-                                        addGameItem(gameName, description, url, playStoreUrl));
+                                        addGameItem(gameId, gameName, description, url, playStoreUrl));
                                 }).start();
                             }
                             @Override
                             public void onCancelled(@NonNull DatabaseError error) {
-                                addGameItem(gameName, description, "", playStoreUrl);
+                                addGameItem(gameId, gameName, description, "", playStoreUrl);
                             }
                         });
                 } else {
-                    addGameItem(gameName, description, "", playStoreUrl);
+                    addGameItem(gameId, gameName, description, "", playStoreUrl);
                 }
             }
             
@@ -165,8 +165,9 @@ public class GamesFragment extends Fragment {
         });
     }
 
-    private void addGameItem(String gameName, String description, String imageUrl, String playStoreUrl) {
+    private void addGameItem(String gameId, String gameName, String description, String imageUrl, String playStoreUrl) {
         GameItem gameItem = new GameItem(
+            gameId != null ? gameId : "",
             gameName != null ? gameName : "Unknown Game",
             "Developer Game",
             description != null ? description : "No description available",

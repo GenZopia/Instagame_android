@@ -103,6 +103,25 @@ fun ReelScreen(
 
     LaunchedEffect(Unit) {
         viewModel.initializePlayer(context)
+        // Start watching for background URL resolution so we can refresh the
+        // pager once URLs that were null at first load become available.
+        viewModel.watchForUrlResolution()
+    }
+
+    // When the number of resolved URLs increases, refresh the pager so that
+    // reels which were emitted with null playbackUrl get re-loaded with real URLs.
+    val urlsReadyCount by viewModel.urlsReadyCount.collectAsState()
+    LaunchedEffect(urlsReadyCount) {
+        if (urlsReadyCount > 0 && reels.itemCount > 0) {
+            // Only refresh if any visible reel still has no URL
+            val hasNullUrls = (0 until minOf(reels.itemCount, 5)).any { i ->
+                reels[i]?.playbackUrl == null
+            }
+            if (hasNullUrls) {
+                Log.d("ReelScreen", "URLs resolved ($urlsReadyCount), refreshing pager")
+                reels.refresh()
+            }
+        }
     }
 
     // Handle page changes with preloading
@@ -224,19 +243,22 @@ fun ReelItem(
         mutableStateOf(viewModel.getFollowState(reel.developerId, reel.isFollowing))
     }
 
-    // Get or create the player for this video. remember(videoId) is stable —
-    // the ViewModel always returns the same instance for a given videoId.
-    val player = remember(reel.videoId) {
+    // Get or create the player for this video.
+    // KEY includes playbackUrl so that when the URL resolves (after background
+    // Phase-2 fetch), remember re-runs and the player is actually created.
+    // Without this, a null-URL reel from the prefetch cache never gets a player.
+    val player = remember(reel.videoId, reel.playbackUrl) {
         viewModel.getPlayerForVideo(reel.videoId, reel.playbackUrl)
     }
 
-    // Start loading=true unless the player is already buffered (prefetch case).
-    var isLoading by remember(reel.videoId) {
+    // Show spinner only when a player EXISTS but hasn't buffered yet.
+    // If player is null (URL not ready), show nothing — no infinite spinner.
+    var isLoading by remember(reel.videoId, reel.playbackUrl) {
         mutableStateOf(
-            player?.playbackState != androidx.media3.common.Player.STATE_READY
+            player != null && player.playbackState != androidx.media3.common.Player.STATE_READY
         )
     }
-    var showThumbnail by remember(reel.videoId) {
+    var showThumbnail by remember(reel.videoId, reel.playbackUrl) {
         mutableStateOf(player == null)
     }
 
@@ -268,6 +290,12 @@ fun ReelItem(
                     }
                     androidx.media3.common.Player.STATE_BUFFERING -> {
                         if (isActive) isLoading = true
+                    }
+                    // STATE_IDLE or STATE_ENDED — clear the spinner so it never
+                    // gets stuck (e.g. after error recovery replaces the player).
+                    androidx.media3.common.Player.STATE_IDLE,
+                    androidx.media3.common.Player.STATE_ENDED -> {
+                        isLoading = false
                     }
                 }
             }

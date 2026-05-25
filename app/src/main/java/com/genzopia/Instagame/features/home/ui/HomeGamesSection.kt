@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
@@ -306,9 +308,11 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
         containerColor = sheetBg,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
+        // Scrollable column so the Play button is always reachable even with long descriptions
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
@@ -355,7 +359,7 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
 
-            // Description
+            // Description — no maxLines cap so full text is shown, sheet scrolls to reach Play
             if (game.description.isNotEmpty()) {
                 Text(
                     game.description,
@@ -413,7 +417,7 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Play button
+            // Play button — always visible at the bottom after scrolling
             Button(
                 onClick = {
                     val intent = Intent(context, Game_mode::class.java)
