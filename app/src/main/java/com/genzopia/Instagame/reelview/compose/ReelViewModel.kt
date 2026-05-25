@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 
@@ -106,32 +107,37 @@ class ReelViewModel : ViewModel() {
         if (isPlayerInitialized) return
         appContext = context.applicationContext
         isPlayerInitialized = true
-        // Seed followStates from the prefetch cache so the Follow button shows
-        // the correct red/white state immediately on first render, even when
-        // tryLoadFromPrefetchCache() emits ReelData with isFollowing=false.
-        prefillFollowStates()
+        // Seed followStates and likeStates from Firebase so the Follow/Like
+        // buttons show the correct state immediately on first render, even when
+        // tryLoadFromPrefetchCache() emits ReelData with isFollowing/isLiked=false.
+        prefillUserStates()
     }
 
-    private fun prefillFollowStates() {
-        val followedUsers = com.genzopia.Instagame.utils.DataPrefetchService.getCachedFollowedUsers()
-        if (followedUsers != null) {
-            followedUsers.forEach { user -> followStates[user.userId] = true }
-            android.util.Log.d("ReelViewModel", "Pre-filled followStates for ${followedUsers.size} users")
-        } else {
-            // Cache not ready yet — fetch from Firebase directly and seed once done
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                        ?: return@launch
-                    val snap = com.google.firebase.database.FirebaseDatabase.getInstance()
-                        .reference.child("users").child(uid).child("following_list").get().await()
-                    snap.children.mapNotNull { it.key }.forEach { devId ->
-                        followStates[devId] = true
-                    }
-                    android.util.Log.d("ReelViewModel", "Fetched followStates from Firebase: ${followStates.size} following")
-                } catch (e: Exception) {
-                    android.util.Log.e("ReelViewModel", "prefillFollowStates error", e)
+    private fun prefillUserStates() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                ?: return@launch
+            try {
+                val db = com.google.firebase.database.FirebaseDatabase.getInstance().reference
+
+                // Fetch following_list and liked_videos in parallel
+                val followSnap = async { db.child("users").child(uid).child("following_list").get().await() }
+                val likeSnap  = async { db.child("users").child(uid).child("liked_videos").get().await() }
+
+                followSnap.await().children.mapNotNull { it.key }.forEach { devId ->
+                    followStates[devId] = true
                 }
+                likeSnap.await().children.mapNotNull { it.key }.forEach { videoId ->
+                    // Preserve existing like count if already tracked, default to 0
+                    val existing = likeStates[videoId]
+                    if (existing == null) likeStates[videoId] = Pair(true, 0)
+                    else likeStates[videoId] = existing.copy(first = true)
+                }
+
+                android.util.Log.d("ReelViewModel",
+                    "Pre-filled: ${followStates.size} following, ${likeStates.size} liked videos")
+            } catch (e: Exception) {
+                android.util.Log.e("ReelViewModel", "prefillUserStates error", e)
             }
         }
     }
@@ -271,8 +277,12 @@ class ReelViewModel : ViewModel() {
         followStates[developerId] = isFollowing
     }
 
-    fun getLikeState(videoId: String, defaultIsLiked: Boolean, defaultLikeCount: Int) =
-        likeStates[videoId] ?: Pair(defaultIsLiked, defaultLikeCount)
+    fun getLikeState(videoId: String, defaultIsLiked: Boolean, defaultLikeCount: Int): Pair<Boolean, Int> {
+        val cached = likeStates[videoId] ?: return Pair(defaultIsLiked, defaultLikeCount)
+        // If we prefilled isLiked=true but count=0, use the real count from the reel
+        val count = if (cached.second == 0 && defaultLikeCount > 0) defaultLikeCount else cached.second
+        return Pair(cached.first, count)
+    }
 
     fun updateLikeState(videoId: String, isLiked: Boolean, likeCount: Int) {
         likeStates[videoId] = Pair(isLiked, likeCount)
