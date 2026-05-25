@@ -623,9 +623,12 @@ fun ReelOverlay(
                 Button(
                     onClick = onFollowClick,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isFollowing) Color.White.copy(alpha = 0.2f) else Color.Transparent
+                        containerColor = if (isFollowing) Color.Red else Color.Transparent
                     ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isFollowing) Color.Red else Color.White
+                    ),
                     shape = RoundedCornerShape(4.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp)

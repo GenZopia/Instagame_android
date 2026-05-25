@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.tasks.await
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class ReelViewModel : ViewModel() {
@@ -105,6 +106,34 @@ class ReelViewModel : ViewModel() {
         if (isPlayerInitialized) return
         appContext = context.applicationContext
         isPlayerInitialized = true
+        // Seed followStates from the prefetch cache so the Follow button shows
+        // the correct red/white state immediately on first render, even when
+        // tryLoadFromPrefetchCache() emits ReelData with isFollowing=false.
+        prefillFollowStates()
+    }
+
+    private fun prefillFollowStates() {
+        val followedUsers = com.genzopia.Instagame.utils.DataPrefetchService.getCachedFollowedUsers()
+        if (followedUsers != null) {
+            followedUsers.forEach { user -> followStates[user.userId] = true }
+            android.util.Log.d("ReelViewModel", "Pre-filled followStates for ${followedUsers.size} users")
+        } else {
+            // Cache not ready yet — fetch from Firebase directly and seed once done
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                        ?: return@launch
+                    val snap = com.google.firebase.database.FirebaseDatabase.getInstance()
+                        .reference.child("users").child(uid).child("following_list").get().await()
+                    snap.children.mapNotNull { it.key }.forEach { devId ->
+                        followStates[devId] = true
+                    }
+                    android.util.Log.d("ReelViewModel", "Fetched followStates from Firebase: ${followStates.size} following")
+                } catch (e: Exception) {
+                    android.util.Log.e("ReelViewModel", "prefillFollowStates error", e)
+                }
+            }
+        }
     }
 
     // Get or create player for a video — always returns the SAME instance for a videoId
