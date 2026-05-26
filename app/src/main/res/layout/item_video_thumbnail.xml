@@ -26,13 +26,13 @@
             app:layout_constraintWidth_percent="0.15"
             app:layout_constraintDimensionRatio="1:1"
             android:layout_gravity="center"
-            android:src="@drawable/mozac_ic_play_badge_fill_16"
+            android:src="@drawable/ic_media_play"
             android:visibility="gone"
-            android:tint="?android:attr/textColorPrimary"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintEnd_toEndOf="parent"
+            app:tint="?android:attr/textColorPrimary" />
 
         <View
             android:id="@+id/img_selected_overlay"

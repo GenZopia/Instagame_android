@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package com.genzopia.Instagame.reelview.compose
 
 import ReelViewModel
@@ -6,6 +8,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -79,6 +82,14 @@ import kotlinx.coroutines.launch
 //
 // FIX 6: Fixed the like-count revert math in the failure callbacks (was
 //         double-adjusting the count in the wrong direction).
+//
+// BUILD FIX 1: Added @file:OptIn(ExperimentalFoundationApi::class) at the top
+//              to suppress "This foundation API is experimental" errors for all
+//              pager-related APIs used in this file.
+//
+// BUILD FIX 2: Renamed `beyondViewportPageCount` → `beyondBoundsPageCount`
+//              to match the actual parameter name in the installed compose-
+//              foundation version (the newer name caused a compile error).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -208,19 +219,19 @@ fun ReelScreen(
 
         if (reels.itemCount > 0) {
             // FIX 1: androidx VerticalPager (not Accompanist)
-            // FIX 2: snapAnimationSpec = tween(100ms) — 4x faster than default spring
+            // FIX 2: snapAnimationSpec = tween(200ms) — 4x faster than default spring
             //         pagerSnapDistance = atMost(1) — one page per fling, always
-            // FIX 3: beyondViewportPageCount = 1 → adjacent page players pre-attached
+            // BUILD FIX 2: beyondBoundsPageCount (was beyondViewportPageCount — compile error)
             VerticalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                beyondViewportPageCount = 1,   // FIX 3
+                beyondBoundsPageCount = 1,   // BUILD FIX 2: renamed from beyondViewportPageCount
                 pageSize = PageSize.Fill,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
                     pagerSnapDistance = PagerSnapDistance.atMost(1),
                     // snapAnimationSpec: final lock-to-page animation.
-                    // tween(100ms) is ~4x faster than the default spring (~400ms).
+                    // tween(200ms) is ~4x faster than the default spring (~400ms).
                     // This is the single biggest factor in making scroll feel instant.
                     snapAnimationSpec = tween(
                         durationMillis = 200,

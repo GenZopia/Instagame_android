@@ -9,8 +9,7 @@ import coil.ImageLoader;
 
 import com.genzopia.Instagame.BuildConfig;
 
-import org.mozilla.geckoview.GeckoRuntime;
-import org.mozilla.geckoview.GeckoRuntimeSettings;
+
 
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
@@ -24,7 +23,7 @@ import okhttp3.Response;
  * requires authentication.
  */
 public class MyApplication extends Application {
-    private static GeckoRuntime geckoRuntime;
+
 
     @Override
     public void onCreate() {
@@ -59,14 +58,5 @@ public class MyApplication extends Application {
         );
     }
 
-    public static synchronized GeckoRuntime getGeckoRuntime(Context context) {
-        if (geckoRuntime == null) {
-            GeckoRuntimeSettings settings = new GeckoRuntimeSettings.Builder()
-                    .forceUserScalableEnabled(false)
-                    .doubleTapZoomingEnabled(false)
-                    .build();
-            geckoRuntime = GeckoRuntime.create(context, settings);
-        }
-        return geckoRuntime;
-    }
+
 }

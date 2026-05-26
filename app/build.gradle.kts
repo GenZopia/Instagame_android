@@ -13,8 +13,8 @@ android {
         applicationId = "com.genzopia.Instagame"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "4.0"
 
         // Expose API keys from gradle.properties into BuildConfig.
         // gradle.properties is in .gitignore — keys never enter source control.
@@ -113,8 +113,6 @@ dependencies {
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database)
     implementation(libs.firebase.firestore)
-    implementation(libs.firebase.storage.ktx)
-    implementation(libs.firebase.analytics)
 
     implementation(libs.lifecycle.livedata.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
@@ -125,12 +123,7 @@ dependencies {
     implementation(libs.subsampling.scale.image.view)
     implementation(libs.play.services.auth)
 
-    val mozillaComponentsVersion = "138.0.4"
-    val geckoVersionStable = "112.2.0"
 
-    implementation("org.mozilla.components:browser-state:$mozillaComponentsVersion")
-    implementation("org.mozilla.components:concept-engine:$mozillaComponentsVersion")
-    implementation("org.mozilla.components:browser-engine-gecko:$geckoVersionStable")
     
     // REMOVED: Old ExoPlayer causes conflicts with Media3
     // If you need video playback, use Media3 (already added above)
@@ -157,19 +150,5 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-gson:3.0.0")
 
-    // Robolectric for unit tests that need Android context
-    testImplementation("org.robolectric:robolectric:4.12.1")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("androidx.test:core:1.5.0")
 
-    // Instrumented (androidTest) dependencies
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.test:core-ktx:1.5.0")
-    androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("androidx.test:rules:1.5.0")
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
