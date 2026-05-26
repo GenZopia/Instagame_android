@@ -189,36 +189,93 @@ public class LoginActivity extends BaseActivity {
                             String emailAddress = user.getEmail();
                             String fullName = user.getDisplayName();
                             String profilePhotoUrl = user.getPhotoUrl() != null ? user.getPhotoUrl().toString() : "";
-                            String dob = "";  // Will be asked in ProfileCompletionActivity if needed
-                            String mobileNumber = user.getPhoneNumber(); // Will be asked in ProfileCompletionActivity if needed
+                            String mobileNumber = user.getPhoneNumber();
 
-                            // Create the User object with the correct constructor
-                            User firebaseUser = new User(
-                                    user.getUid(), // userId
-                                    emailAddress,
-                                    fullName != null ? fullName : "",
-                                    dob,
-                                    mobileNumber != null ? mobileNumber : "-1"
-                            );
-
-                            // Set additional properties
-                            firebaseUser.setProfile_photo_url(profilePhotoUrl);
-
-                            // Store the user data in Firebase Realtime Database
+                            // Check if this user already has data in the database (e.g. registered via email/password)
                             database.getReference()
                                     .child("users")
-                                    .child(user.getUid()) // Use UID instead of email as the key
-                                    .setValue(firebaseUser)
-                                    .addOnCompleteListener(task1 -> {
-                                        if (task1.isSuccessful()) {
-                                            getApplicationContext().getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE).edit()
-                                                    .putString("email", emailAddress)
-                                                    .apply();
-                                            
-                                            // Check if user needs to complete profile
-                                            checkUserStatusAndNavigate();
+                                    .child(user.getUid())
+                                    .get()
+                                    .addOnCompleteListener(fetchTask -> {
+                                        if (fetchTask.isSuccessful() && fetchTask.getResult() != null
+                                                && fetchTask.getResult().exists()) {
+                                            // ── Existing user ──────────────────────────────────────────
+                                            // Only fill in fields that are missing/empty — never overwrite
+                                            // data the user already set during email/password registration.
+                                            com.google.firebase.database.DataSnapshot snap = fetchTask.getResult();
+
+                                            java.util.Map<String, Object> updates = new java.util.HashMap<>();
+
+                                            String existingName = snap.child("full_name").getValue(String.class);
+                                            if (existingName == null || existingName.isEmpty()) {
+                                                updates.put("full_name", fullName != null ? fullName : "");
+                                            }
+
+                                            String existingPhoto = snap.child("profile_photo_url").getValue(String.class);
+                                            if ((existingPhoto == null || existingPhoto.isEmpty())
+                                                    && !profilePhotoUrl.isEmpty()) {
+                                                updates.put("profile_photo_url", profilePhotoUrl);
+                                            }
+
+                                            String existingMobile = snap.child("mobile_no").getValue(String.class);
+                                            if ((existingMobile == null || existingMobile.isEmpty()
+                                                    || existingMobile.equals("-1"))
+                                                    && mobileNumber != null && !mobileNumber.isEmpty()) {
+                                                updates.put("mobile_no", mobileNumber);
+                                            }
+
+                                            // Always ensure email is stored
+                                            String existingEmail = snap.child("email").getValue(String.class);
+                                            if (existingEmail == null || existingEmail.isEmpty()) {
+                                                updates.put("email", emailAddress);
+                                            }
+
+                                            if (!updates.isEmpty()) {
+                                                database.getReference()
+                                                        .child("users")
+                                                        .child(user.getUid())
+                                                        .updateChildren(updates)
+                                                        .addOnCompleteListener(updateTask -> {
+                                                            getApplicationContext()
+                                                                    .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
+                                                                    .edit().putString("email", emailAddress).apply();
+                                                            checkUserStatusAndNavigate();
+                                                        });
+                                            } else {
+                                                getApplicationContext()
+                                                        .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
+                                                        .edit().putString("email", emailAddress).apply();
+                                                checkUserStatusAndNavigate();
+                                            }
+
                                         } else {
-                                            Toast.makeText(LoginActivity.this, task1.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                                            // ── New user (first time Google sign-in) ───────────────────
+                                            // No existing data — safe to create a fresh record.
+                                            User firebaseUser = new User(
+                                                    user.getUid(),
+                                                    emailAddress,
+                                                    fullName != null ? fullName : "",
+                                                    "",   // DOB — collected in ProfileCompletionActivity
+                                                    mobileNumber != null ? mobileNumber : "-1"
+                                            );
+                                            firebaseUser.setProfile_photo_url(profilePhotoUrl);
+
+                                            database.getReference()
+                                                    .child("users")
+                                                    .child(user.getUid())
+                                                    .setValue(firebaseUser)
+                                                    .addOnCompleteListener(task1 -> {
+                                                        if (task1.isSuccessful()) {
+                                                            getApplicationContext()
+                                                                    .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
+                                                                    .edit().putString("email", emailAddress).apply();
+                                                            checkUserStatusAndNavigate();
+                                                        } else {
+                                                            Toast.makeText(LoginActivity.this,
+                                                                    task1.getException().getLocalizedMessage(),
+                                                                    Toast.LENGTH_SHORT).show();
+                                                        }
+                                                    });
                                         }
                                     });
                         }
