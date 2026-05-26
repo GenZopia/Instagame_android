@@ -25,12 +25,22 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
     val followedUsersLoading by viewModel.followedUsersLoading.collectAsState()
     val games by viewModel.games.collectAsState()
     val gamesLoading by viewModel.gamesLoading.collectAsState()
+    val loadingMore by viewModel.loadingMore.collectAsState()
+    val allLoaded by viewModel.allLoaded.collectAsState()
 
     LazyColumn(
         modifier = modifier.fillMaxSize().background(bg),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
         item { FollowingStoriesBar(users = followedUsers, isLoading = followedUsersLoading) }
-        item { HomeGamesSection(games = games, isLoading = gamesLoading) }
+        item {
+            HomeGamesSection(
+                games = games,
+                isLoading = gamesLoading,
+                loadingMore = loadingMore,
+                allLoaded = allLoaded,
+                onLoadMore = { viewModel.loadMoreGames() }
+            )
+        }
     }
 }

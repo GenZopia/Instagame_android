@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,8 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -52,6 +52,9 @@ data class HomeGameItem(
 fun HomeGamesSection(
     games: List<HomeGameItem>,
     isLoading: Boolean,
+    loadingMore: Boolean = false,
+    allLoaded: Boolean = false,
+    onLoadMore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = isSystemInDarkTheme()
@@ -160,12 +163,27 @@ fun HomeGamesSection(
 
         Spacer(Modifier.height(8.dp))
 
-        // 2-column vertical grid — fixed height so it scrolls within the parent LazyColumn
+        // 2-column grid — scroll detection triggers next page load
+        val gridState = rememberLazyGridState()
+
+        // Trigger load more when within 4 items of the end
+        val shouldLoadMore = remember {
+            derivedStateOf {
+                val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                val total = gridState.layoutInfo.totalItemsCount
+                total > 0 && lastVisible >= total - 4
+            }
+        }
+        LaunchedEffect(shouldLoadMore.value) {
+            if (shouldLoadMore.value) onLoadMore()
+        }
+
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(2),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 2000.dp),
+                .heightIn(max = 10000.dp),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -175,6 +193,27 @@ fun HomeGamesSection(
                 GameCard(game = game, isDark = isDark, textColor = textColor, subColor = subColor) {
                     selectedGame = game
                 }
+            }
+        }
+
+        // Load-more footer
+        if (loadingMore) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Orange, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+            }
+        } else if (allLoaded && games.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("All ${games.size} games loaded", fontSize = 12.sp, color = subColor)
             }
         }
 

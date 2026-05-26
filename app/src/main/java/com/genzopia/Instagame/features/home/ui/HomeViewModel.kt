@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
+private const val PAGE_SIZE = 20
+
 class HomeViewModel : ViewModel() {
 
     private val followingRepository = FollowingRepository()
@@ -23,75 +25,138 @@ class HomeViewModel : ViewModel() {
     private val _gamesLoading = MutableStateFlow(true)
     val gamesLoading = _gamesLoading.asStateFlow()
 
+    // true while a page fetch is in progress
+    private val _loadingMore = MutableStateFlow(false)
+    val loadingMore = _loadingMore.asStateFlow()
+
+    // true when all pages have been loaded
+    private val _allLoaded = MutableStateFlow(false)
+    val allLoaded = _allLoaded.asStateFlow()
+
+    // ordered list of all game keys fetched from Firebase (lightweight)
+    private val allGameKeys = mutableListOf<String>()
+    private var nextPageIndex = 0
+    private var keysReady = false
+
     init {
         loadFollowedUsers()
-        loadGames()
+        loadGameKeys()
     }
 
     // No-op — kept so existing call sites compile
     fun initializePlayer(context: Context) {}
 
-    fun loadGames() {
-        if (_games.value.isNotEmpty()) return
+    /** Step 1: fetch only the keys (no data) — very cheap even for 100k games */
+    private fun loadGameKeys() {
         _gamesLoading.value = true
         val db = com.google.firebase.database.FirebaseDatabase.getInstance()
-        db.getReference("games").addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                val list = mutableListOf<com.genzopia.Instagame.features.home.ui.HomeGameItem>()
-                val total = snapshot.childrenCount.toInt()
-                if (total == 0) { _gamesLoading.value = false; return }
-                var completed = 0
-
-                // Publishes the current list and marks loading done when all games are resolved.
-                // Called after every individual game completes (success or failure) so partial
-                // results are visible immediately and a single slow/failed callback can't block
-                // the entire list from appearing.
-                fun onGameResolved() {
-                    synchronized(list) {
-                        completed++
-                        _games.value = list.toList()
-                        if (completed >= total) _gamesLoading.value = false
+        db.getReference("games")
+            .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    allGameKeys.clear()
+                    for (child in snapshot.children) {
+                        child.key?.let { allGameKeys.add(it) }
+                    }
+                    keysReady = true
+                    if (allGameKeys.isEmpty()) {
+                        _gamesLoading.value = false
+                        _allLoaded.value = true
+                    } else {
+                        fetchNextPage()
                     }
                 }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
+                    _gamesLoading.value = false
+                }
+            })
+    }
 
-                for (gameSnap in snapshot.children) {
-                    val gameId = gameSnap.key
-                    if (gameId == null) { onGameResolved(); continue }
-                    val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
-                    val description = gameSnap.child("description").getValue(String::class.java) ?: ""
-                    val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
-                    val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+    /** Step 2: called on init and whenever the user scrolls near the bottom */
+    fun loadMoreGames() {
+        if (_loadingMore.value || _allLoaded.value || !keysReady) return
+        fetchNextPage()
+    }
 
-                    fun addGame(imageUrl: String, devName: String, devPhoto: String) {
-                        synchronized(list) {
-                            list.add(com.genzopia.Instagame.features.home.ui.HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
-                        }
-                        onGameResolved()
-                    }
-                    fun fetchWithPhoto(imageUrl: String) {
-                        if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }
-                        db.getReference("users").child(devId).addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-                            override fun onDataChange(u: com.google.firebase.database.DataSnapshot) {
-                                val devName = u.child("full_name").getValue(String::class.java) ?: u.child("username").getValue(String::class.java) ?: "Developer"
-                                val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(u.child("profile_photo_url").getValue(String::class.java) ?: "") ?: ""
-                                addGame(imageUrl, devName, devPhoto)
-                            }
-                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { addGame(imageUrl, "", "") }
-                        })
-                    }
-                    if (photoId.isNotEmpty()) {
-                        db.getReference("photos").child(photoId).addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-                            override fun onDataChange(photoSnap: com.google.firebase.database.DataSnapshot) {
-                                val fileExt = photoSnap.child("file_ext").getValue(String::class.java) ?: photoSnap.child("file_name").getValue(String::class.java)?.substringAfterLast('.', "jpg") ?: "jpg"
-                                Thread { fetchWithPhoto(com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: "") }.start()
-                            }
-                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { fetchWithPhoto("") }
-                        })
-                    } else fetchWithPhoto("")
+    private fun fetchNextPage() {
+        val from = nextPageIndex
+        val to = minOf(from + PAGE_SIZE, allGameKeys.size)
+        if (from >= allGameKeys.size) {
+            _allLoaded.value = true
+            _gamesLoading.value = false
+            return
+        }
+
+        _loadingMore.value = true
+        val pageKeys = allGameKeys.subList(from, to)
+        nextPageIndex = to
+
+        val db = com.google.firebase.database.FirebaseDatabase.getInstance()
+        val pageList = mutableListOf<com.genzopia.Instagame.features.home.ui.HomeGameItem>()
+        var completed = 0
+        val total = pageKeys.size
+
+        fun onResolved() {
+            synchronized(pageList) {
+                completed++
+                if (completed >= total) {
+                    _games.value = _games.value + pageList
+                    _loadingMore.value = false
+                    _gamesLoading.value = false
+                    if (nextPageIndex >= allGameKeys.size) _allLoaded.value = true
                 }
             }
-            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { _gamesLoading.value = false }
-        })
+        }
+
+        for (gameId in pageKeys) {
+            db.getReference("games").child(gameId)
+                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                    override fun onDataChange(gameSnap: com.google.firebase.database.DataSnapshot) {
+                        val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
+                        val description = gameSnap.child("description").getValue(String::class.java) ?: ""
+                        val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
+                        val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+
+                        fun addGame(imageUrl: String, devName: String, devPhoto: String) {
+                            synchronized(pageList) {
+                                pageList.add(com.genzopia.Instagame.features.home.ui.HomeGameItem(
+                                    gameId, gameName, description, imageUrl, devId, devName, devPhoto
+                                ))
+                            }
+                            onResolved()
+                        }
+
+                        fun fetchWithDev(imageUrl: String) {
+                            if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }
+                            db.getReference("users").child(devId)
+                                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                    override fun onDataChange(u: com.google.firebase.database.DataSnapshot) {
+                                        val devName = u.child("full_name").getValue(String::class.java)
+                                            ?: u.child("username").getValue(String::class.java) ?: "Developer"
+                                        val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
+                                            u.child("profile_photo_url").getValue(String::class.java) ?: ""
+                                        ) ?: ""
+                                        addGame(imageUrl, devName, devPhoto)
+                                    }
+                                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { addGame(imageUrl, "", "") }
+                                })
+                        }
+
+                        if (photoId.isNotEmpty()) {
+                            db.getReference("photos").child(photoId)
+                                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                    override fun onDataChange(photoSnap: com.google.firebase.database.DataSnapshot) {
+                                        val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
+                                            ?: photoSnap.child("file_name").getValue(String::class.java)
+                                                ?.substringAfterLast('.', "jpg") ?: "jpg"
+                                        Thread { fetchWithDev(com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: "") }.start()
+                                    }
+                                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { fetchWithDev("") }
+                                })
+                        } else fetchWithDev("")
+                    }
+                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { onResolved() }
+                })
+        }
     }
 
     private fun loadFollowedUsers() {
