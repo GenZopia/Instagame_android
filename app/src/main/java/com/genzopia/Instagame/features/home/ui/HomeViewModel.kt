@@ -38,21 +38,35 @@ class HomeViewModel : ViewModel() {
         db.getReference("games").addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
             override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                 val list = mutableListOf<com.genzopia.Instagame.features.home.ui.HomeGameItem>()
-                var pending = snapshot.childrenCount.toInt()
-                if (pending == 0) { _gamesLoading.value = false; return }
+                val total = snapshot.childrenCount.toInt()
+                if (total == 0) { _gamesLoading.value = false; return }
+                var completed = 0
+
+                // Publishes the current list and marks loading done when all games are resolved.
+                // Called after every individual game completes (success or failure) so partial
+                // results are visible immediately and a single slow/failed callback can't block
+                // the entire list from appearing.
+                fun onGameResolved() {
+                    synchronized(list) {
+                        completed++
+                        _games.value = list.toList()
+                        if (completed >= total) _gamesLoading.value = false
+                    }
+                }
+
                 for (gameSnap in snapshot.children) {
                     val gameId = gameSnap.key
-                    if (gameId == null) { pending--; if (pending == 0) { _games.value = list.toList(); _gamesLoading.value = false }; continue }
+                    if (gameId == null) { onGameResolved(); continue }
                     val gameName = gameSnap.child("game_name").getValue(String::class.java) ?: "Unknown"
                     val description = gameSnap.child("description").getValue(String::class.java) ?: ""
                     val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
                     val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+
                     fun addGame(imageUrl: String, devName: String, devPhoto: String) {
                         synchronized(list) {
                             list.add(com.genzopia.Instagame.features.home.ui.HomeGameItem(gameId, gameName, description, imageUrl, devId, devName, devPhoto))
-                            pending--
-                            if (pending == 0) { _games.value = list.toList(); _gamesLoading.value = false }
                         }
+                        onGameResolved()
                     }
                     fun fetchWithPhoto(imageUrl: String) {
                         if (devId.isEmpty()) { addGame(imageUrl, "", ""); return }

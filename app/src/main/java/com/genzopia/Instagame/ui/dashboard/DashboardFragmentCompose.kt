@@ -11,6 +11,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import com.genzopia.Instagame.onboarding.OnboardingTutorialHost
 import com.genzopia.Instagame.reelview.compose.ReelScreen
 
 /**
@@ -35,7 +36,7 @@ class DashboardFragmentCompose : Fragment() {
             setContent {
                 MaterialTheme {
                     Surface {
-                        ReelScreen(viewModel = viewModel)
+                        OnboardingTutorialHost(viewModel = viewModel)
                     }
                 }
             }

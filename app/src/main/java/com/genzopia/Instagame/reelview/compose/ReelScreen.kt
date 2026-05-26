@@ -56,6 +56,7 @@ import com.google.firebase.database.Transaction
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PageSize
+import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIX 1: Replaced deprecated `com.google.accompanist.pager` with
@@ -91,7 +92,11 @@ import androidx.compose.foundation.pager.PageSize
 @Composable
 fun ReelScreen(
     viewModel: ReelViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Tutorial integration: called once pager is ready with a lambda that scrolls to next page.
+    // OnboardingTutorialHost stores this lambda and calls it when the scroll step fires.
+    onScrollActionReady: (scrollToNext: () -> Unit) -> Unit = {},
+    onCurrentReelChanged: (gameId: String) -> Unit = {}
 ) {
     val reels = viewModel.reelsFlow.collectAsLazyPagingItems()
 
@@ -100,6 +105,19 @@ fun ReelScreen(
 
     val context = LocalContext.current
     var shouldPauseAll by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Hand the tutorial a stable lambda it can call to animate to the next page.
+    // Re-registers whenever pagerState or itemCount changes (e.g. after first load).
+    LaunchedEffect(pagerState, reels.itemCount) {
+        onScrollActionReady {
+            coroutineScope.launch {
+                if (pagerState.currentPage + 1 < reels.itemCount) {
+                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.initializePlayer(context)
@@ -124,10 +142,11 @@ fun ReelScreen(
         }
     }
 
-    // Handle page changes with preloading
+    // Handle page changes: notify tutorial of current gameId + drive video playback + preload
     LaunchedEffect(pagerState.currentPage, reels.itemCount) {
         if (reels.itemCount > 0 && pagerState.currentPage < reels.itemCount) {
             val reel = reels[pagerState.currentPage]
+            onCurrentReelChanged(reel?.gameId ?: "")
             Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
             reel?.let {
                 viewModel.setCurrentVideo(it.videoId, it.playbackUrl)

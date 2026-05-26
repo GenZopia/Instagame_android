@@ -7,8 +7,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.ConsoleMessage;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -31,6 +34,7 @@ import com.google.firebase.database.ValueEventListener;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,44 +49,47 @@ public class Game_mode extends BaseActivity {
     private static final String TAG = "Game_mode";
     private static final int CAMERA_PERMISSION_REQUEST = 100;
     private static final int MICROPHONE_PERMISSION_REQUEST = 101;
-    
+
+    // ── Ad blacklist — used in both shouldInterceptRequest & shouldOverrideUrlLoading ──
+    private static final String[] AD_DOMAINS = {
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+            "googletagmanager.com", "google-analytics.com", "pagead2.googlesyndication.com",
+            "adservice.google.com", "recaptcha.net", "hcaptcha.com",
+            "adnxs.com", "adsrvr.org", "moatads.com", "outbrain.com", "taboola.com",
+            "popads.net", "popcash.net", "propellerads.com", "adcash.com",
+            "hilltopads.net", "trafficjunky.com", "exoclick.com", "juicyads.com",
+            "clickadu.com", "adsterra.com", "yllix.com", "revcontent.com",
+            "mgid.com", "valueimpression.com", "ero-advertising.com"
+    };
+
     private ActivityGameModeBinding binding;
     private WebView webView;
     private PermissionRequest pendingPermissionRequest;
-    
-    // Variables to store game ID
+
     private String gameId;
     private String currentUserId;
-    
-    // HTTP client for making requests
+
     private OkHttpClient httpClient;
     private ExecutorService executorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         EdgeToEdge.enable(this);
 
-        // Inflate and set layout
         binding = ActivityGameModeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Initialize HTTP client and executor
         httpClient = new OkHttpClient();
         executorService = Executors.newSingleThreadExecutor();
 
-        // Get current user ID from Firebase Auth
         currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-
-        // Retrieve intent extras
         gameId = getIntent().getStringExtra("game_id");
-        
-        // Log the received values for debugging
+
         Log.d(TAG, "Game ID: " + gameId);
         Log.d(TAG, "Current User ID: " + currentUserId);
 
-        // Fetch game data to get the user_id, orientation, and game_link
         fetchGameDataAndGetSignedUrl();
     }
 
@@ -94,7 +101,6 @@ public class Game_mode extends BaseActivity {
             return;
         }
 
-        // Fetch game data from Firebase to get the user_id and orientation
         DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
         gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
@@ -103,15 +109,13 @@ public class Game_mode extends BaseActivity {
                     String gameUserId = snapshot.child("user_id").getValue(String.class);
                     String orientation = snapshot.child("orientation").getValue(String.class);
                     String gameLink = snapshot.child("game_link").getValue(String.class);
-                    
-                    Log.d(TAG, "Game user_id from Firebase: " + gameUserId);
-                    Log.d(TAG, "Game orientation from Firebase: " + orientation);
-                    Log.d(TAG, "Game link from Firebase: " + gameLink);
-                    
-                    // Set screen orientation based on Firebase data
+
+                    Log.d(TAG, "Game user_id: " + gameUserId);
+                    Log.d(TAG, "Orientation: " + orientation);
+                    Log.d(TAG, "Game link: " + gameLink);
+
                     setScreenOrientation(orientation);
-                    
-                    // If game_link is available, load it directly — skip the worker
+
                     if (gameLink != null && !gameLink.isEmpty()) {
                         Log.d(TAG, "Using direct game_link: " + gameLink);
                         runOnUiThread(() -> {
@@ -120,7 +124,6 @@ public class Game_mode extends BaseActivity {
                             }
                         });
                     } else if (gameUserId != null && !gameUserId.isEmpty()) {
-                        // No game_link — fall back to signed URL from worker
                         getSignedGameUrl(gameUserId);
                     } else {
                         Log.e(TAG, "Game user_id is null or empty");
@@ -128,7 +131,7 @@ public class Game_mode extends BaseActivity {
                         finish();
                     }
                 } else {
-                    Log.e(TAG, "Game not found in Firebase: " + gameId);
+                    Log.e(TAG, "Game not found: " + gameId);
                     Toast.makeText(Game_mode.this, "Game not found", Toast.LENGTH_SHORT).show();
                     finish();
                 }
@@ -143,56 +146,29 @@ public class Game_mode extends BaseActivity {
         });
     }
 
-    /**
-     * Set screen orientation based on Firebase orientation parameter
-     * @param orientation The orientation value from Firebase ("portrait" or "landscape")
-     */
     private void setScreenOrientation(String orientation) {
         if (orientation == null || orientation.isEmpty()) {
-            // Default to landscape if no orientation specified
-            Log.d(TAG, "No orientation specified, defaulting to landscape");
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             return;
         }
-        
-        // Convert to lowercase for case-insensitive comparison
-        String orientationLower = orientation.toLowerCase().trim();
-        
-        switch (orientationLower) {
+        switch (orientation.toLowerCase().trim()) {
             case "portrait":
-                Log.d(TAG, "Setting orientation to PORTRAIT");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
                 break;
             case "landscape":
-                Log.d(TAG, "Setting orientation to LANDSCAPE");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                 break;
             default:
-                // If orientation value is not recognized, default to landscape
-                Log.w(TAG, "Unknown orientation value: " + orientation + ", defaulting to landscape");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                 break;
         }
     }
 
     private void getSignedGameUrl(String gameUserId) {
-        // Build the link-signer URL with game's user_id and gameid parameters
         String linkSignerUrl = "https://link-signer.genzopia.workers.dev/?userid=" + gameUserId + "&gameid=" + gameId;
-        
-        // Detailed logging to verify the request
-        Log.d(TAG, "=== LINK-SIGNER REQUEST DETAILS ===");
-        Log.d(TAG, "Base URL: https://link-signer.genzopia.workers.dev/");
-        Log.d(TAG, "Game User ID (from game data): " + gameUserId);
-        Log.d(TAG, "Game ID: " + gameId);
-        Log.d(TAG, "Full URL: " + linkSignerUrl);
-        Log.d(TAG, "URL Parameters:");
-        Log.d(TAG, "  - userid: " + gameUserId);
-        Log.d(TAG, "  - gameid: " + gameId);
-        Log.d(TAG, "=====================================");
+        Log.d(TAG, "Link-signer URL: " + linkSignerUrl);
 
-        Request request = new Request.Builder()
-                .url(linkSignerUrl)
-                .build();
+        Request request = new Request.Builder().url(linkSignerUrl).build();
 
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
@@ -211,27 +187,19 @@ public class Game_mode extends BaseActivity {
                 if (response.isSuccessful()) {
                     String responseBody = response.body().string();
                     Log.d(TAG, "Link-signer response: " + responseBody);
-                    
                     try {
-                        // Parse JSON response
                         Gson gson = new Gson();
                         JsonObject jsonResponse = gson.fromJson(responseBody, JsonObject.class);
-                        
                         boolean success = jsonResponse.get("success").getAsBoolean();
                         if (success) {
                             String signedGameUrl = jsonResponse.get("url").getAsString();
                             Log.d(TAG, "Signed game URL: " + signedGameUrl);
-                            
-                            // Load the signed game URL in WebView
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
                                     setupWebView(signedGameUrl);
-                                } else {
-                                    Log.w(TAG, "Activity is finishing, skipping WebView setup");
                                 }
                             });
                         } else {
-                            Log.e(TAG, "Link-signer returned success=false");
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
                                     Toast.makeText(Game_mode.this, "Failed to get game URL", Toast.LENGTH_SHORT).show();
@@ -240,7 +208,7 @@ public class Game_mode extends BaseActivity {
                             });
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "Error parsing JSON response: " + e.getMessage());
+                        Log.e(TAG, "JSON parse error: " + e.getMessage());
                         runOnUiThread(() -> {
                             if (!isFinishing() && !isDestroyed()) {
                                 Toast.makeText(Game_mode.this, "Error parsing response", Toast.LENGTH_SHORT).show();
@@ -261,159 +229,218 @@ public class Game_mode extends BaseActivity {
         });
     }
 
+    // ── Helper: check if a URL belongs to an ad domain ──────────────────────
+    private boolean isAdDomain(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase();
+        for (String domain : AD_DOMAINS) {
+            if (lower.contains(domain)) return true;
+        }
+        return false;
+    }
+
     private void setupWebView(String gameUrl) {
-        // Check if activity is still valid and binding is not null
         if (isFinishing() || isDestroyed() || binding == null) {
-            Log.w(TAG, "Activity is finishing or binding is null, skipping WebView setup");
+            Log.w(TAG, "Activity finishing, skipping WebView setup");
             return;
         }
 
         try {
             webView = binding.webView;
-            
-            // Enable JavaScript (required for WebGL games)
+
             WebSettings webSettings = webView.getSettings();
+
+            // ── Core settings ────────────────────────────────────────────────
             webSettings.setJavaScriptEnabled(true);
-            
-            // Enable DOM storage (required for many games)
             webSettings.setDomStorageEnabled(true);
-            
-            // Enable database storage
             webSettings.setDatabaseEnabled(true);
-            
-            // Enable hardware acceleration and GPU
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null);
-            }
-            
-            // Enable WebGL support
-            webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
-            
-            // Enable mixed content (HTTP and HTTPS)
+            webSettings.setMediaPlaybackRequiresUserGesture(false);
+            webSettings.setBuiltInZoomControls(false);
+            webSettings.setDisplayZoomControls(false);
+            webSettings.setUseWideViewPort(true);
+            webSettings.setLoadWithOverviewMode(true);
+            webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            webSettings.setAllowFileAccess(true);
+            webSettings.setAllowContentAccess(true);
+            webSettings.setUserAgentString(webSettings.getUserAgentString() + " Desktop");
+
+            // ── Block popups & new windows ───────────────────────────────────
+            webSettings.setJavaScriptCanOpenWindowsAutomatically(false); // was true — changed!
+            webSettings.setSupportMultipleWindows(false);
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             }
-            
-            // Enable zoom controls
-            webSettings.setBuiltInZoomControls(false);
-            webSettings.setDisplayZoomControls(false);
-            
-            // Enable wide viewport
-            webSettings.setUseWideViewPort(true);
-            webSettings.setLoadWithOverviewMode(true);
-            
-            // Enable caching for better performance
-            webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
-            
-            // Enable media playback
-            webSettings.setMediaPlaybackRequiresUserGesture(false);
-            
-            // Set user agent to desktop for better game compatibility
-            webSettings.setUserAgentString(webSettings.getUserAgentString() + " Desktop");
-            
-            // Enable file access
-            webSettings.setAllowFileAccess(true);
-            webSettings.setAllowContentAccess(true);
-            
-            // Set WebViewClient to handle page loading
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null);
+            }
+
+            // ── WebViewClient ────────────────────────────────────────────────
             webView.setWebViewClient(new WebViewClient() {
+
+                // Block ad network requests before they load
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                    String url = request.getUrl().toString();
+                    if (isAdDomain(url)) {
+                        Log.d(TAG, "[AdBlock] Blocked request: " + url);
+                        return new WebResourceResponse(
+                                "text/plain", "utf-8",
+                                new ByteArrayInputStream("".getBytes())
+                        );
+                    }
+                    return super.shouldInterceptRequest(view, request);
+                }
+
+                // Block ad redirects — blacklist only, allow all game URLs freely
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    String host = request.getUrl().getHost();
+                    String url = request.getUrl().toString();
+
+                    // Always allow blob/data (game assets)
+                    if (url.startsWith("blob:") || url.startsWith("data:")) {
+                        return false;
+                    }
+
+                    // Block known ad domains
+                    if (isAdDomain(host)) {
+                        Log.d(TAG, "[AdBlock] Blocked navigation: " + host);
+                        return true;
+                    }
+
+                    // Allow everything else (random game subdomains, CDNs, etc.)
+                    Log.d(TAG, "[AdBlock] Allowed navigation: " + host);
+                    return false;
+                }
+
                 @Override
                 public void onPageFinished(WebView view, String url) {
                     super.onPageFinished(view, url);
-                    Log.d(TAG, "Page loaded successfully: " + url);
+                    Log.d(TAG, "Page loaded: " + url);
                 }
-                
+
                 @Override
                 public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
                     super.onReceivedError(view, errorCode, description, failingUrl);
                     Log.e(TAG, "WebView error: " + description);
                 }
             });
-            
-            // Set WebChromeClient to handle permissions and console messages
+
+            // ── WebChromeClient ──────────────────────────────────────────────
             webView.setWebChromeClient(new WebChromeClient() {
+
+                // Only grant camera/mic — deny notification/location used by ads
                 @Override
                 public void onPermissionRequest(PermissionRequest request) {
                     Log.d(TAG, "Permission requested: " + java.util.Arrays.toString(request.getResources()));
-                    
-                    // Store the request for later
                     pendingPermissionRequest = request;
-                    
-                    // Check if camera permission is requested
+
                     for (String resource : request.getResources()) {
                         if (resource.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
-                            // Check if we have camera permission
                             if (ContextCompat.checkSelfPermission(Game_mode.this, Manifest.permission.CAMERA)
                                     != PackageManager.PERMISSION_GRANTED) {
-                                // Request camera permission from user
                                 ActivityCompat.requestPermissions(Game_mode.this,
-                                        new String[]{Manifest.permission.CAMERA},
-                                        CAMERA_PERMISSION_REQUEST);
+                                        new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
                                 return;
                             }
                         } else if (resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
-                            // Check if we have microphone permission
                             if (ContextCompat.checkSelfPermission(Game_mode.this, Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
-                                // Request microphone permission from user
                                 ActivityCompat.requestPermissions(Game_mode.this,
-                                        new String[]{Manifest.permission.RECORD_AUDIO},
-                                        MICROPHONE_PERMISSION_REQUEST);
+                                        new String[]{Manifest.permission.RECORD_AUDIO}, MICROPHONE_PERMISSION_REQUEST);
                                 return;
                             }
                         }
                     }
-                    
-                    // Grant all requested permissions
-                    request.grant(request.getResources());
+
+                    // Only grant safe permissions
+                    java.util.List<String> safe = new java.util.ArrayList<>();
+                    for (String resource : request.getResources()) {
+                        if (resource.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                                || resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                            safe.add(resource);
+                        } else {
+                            Log.d(TAG, "[AdBlock] Denied permission: " + resource);
+                        }
+                    }
+
+                    if (!safe.isEmpty()) {
+                        request.grant(safe.toArray(new String[0]));
+                    } else {
+                        request.deny();
+                    }
                 }
-                
+
+                // Block JS alert/confirm popups from ads
                 @Override
-                public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-                    Log.d(TAG, "Console: " + consoleMessage.message() + 
-                            " -- From line " + consoleMessage.lineNumber() + 
-                            " of " + consoleMessage.sourceId());
+                public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                    Log.d(TAG, "[AdBlock] Blocked JS alert");
+                    result.cancel();
                     return true;
                 }
-                
+
+                @Override
+                public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                    result.cancel();
+                    return true;
+                }
+
+                @Override
+                public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+                    result.cancel();
+                    return true;
+                }
+
+                // Block popup windows
+                @Override
+                public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                    Log.d(TAG, "[AdBlock] Blocked popup window");
+                    return false;
+                }
+
+                @Override
+                public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                    Log.d(TAG, "Console: " + consoleMessage.message()
+                            + " -- Line " + consoleMessage.lineNumber()
+                            + " of " + consoleMessage.sourceId());
+                    return true;
+                }
+
                 @Override
                 public void onProgressChanged(WebView view, int newProgress) {
                     super.onProgressChanged(view, newProgress);
-                    Log.d(TAG, "Loading progress: " + newProgress + "%");
+                    Log.d(TAG, "Loading: " + newProgress + "%");
                 }
             });
-            
-            // Load the signed game URL
-            Log.d(TAG, "Loading signed game URL in WebView: " + gameUrl);
+
+            Log.d(TAG, "Loading game URL: " + gameUrl);
             webView.loadUrl(gameUrl);
-            
+
         } catch (Exception e) {
             Log.e(TAG, "Error setting up WebView: " + e.getMessage());
             Toast.makeText(this, "Error loading game", Toast.LENGTH_SHORT).show();
             finish();
         }
     }
-    
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        
         if (requestCode == CAMERA_PERMISSION_REQUEST || requestCode == MICROPHONE_PERMISSION_REQUEST) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Permission granted");
-                // Grant the pending permission request
                 if (pendingPermissionRequest != null) {
                     pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
                     pendingPermissionRequest = null;
                 }
             } else {
                 Log.d(TAG, "Permission denied");
-                // Deny the pending permission request
                 if (pendingPermissionRequest != null) {
                     pendingPermissionRequest.deny();
                     pendingPermissionRequest = null;
                 }
-                Toast.makeText(this, "Permission denied. Some game features may not work.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Permission denied. Some features may not work.", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -422,7 +449,6 @@ public class Game_mode extends BaseActivity {
     protected void onDestroy() {
         super.onDestroy();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-
         if (webView != null) {
             webView.loadUrl("about:blank");
             webView.clearCache(true);
@@ -430,14 +456,12 @@ public class Game_mode extends BaseActivity {
             webView.destroy();
             webView = null;
         }
-
         if (executorService != null) {
             executorService.shutdown();
         }
-
         binding = null;
     }
-    
+
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
@@ -446,8 +470,7 @@ public class Game_mode extends BaseActivity {
             super.onBackPressed();
         }
     }
-    
-    // Getter methods for accessing the stored values
+
     public String getGameId() {
         return gameId;
     }
