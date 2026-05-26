@@ -72,42 +72,42 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation(libs.core.splashscreen)
 
     // Jetpack Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.activity:activity-compose:1.8.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation(libs.compose.bom)
+    implementation(libs.ui)
+    implementation(libs.ui.graphics)
+    implementation(libs.ui.tooling.preview)
+    implementation(libs.material3)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
     
     // Paging 3 with Compose
-    implementation("androidx.paging:paging-runtime-ktx:3.2.1")
-    implementation("androidx.paging:paging-compose:3.2.1")
+    implementation(libs.paging.runtime.ktx)
+    implementation(libs.paging.compose)
     
     // Coil for image loading
-    implementation("io.coil-kt:coil-compose:2.5.0")
-    implementation("io.coil-kt:coil-video:2.5.0")
+    implementation(libs.coil.compose)
+    implementation(libs.coil.video)
     
     // Media3 ExoPlayer (latest stable version)
-    implementation("androidx.media3:media3-exoplayer:1.3.1")
-    implementation("androidx.media3:media3-ui:1.3.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
-    implementation("androidx.media3:media3-datasource:1.3.1")
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.datasource)
     
     // Accompanist for Pager
-    implementation("com.google.accompanist:accompanist-pager:0.32.0")
+    implementation(libs.accompanist.pager)
 
     // --- CAMERA X DEPENDENCIES (add if not already present) ---
-    implementation ("androidx.camera:camera-core:1.4.2")
-    implementation ("androidx.camera:camera-camera2:1.4.2")
-    implementation ("androidx.camera:camera-lifecycle:1.4.2")
-    implementation ("androidx.camera:camera-video:1.2.2")
-    implementation ("androidx.camera:camera-view:1.4.2")
-    implementation ("androidx.camera:camera-extensions:1.4.2")
+    implementation (libs.camera.core)
+    implementation (libs.camera.camera2)
+    implementation (libs.camera.lifecycle)
+    implementation (libs.camera.video)
+    implementation (libs.camera.view)
+    implementation (libs.camera.extensions)
     // ---------------------------------------------------------
 
     implementation(libs.firebase.auth.ktx)
@@ -129,26 +129,26 @@ dependencies {
     // If you need video playback, use Media3 (already added above)
     // implementation("com.google.android.exoplayer:exoplayer:2.19.1")
     
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation(libs.recyclerview)
+    implementation(libs.swiperefreshlayout)
 
     implementation(libs.glide)
-    annotationProcessor("com.github.bumptech.glide:compiler:4.15.0")
-    implementation("com.github.bumptech.glide:okhttp3-integration:4.15.0")
+    annotationProcessor(libs.compiler)
+    implementation(libs.okhttp3.integration)
 
-    implementation("com.facebook.shimmer:shimmer:0.5.0")
+    implementation(libs.shimmer)
     // Country picker with flags + search
-    implementation("com.hbb20:ccp:2.7.3")
+    implementation(libs.ccp)
     // Google's libphonenumber for parsing/validation/formatting
-    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.30")
+    implementation(libs.libphonenumber)
 
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("androidx.work:work-runtime:2.9.0")
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("com.airbnb.android:lottie:6.4.0")
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("com.squareup.retrofit2:retrofit:3.0.0")
-    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation(libs.okhttp)
+    implementation(libs.work.runtime)
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.lottie)
+    implementation(libs.gson)
+    implementation(libs.retrofit)
+    implementation(libs.converter.gson)
 
 
 }
