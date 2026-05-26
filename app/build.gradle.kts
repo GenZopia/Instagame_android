@@ -13,11 +13,9 @@ android {
         applicationId = "com.genzopia.Instagame"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 5
+        versionName = "5.0"
 
-        // Expose API keys from gradle.properties into BuildConfig.
-        // gradle.properties is in .gitignore — keys never enter source control.
         val fileUploadApiKey: String = (project.findProperty("file_upload_api_key") as String?) ?: ""
         buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"")
 
@@ -27,9 +25,7 @@ android {
 
     buildFeatures {
         viewBinding = true
-        // Enable generation of BuildConfig so buildConfigField works
         buildConfig = true
-        // Enable Jetpack Compose
         compose = true
     }
 
@@ -48,8 +44,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    // FIX: kotlinOptions { jvmTarget = "17" } is an error in Kotlin 2.2.0.
+    // Must use the compilerOptions DSL instead.
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     java {
@@ -66,16 +66,23 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.firebase.bom)) // Firebase BOM centralized
+    // Firebase BOM — manages all Firebase artifact versions
+    implementation(platform(libs.firebase.bom))
+
+    // Jetpack Compose BOM — manages all Compose artifact versions.
+    // MUST be declared with platform() so Gradle treats it as a BOM,
+    // not a regular jar. Without this wrapper the BOM has no effect
+    // and every version-less Compose artifact fails to resolve.
+    implementation(platform(libs.compose.bom))
 
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
     implementation(libs.core.splashscreen)
+    implementation(libs.androidx.core.ktx)
 
-    // Jetpack Compose BOM
-    implementation(libs.compose.bom)
+    // Jetpack Compose
     implementation(libs.ui)
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
@@ -83,65 +90,59 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
-    
+
     // Paging 3 with Compose
     implementation(libs.paging.runtime.ktx)
     implementation(libs.paging.compose)
-    
+
     // Coil for image loading
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
-    
-    // Media3 ExoPlayer (latest stable version)
+
+    // Media3 ExoPlayer
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.datasource)
-    
-    // Accompanist for Pager
+
+    // Accompanist Pager (kept for any legacy usages)
     implementation(libs.accompanist.pager)
 
-    // --- CAMERA X DEPENDENCIES (add if not already present) ---
-    implementation (libs.camera.core)
-    implementation (libs.camera.camera2)
-    implementation (libs.camera.lifecycle)
-    implementation (libs.camera.video)
-    implementation (libs.camera.view)
-    implementation (libs.camera.extensions)
-    // ---------------------------------------------------------
+    // CameraX
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.video)
+    implementation(libs.camera.view)
+    implementation(libs.camera.extensions)
 
+    // Firebase (versions managed by Firebase BOM above)
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database)
     implementation(libs.firebase.firestore)
 
+    // Lifecycle
     implementation(libs.lifecycle.livedata.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
+
+    // Navigation
     implementation(libs.navigation.fragment)
     implementation(libs.navigation.ui)
 
     implementation(libs.circleimageview)
     implementation(libs.subsampling.scale.image.view)
     implementation(libs.play.services.auth)
-
-
-    
-    // REMOVED: Old ExoPlayer causes conflicts with Media3
-    // If you need video playback, use Media3 (already added above)
-    // implementation("com.google.android.exoplayer:exoplayer:2.19.1")
-    
     implementation(libs.recyclerview)
     implementation(libs.swiperefreshlayout)
 
+    // Glide
     implementation(libs.glide)
     annotationProcessor(libs.compiler)
     implementation(libs.okhttp3.integration)
 
     implementation(libs.shimmer)
-    // Country picker with flags + search
     implementation(libs.ccp)
-    // Google's libphonenumber for parsing/validation/formatting
     implementation(libs.libphonenumber)
-
     implementation(libs.okhttp)
     implementation(libs.work.runtime)
     implementation(libs.work.runtime.ktx)
@@ -149,6 +150,4 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
-
-
 }

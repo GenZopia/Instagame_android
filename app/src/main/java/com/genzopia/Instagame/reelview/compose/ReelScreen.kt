@@ -225,7 +225,7 @@ fun ReelScreen(
             VerticalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                beyondBoundsPageCount = 1,   // BUILD FIX 2: renamed from beyondViewportPageCount
+                beyondViewportPageCount = 1,   // BUILD FIX 2: renamed from beyondViewportPageCount
                 pageSize = PageSize.Fill,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
