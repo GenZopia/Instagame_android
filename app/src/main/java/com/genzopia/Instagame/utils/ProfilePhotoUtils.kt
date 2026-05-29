@@ -2,9 +2,6 @@ package com.genzopia.Instagame.utils
 
 import android.util.Log
 import org.json.JSONObject
-import java.io.IOException
-import java.net.URL
-import java.net.URLEncoder
 
 /**
  * Sanitizes a profile_photo_url that may have been stored as a raw worker JSON response
@@ -43,34 +40,15 @@ object ProfilePhotoUtils {
 object PhotoUrlResolver {
 
     private const val TAG = "profile_photo"
-    private const val SIGNER_BASE = "https://video-signer.genzopia.workers.dev/?path="
+    private const val R2_BASE = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
 
     /**
-     * Given a photo_id and file_ext, returns a fresh signed URL.
-     * Must be called off the main thread.
+     * Given a photo_id and file_ext, returns the direct R2 URL.
      */
     @JvmStatic
-    fun resolveSync(photoId: String, fileExt: String): String? {
-        val path = "photo/$photoId.$fileExt"
-        val workerUrl = "$SIGNER_BASE${URLEncoder.encode(path, "UTF-8")}"
-        Log.d(TAG, "PhotoUrlResolver → $workerUrl")
-        return try {
-            val text = URL(workerUrl).readText()
-            val json = JSONObject(text)
-            if (json.optBoolean("success") && json.has("url")) {
-                val url = json.getString("url")
-                Log.d(TAG, "PhotoUrlResolver ← signed url ok for $photoId")
-                url
-            } else {
-                Log.e(TAG, "PhotoUrlResolver ← failure for $photoId: $text")
-                null
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "PhotoUrlResolver ← network error for $photoId", e)
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "PhotoUrlResolver ← error for $photoId", e)
-            null
-        }
+    fun resolveSync(photoId: String, fileExt: String): String {
+        val url = "$R2_BASE/photo/$photoId.$fileExt"
+        Log.d(TAG, "PhotoUrlResolver → $url")
+        return url
     }
 }

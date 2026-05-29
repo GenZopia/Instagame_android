@@ -343,10 +343,10 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                         Log.d(TAG, "Video $videoId → HLS (persistent cache): $hlsUrl")
                         return@withContext Pair(null, hlsUrl)
                     } else {
-                        // "mp4" — go straight to signer, no HEAD check
+                        // "mp4" — go straight to direct URL, no HEAD check
                         val mp4Url = fetchSignerUrl(videoId)
                         Log.d(TAG, "Video $videoId → MP4 (persistent cache): $mp4Url")
-                        if (mp4Url != null) cacheUrl(videoId, mp4Url)
+                        cacheUrl(videoId, mp4Url)
                         return@withContext Pair(mp4Url, null)
                     }
                 }
@@ -362,7 +362,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
                     cacheUrlType(videoId, "mp4") // persist: no HLS exists for this video
                     val mp4Url = fetchSignerUrl(videoId)
                     Log.d(TAG, "Video $videoId → MP4 (discovered): $mp4Url")
-                    if (mp4Url != null) cacheUrl(videoId, mp4Url)
+                    cacheUrl(videoId, mp4Url)
                     Pair(mp4Url, null)
                 }
             } catch (e: Exception) {
@@ -400,20 +400,10 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         return null
     }
 
-    /** Call video-signer worker for a plain signed MP4 URL */
-    private fun fetchSignerUrl(videoId: String): String? {
-        return try {
-            val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
-            val resp = httpClient.newCall(Request.Builder().url(url).build()).execute()
-            val body = resp.body?.string() ?: return null
-            resp.close()
-            val json = JSONObject(body)
-            if (json.optBoolean("success")) json.optString("url").takeIf { it.isNotEmpty() }
-            else null
-        } catch (e: Exception) {
-            Log.e(TAG, "Signer error for $videoId", e)
-            null
-        }
+    /** Build a direct R2 MP4 URL without signing */
+    private fun fetchSignerUrl(videoId: String): String {
+        val base = resolveVideoBasePath(videoId)
+        return "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/$base.mp4"
     }
     
     /**

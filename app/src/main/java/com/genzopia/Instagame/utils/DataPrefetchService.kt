@@ -19,7 +19,6 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
 
 @UnstableApi
 object DataPrefetchService {
@@ -256,23 +255,11 @@ object DataPrefetchService {
                     Log.d(TAG, "[$videoId] HLS: $url")
                     return url
                 }
-                val resp = httpClient.newCall(
-                    Request.Builder()
-                        .url("https://video-signer.genzopia.workers.dev/?path=video/$videoId")
-                        .build()
-                ).execute()
-                val body = resp.body?.string()
-                resp.close()
-                val json = body?.let { JSONObject(it) }
-                if (json?.optBoolean("success") == true) {
-                    val url = json.optString("url").takeIf { it.isNotEmpty() }
-                    if (url != null) {
-                        signedUrlCache[videoId] = url
-                        Log.d(TAG, "[$videoId] MP4: $url")
-                        return url
-                    }
-                }
-                Log.w(TAG, "[$videoId] attempt ${attempt + 1} failed")
+                // Fall back to direct R2 MP4 URL
+                val url = "$R2/$base.mp4"
+                signedUrlCache[videoId] = url
+                Log.d(TAG, "[$videoId] MP4: $url")
+                return url
             } catch (e: Exception) {
                 Log.e(TAG, "[$videoId] attempt ${attempt + 1} error: ${e.message}")
             }

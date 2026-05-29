@@ -424,67 +424,23 @@ public class VideoDetailActivity extends BaseActivity {
     }
 
     private void setupVideoPlayer() {
-        // Get signed video URL from worker
-        String videoUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + videoId;
-        Log.d("VideoDetailActivity", "Requesting signed URL: " + videoUrl);
+        // Build direct R2 URL — no signing needed
+        String basePath = resolveVideoBasePath(videoId);
+        String videoUrl = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/" + basePath + ".mp4";
+        Log.d("VideoDetailActivity", "Loading video directly: " + videoUrl);
 
-        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-        okhttp3.Request request = new okhttp3.Request.Builder().url(videoUrl).build();
+        MediaItem mediaItem = MediaItem.fromUri(videoUrl);
+        player.setMediaItem(mediaItem);
+        player.prepare();
+        player.setPlayWhenReady(true);
+        playerView.setVisibility(View.VISIBLE);
+    }
 
-        client.newCall(request).enqueue(new okhttp3.Callback() {
-            @Override
-            public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
-                Log.e("VideoDetailActivity", "Failed to get signed URL: " + e.getMessage());
-                runOnUiThread(() -> {
-                    Toast.makeText(VideoDetailActivity.this, "Failed to load video", Toast.LENGTH_SHORT).show();
-                });
-            }
-
-            @Override
-            public void onResponse(@NonNull okhttp3.Call call, @NonNull okhttp3.Response response) throws java.io.IOException {
-                try {
-                    String body = response.body().string();
-                    org.json.JSONObject obj = new org.json.JSONObject(body);
-
-                    if (obj.optBoolean("success")) {
-                        String signedUrl = obj.optString("url");
-                        Log.d("VideoDetailActivity", "Got signed URL: " + signedUrl);
-
-                        runOnUiThread(() -> {
-                            // Setup video player with signed URL
-                            MediaItem mediaItem = MediaItem.fromUri(signedUrl);
-                            player.setMediaItem(mediaItem);
-                            player.prepare();
-
-                            // Ensure video starts playing and is visible
-                            player.setPlayWhenReady(true);
-                            playerView.setVisibility(View.VISIBLE);
-
-                            Log.d("VideoDetailActivity", "Video player setup completed");
-
-                            // Add a timeout to ensure video starts playing
-                            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                                if (player != null && !player.isPlaying()) {
-                                    Log.d("VideoDetailActivity", "Video not playing after 3 seconds, forcing play");
-                                    player.setPlayWhenReady(true);
-                                    playerView.setVisibility(View.VISIBLE);
-                                }
-                            }, 3000);
-                        });
-                    } else {
-                        Log.e("VideoDetailActivity", "Worker returned error: " + obj.optString("error", "Unknown error"));
-                        runOnUiThread(() -> {
-                            Toast.makeText(VideoDetailActivity.this, "Failed to get video URL", Toast.LENGTH_SHORT).show();
-                        });
-                    }
-                } catch (Exception e) {
-                    Log.e("VideoDetailActivity", "Error parsing worker response: " + e.getMessage());
-                    runOnUiThread(() -> {
-                        Toast.makeText(VideoDetailActivity.this, "Error loading video", Toast.LENGTH_SHORT).show();
-                    });
-                }
-            }
-        });
+    private String resolveVideoBasePath(String videoId) {
+        String id = videoId;
+        if (id.startsWith("video/")) return id.replaceAll("\\.[^.]+$", "");
+        id = id.replace(".mp4", "").replace(".m3u8", "");
+        return id.startsWith("video_") ? "video/" + id : "video/video_" + id;
     }
 
     private void updateUIForOwnership() {

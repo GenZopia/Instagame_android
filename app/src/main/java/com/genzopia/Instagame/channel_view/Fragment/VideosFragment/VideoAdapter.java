@@ -24,12 +24,8 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import okhttp3.Call;
-import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
-import java.io.IOException;
 import android.content.Intent;
 import com.genzopia.Instagame.MainActivity;
 
@@ -126,49 +122,18 @@ public class VideoAdapter extends RecyclerView.Adapter<VideoAdapter.VideoViewHol
             return;
         }
 
-        // Build the video-signer URL to get signed video URL
-        String videoSignerUrl = "https://video-signer.genzopia.workers.dev/?path=video/" + videoId;
-        
-        Log.d("VideoAdapter", "Requesting video URL from video-signer: " + videoSignerUrl);
+        // Build direct R2 URL — no signing needed
+        String basePath = resolveVideoBasePath(videoId);
+        String videoUrl = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/" + basePath + ".mp4";
+        Log.d("VideoAdapter", "Loading thumbnail from: " + videoUrl);
+        generateThumbnailFromVideo(videoUrl, holder);
+    }
 
-        Request request = new Request.Builder()
-                .url(videoSignerUrl)
-                .build();
-
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.e("VideoAdapter", "Network error: " + e.getMessage());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (response.isSuccessful()) {
-                    String responseBody = response.body().string();
-                    Log.d("VideoAdapter", "Video-signer response: " + responseBody);
-                    
-                    try {
-                        // Parse JSON response to get video URL
-                        org.json.JSONObject jsonResponse = new org.json.JSONObject(responseBody);
-                        boolean success = jsonResponse.getBoolean("success");
-                        
-                        if (success) {
-                            String videoUrl = jsonResponse.getString("url");
-                            Log.d("VideoAdapter", "Video URL: " + videoUrl);
-                            
-                            // Generate thumbnail from video
-                            generateThumbnailFromVideo(videoUrl, holder);
-                        } else {
-                            Log.e("VideoAdapter", "Video-signer returned success=false");
-                        }
-                    } catch (Exception e) {
-                        Log.e("VideoAdapter", "Error parsing JSON response: " + e.getMessage());
-                    }
-                } else {
-                    Log.e("VideoAdapter", "HTTP error: " + response.code());
-                }
-            }
-        });
+    private String resolveVideoBasePath(String videoId) {
+        String id = videoId;
+        if (id.startsWith("video/")) return id.replaceAll("\\.[^.]+$", "");
+        id = id.replace(".mp4", "").replace(".m3u8", "");
+        return id.startsWith("video_") ? "video/" + id : "video/video_" + id;
     }
 
     private void generateThumbnailFromVideo(String videoUrl, VideoViewHolder holder) {

@@ -423,17 +423,11 @@ class HomePagingSource(
                     cacheUrl(videoId, hlsUrl)
                     hlsUrl
                 } else {
-                    // Fall back to signed MP4
-                    val url = "https://video-signer.genzopia.workers.dev/?path=video/$videoId"
-                    val resp = httpClient.newCall(Request.Builder().url(url).build()).execute()
-                    val body = resp.body?.string()
-                    resp.close()
-                    val json = if (body != null) org.json.JSONObject(body) else null
-                    val signedUrl = if (json?.optBoolean("success") == true)
-                        json.optString("url").takeIf { it.isNotEmpty() } else null
-                    if (signedUrl != null) cacheUrl(videoId, signedUrl)
-                    Log.d(TAG, "Video $videoId → MP4: $signedUrl")
-                    signedUrl
+                    // Fall back to direct R2 MP4 URL
+                    val mp4Url = "$R2_PUBLIC/$basePath.mp4"
+                    cacheUrl(videoId, mp4Url)
+                    Log.d(TAG, "Video $videoId → MP4: $mp4Url")
+                    mp4Url
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error resolving URL for $videoId", e)
