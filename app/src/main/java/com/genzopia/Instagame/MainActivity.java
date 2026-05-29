@@ -5,11 +5,14 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Toast;
 import com.genzopia.Instagame.common.BaseActivity;
+import com.genzopia.Instagame.onboarding.TutorialController;
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
+import com.google.firebase.auth.FirebaseAuth;
 
 import com.genzopia.Instagame.databinding.ActivityMainBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
@@ -62,6 +65,23 @@ public class MainActivity extends BaseActivity {
                     .build();
             NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_main);
             NavigationUI.setupWithNavController(navView, navController);
+
+            // Block bottom nav if onboarding not yet complete
+            navView.setOnItemSelectedListener(item -> {
+                String uid = FirebaseAuth.getInstance().getCurrentUser() != null
+                        ? FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
+                boolean onboardingDone = uid == null || TutorialController.isComplete(this, uid);
+
+                if (!onboardingDone && item.getItemId() != R.id.navigation_dashboard) {
+                    Toast.makeText(this,
+                            "Please complete the onboarding first 🎮",
+                            Toast.LENGTH_SHORT).show();
+                    return false; // block navigation
+                }
+
+                // Allow navigation — mirror what NavigationUI does
+                return NavigationUI.onNavDestinationSelected(item, navController);
+            });
             
             Log.d(TAG, "BottomNavigationView setup completed");
         } else {

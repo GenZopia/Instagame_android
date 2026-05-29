@@ -13,10 +13,9 @@ class TutorialController(private val context: Context) {
         val pendingKey   = "onboarding_write_pending_$uid"
 
         if (prefs.getBoolean(pendingKey, false)) {
-            // Retry the write
             val written = prefs.edit().putBoolean(completedKey, true).commit()
             if (written) prefs.edit().remove(pendingKey).apply()
-            return false // treat as complete regardless of retry outcome
+            return false
         }
         return !prefs.getBoolean(completedKey, false)
     }
@@ -24,5 +23,14 @@ class TutorialController(private val context: Context) {
     fun markComplete(uid: String): Boolean {
         val key = "onboarding_tutorial_completed_$uid"
         return prefs.edit().putBoolean(key, true).commit()
+    }
+
+    companion object {
+        /** Quick check usable from any context (e.g. MainActivity) without full instantiation. */
+        @JvmStatic
+        fun isComplete(context: Context, uid: String): Boolean {
+            val prefs = context.getSharedPreferences("onboarding_prefs", Context.MODE_PRIVATE)
+            return prefs.getBoolean("onboarding_tutorial_completed_$uid", false)
+        }
     }
 }

@@ -54,14 +54,23 @@ fun OnboardingTutorialHost(viewModel: ReelViewModel) {
     // ── Current reel's gameId (updated by ReelScreen on every page change) ────
     var currentGameId by remember { mutableStateOf("") }
 
-    // ── Lifecycle: dismiss overlay on background without marking complete ─────
+    // ── Lifecycle: re-show overlay when user returns to this screen ──────────
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
-                tutorialVisible = false
-                showCompletion = false
-                currentStep = TutorialStep.Scroll   // reset for next visit (Req 6.3)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Re-read SharedPreferences directly — never rely on the stale
+                // `shouldShow` snapshot. If the user completed it (e.g. just
+                // returned from the launched game), isComplete() returns true
+                // and we leave the overlay hidden.
+                if (uid != null && !TutorialController.isComplete(context, uid)) {
+                    tutorialVisible = true
+                    currentStep = TutorialStep.Scroll
+                }
+                // If already complete: ensure overlay stays hidden
+                if (uid != null && TutorialController.isComplete(context, uid)) {
+                    tutorialVisible = false
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -92,9 +101,21 @@ fun OnboardingTutorialHost(viewModel: ReelViewModel) {
                     currentStep = TutorialStep.DoubleTap
                 },
 
-                // Double-tap step: launch the game, mark complete, show "Well Done"
+                // Double-tap step: mark complete FIRST (sync write), then launch game
                 onDoubleTapComplete = {
-                    // Launch the game if one is associated with the current reel
+                    // Write synchronously so isComplete() returns true immediately,
+                    // even before ON_RESUME fires when returning from the game.
+                    val written = uid?.let { controller.markComplete(it) } ?: false
+                    if (!written) {
+                        context.getSharedPreferences("onboarding_prefs", Context.MODE_PRIVATE)
+                            .edit()
+                            .putBoolean("onboarding_write_pending_$uid", true)
+                            .apply()
+                    }
+                    // Hide overlay before launching so ON_RESUME sees it as hidden
+                    tutorialVisible = false
+                    showCompletion = true
+
                     if (currentGameId.isNotEmpty()) {
                         val intent = Intent(
                             context,
@@ -102,28 +123,17 @@ fun OnboardingTutorialHost(viewModel: ReelViewModel) {
                         ).apply { putExtra("game_id", currentGameId) }
                         context.startActivity(intent)
                     }
-                    // Mark tutorial complete (Req 4.1)
-                    val written = uid?.let { controller.markComplete(it) } ?: false
-                    if (!written) {
-                        // Retry flag for next launch (Req 4.5)
-                        context.getSharedPreferences("onboarding_prefs", Context.MODE_PRIVATE)
-                            .edit()
-                            .putBoolean("onboarding_write_pending_$uid", true)
-                            .apply()
-                    }
-                    tutorialVisible = false
-                    showCompletion = true               // show "Well Done" card
                 },
 
-                // Single tap during DoubleTap step: dismiss without completing (Req 3.5)
+                // Single tap during DoubleTap step: do nothing — user must double-tap to complete
                 onSingleTapDismiss = {
-                    tutorialVisible = false
+                    // no-op: overlay stays visible, navigation is still blocked
                 },
 
-                // 30-second inactivity: mark complete and dismiss (Req 6.1)
+                // 30-second inactivity: reset to scroll step so user sees guidance again
                 onTimeout = {
-                    uid?.let { controller.markComplete(it) }
-                    tutorialVisible = false
+                    currentStep = TutorialStep.Scroll
+                    tutorialVisible = true
                 }
             )
         }

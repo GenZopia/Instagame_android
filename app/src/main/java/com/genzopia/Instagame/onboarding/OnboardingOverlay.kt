@@ -10,8 +10,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,8 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlin.math.abs
-
+import kotlinx.coroutines.withTimeoutOrNull
 private val OrangeAccent = Color(0xFFFF6B35)
 private val PurpleAccent = Color(0xFF7B2FFF)
 
@@ -78,7 +80,10 @@ fun OnboardingOverlay(
     var scrollAdvanceFired by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
-    val swipeThresholdPx = with(density) { 48.dp.toPx() }
+    // Cumulative upward drag needed to trigger scroll advance (very low = responsive)
+    val swipeThresholdPx = with(density) { 20.dp.toPx() }
+    // Max movement allowed before a tap is considered a drag (slop)
+    val tapSlopPx = with(density) { 8.dp.toPx() }
 
     // Step index for progress bar
     val stepIndex = when (step) {
@@ -92,42 +97,81 @@ fun OnboardingOverlay(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.45f))
             .semantics { contentDescription = "Onboarding tutorial overlay" }
-            // ── Tap / double-tap handler ──────────────────────────────────────
+            // Single unified gesture handler — avoids two pointerInput blocks competing.
+            // Tracks cumulative drag to detect swipe; distinguishes tap vs drag via slop.
             .pointerInput(step) {
-                detectTapGestures(
-                    onTap = {
-                        resetTimer()
-                        when (step) {
-                            is TutorialStep.Scroll -> onScrollStepAdvance()
-                            is TutorialStep.DoubleTap -> onSingleTapDismiss()
+                awaitEachGesture {
+                    // Wait for finger down
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    resetTimer()
+
+                    var cumulativeDy = 0f
+                    var isDrag = false
+                    var lastEventTime = down.uptimeMillis
+
+                    // Track all move events until finger lifts
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        val change = event.changes.firstOrNull() ?: break
+
+                        if (!change.pressed) {
+                            // Finger lifted — decide: tap or swipe?
+                            if (!isDrag) {
+                                // It's a tap — check timing for double-tap
+                                val elapsed = change.uptimeMillis - down.uptimeMillis
+                                if (elapsed < 300) {
+                                    // Could be first tap of a double-tap; wait briefly
+                                    val secondDown = withTimeoutOrNull(300) {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                    }
+                                    if (secondDown != null) {
+                                        // Double-tap confirmed
+                                        if (step is TutorialStep.DoubleTap) {
+                                            onDoubleTapComplete()
+                                        }
+                                        // consume the second down so reel doesn't see it
+                                        secondDown.consume()
+                                        // drain until second finger lifts
+                                        while (true) {
+                                            val e2 = awaitPointerEvent(PointerEventPass.Main)
+                                            if (e2.changes.none { it.pressed }) break
+                                            e2.changes.forEach { it.consume() }
+                                        }
+                                    } else {
+                                        // Single tap — both steps: no action, just consume
+                                        // (scroll step: wait for swipe; doubletap step: ignore single tap)
+                                    }
+                                }
+                            }
+                            break
                         }
-                    },
-                    onDoubleTap = {
-                        resetTimer()
-                        if (step is TutorialStep.DoubleTap) onDoubleTapComplete()
-                    }
-                )
-            }
-            // ── Swipe passthrough for Scroll step ─────────────────────────────
-            .then(
-                if (step is TutorialStep.Scroll)
-                    Modifier.pointerInput("scroll_detect") {
-                        detectVerticalDragGestures(
-                            onDragStart = {
-                                scrollAdvanceFired = false
-                                resetTimer()
-                            },
-                            onVerticalDrag = { _, dragAmount ->
-                                // Upward swipe threshold — do NOT consume so pager scrolls too
-                                if (!scrollAdvanceFired && abs(dragAmount) >= swipeThresholdPx) {
+
+                        // Accumulate vertical movement
+                        val dy = change.positionChange().y
+                        cumulativeDy += dy
+
+                        if (!isDrag && (cumulativeDy < -tapSlopPx || cumulativeDy > tapSlopPx)) {
+                            isDrag = true
+                        }
+
+                        if (isDrag) {
+                            if (step is TutorialStep.Scroll) {
+                                // Upward swipe: let it pass through to the pager (don't consume),
+                                // but fire the step advance once threshold is crossed.
+                                if (!scrollAdvanceFired && cumulativeDy < -swipeThresholdPx) {
                                     scrollAdvanceFired = true
                                     onScrollStepAdvance()
                                 }
+                                // Do NOT consume — pager must receive the drag
+                            } else {
+                                // DoubleTap step: block all swipes
+                                change.consume()
                             }
-                        )
+                        }
                     }
-                else Modifier   // DoubleTap step: block all swipes
-            )
+                    scrollAdvanceFired = false
+                }
+            }
     ) {
         // ── Top bar: step progress + skip ────────────────────────────────────
         Column(
@@ -150,18 +194,7 @@ fun OnboardingOverlay(
                     fontWeight = FontWeight.Medium
                 )
 
-                // Skip button
-                TextButton(onClick = {
-                    resetTimer()
-                    onSingleTapDismiss()
-                }) {
-                    Text(
-                        text = "Skip",
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                // Onboarding is mandatory — no skip button
             }
 
             Spacer(modifier = Modifier.height(8.dp))

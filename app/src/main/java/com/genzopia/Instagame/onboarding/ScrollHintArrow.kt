@@ -222,9 +222,9 @@ fun ScrollHintArrow() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // "or tap anywhere" hint
+            // "swipe up to continue" hint
             Text(
-                text = "or tap anywhere to continue",
+                text = "swipe up to continue",
                 color = Color.White.copy(alpha = 0.45f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Normal
