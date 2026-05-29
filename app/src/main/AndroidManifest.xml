@@ -57,6 +57,7 @@
             android:name=".webgl_gameloading.Game_mode"
             android:exported="false"
             android:hardwareAccelerated="true"
+            android:theme="@style/Theme.GameMode"
             android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity
             android:name=".LoginActivities.ForgotPassword"

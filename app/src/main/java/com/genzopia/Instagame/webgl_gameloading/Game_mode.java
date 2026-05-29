@@ -6,6 +6,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.ConsoleMessage;
 import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
@@ -77,6 +80,9 @@ public class Game_mode extends BaseActivity {
 
         binding = ActivityGameModeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // Hide status bar and navigation bar for true immersive fullscreen gaming
+        hideSystemBars();
 
         httpClient = new OkHttpClient();
         executorService = Executors.newSingleThreadExecutor();
@@ -470,5 +476,44 @@ public class Game_mode extends BaseActivity {
 
     public String getGameId() {
         return gameId;
+    }
+
+    // ── Immersive fullscreen helpers ─────────────────────────────────────────
+
+    /**
+     * Hides both the status bar and the navigation bar so the game occupies
+     * the entire screen. On API 30+ uses WindowInsetsController; on older
+     * devices falls back to the legacy SYSTEM_UI_FLAG approach.
+     */
+    private void hideSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            //noinspection deprecation
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN);
+        }
+    }
+
+    /**
+     * Re-apply immersive mode whenever the window regains focus (e.g. after a
+     * dialog or permission prompt dismisses and the bars briefly reappear).
+     */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            hideSystemBars();
+        }
     }
 }

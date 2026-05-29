@@ -551,18 +551,10 @@ fun ReelItem(
             },
             onShareClick = { },
             onCommentClick = { showComments = true },
+            player = player,
             viewModel = viewModel,
             modifier = Modifier.fillMaxSize()
         )
-
-        if (player != null) {
-            GlowingSeekBar(
-                player = player,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-            )
-        }
     }
 
     if (showComments) {
@@ -594,16 +586,27 @@ fun ReelOverlay(
     onFollowClick: () -> Unit,
     onShareClick: () -> Unit,
     onCommentClick: () -> Unit,
+    player: ExoPlayer?,
     viewModel: ReelViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
+    // The reel Box bottom edge sits exactly at the top of the BottomNavigationView.
+    // MainActivity already handles system nav bar insets on the bottom nav,
+    // so no extra padding is needed here.
+
     Box(modifier = modifier) {
+        // Seek bar — flush to the very bottom of the reel area
+        if (player != null) {
+            GlowingSeekBar(
+                player = player,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
                 .fillMaxWidth(0.7f)
         ) {
@@ -707,7 +710,6 @@ fun ReelOverlay(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
                 .padding(end = 16.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -831,7 +833,7 @@ fun GlowingSeekBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(barHeight + 16.dp)
+            .height(barHeight )
             .pointerInput(player) {
                 awaitPointerEventScope {
                     while (true) {

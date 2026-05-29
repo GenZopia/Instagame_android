@@ -18,9 +18,6 @@ import com.google.android.material.tabs.TabLayoutMediator;
 
 public class Post_mainactivity extends BaseActivity {
 
-
-
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -29,19 +26,28 @@ public class Post_mainactivity extends BaseActivity {
         TabLayout tabLayout = findViewById(R.id.custom_bottom_tabs);
         ViewPager2 viewPager = findViewById(R.id.view_pager);
 
-// Set adapter
+        // Apply navigation bar padding to the bottom tab so it sits above the gesture bar
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(tabLayout, (v, insets) -> {
+            androidx.core.graphics.Insets navInsets = insets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.navigationBars());
+            android.view.ViewGroup.MarginLayoutParams lp =
+                    (android.view.ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            // 16dp base margin + nav bar height so the tab floats above the gesture bar
+            int baseDp = (int) (16 * getResources().getDisplayMetrics().density);
+            lp.bottomMargin = baseDp + navInsets.bottom;
+            v.setLayoutParams(lp);
+            return insets;
+        });
+
+        // Set adapter
         PostPagerAdapter adapter = new PostPagerAdapter(this);
         viewPager.setAdapter(adapter);
 
-// Set tab titles
+        // Set tab titles
         String[] titles = {"Upload", "Live"};
 
         new TabLayoutMediator(tabLayout, viewPager,
                 (tab, position) -> tab.setText(titles[position])
         ).attach();
-
-
     }
-
-
 }

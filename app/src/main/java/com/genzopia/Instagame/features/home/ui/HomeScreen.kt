@@ -33,14 +33,10 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
             .fillMaxSize()
             .background(bg),
         contentPadding = PaddingValues(
-            top = 0.dp,   // statusBarsPadding() on the column handles the top
+            top = 0.dp,
             bottom = 16.dp
         )
     ) {
-        item {
-            // Push first item below the status bar
-            Spacer(modifier = Modifier.statusBarsPadding())
-        }
         item { FollowingStoriesBar(users = followedUsers, isLoading = followedUsersLoading) }
         item {
             HomeGamesSection(

@@ -29,4 +29,16 @@
 
     <!-- Removed custom MaterialDatePicker overlay: prefer using platform DatePickerDialog or
          the library-provided overlay at show-time to avoid attribute resolution/runtime crashes. -->
+
+    <!-- Game mode: true immersive fullscreen — hides status + nav bars at theme level
+         so there is no flash of system bars before the activity's hideSystemBars() runs. -->
+    <style name="Theme.GameMode" parent="Theme.Genzcrop">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+    </style>
 </resources>
