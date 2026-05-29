@@ -29,9 +29,18 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
     val allLoaded by viewModel.allLoaded.collectAsState()
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(bg),
-        contentPadding = PaddingValues(bottom = 16.dp)
+        modifier = modifier
+            .fillMaxSize()
+            .background(bg),
+        contentPadding = PaddingValues(
+            top = 0.dp,   // statusBarsPadding() on the column handles the top
+            bottom = 16.dp
+        )
     ) {
+        item {
+            // Push first item below the status bar
+            Spacer(modifier = Modifier.statusBarsPadding())
+        }
         item { FollowingStoriesBar(users = followedUsers, isLoading = followedUsersLoading) }
         item {
             HomeGamesSection(
@@ -41,6 +50,10 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
                 allLoaded = allLoaded,
                 onLoadMore = { viewModel.loadMoreGames() }
             )
+        }
+        item {
+            // Push last item above the navigation bar
+            Spacer(modifier = Modifier.navigationBarsPadding())
         }
     }
 }

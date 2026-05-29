@@ -8,7 +8,7 @@
     android:layout_height="match_parent"
     tools:context=".ui.profile.FullScreenImageActivity">
 
-    <!-- Replace PhotoView with SubsamplingScaleImageView -->
+    <!-- Full-bleed image — intentionally draws behind status/nav bars -->
     <ImageView
         android:id="@+id/photo_view"
         android:layout_width="match_parent"

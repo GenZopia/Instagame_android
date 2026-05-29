@@ -79,13 +79,15 @@
             android:contentDescription="Cancel reply" />
     </LinearLayout>
 
-    <!-- Input Row -->
+    <!-- Input Row — paddingBottom accounts for navigation bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="12dp">
+        android:padding="12dp"
+        android:paddingBottom="24dp"
+        android:fitsSystemWindows="true">
 
         <de.hdodenhof.circleimageview.CircleImageView
             android:id="@+id/current_user_avatar"

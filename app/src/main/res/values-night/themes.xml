@@ -12,8 +12,9 @@
         <item name="colorSecondary">@color/instagram_orange_light</item>
         <item name="colorSecondaryVariant">@color/instagram_orange_dark</item>
         <item name="colorOnSecondary">@color/white</item>
-        <!-- Status bar color -->
-        <item name="android:statusBarColor">@color/black</item>
+        <!-- Status bar — transparent for edge-to-edge -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
         <!-- Background colors -->
         <item name="android:colorBackground">@color/background_primary_dark</item>

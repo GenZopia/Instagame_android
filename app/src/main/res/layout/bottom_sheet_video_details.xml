@@ -5,7 +5,9 @@
     android:layout_height="wrap_content"
     android:background="?android:colorBackground"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:paddingBottom="32dp"
+    android:fitsSystemWindows="true">
 
     <!-- Drag Handle -->
     <View

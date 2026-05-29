@@ -27,6 +27,22 @@ public class MainActivity extends BaseActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
+        // Apply window insets: bottom nav consumes navigation bar height,
+        // nav host fragment gets the remaining space (status bar is drawn behind).
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
+            androidx.core.graphics.Insets systemBars = insets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars());
+            // Status bar padding on the root container top
+            binding.getRoot().setPadding(0, systemBars.top, 0, 0);
+            // Navigation bar padding on the bottom nav so it sits above the gesture bar
+            binding.navView.setPadding(
+                    binding.navView.getPaddingLeft(),
+                    binding.navView.getPaddingTop(),
+                    binding.navView.getPaddingRight(),
+                    systemBars.bottom);
+            return insets;
+        });
+
         // Ensure bottom navigation is visible and properly positioned
         BottomNavigationView navView = findViewById(R.id.nav_view);
         if (navView != null) {

@@ -7,7 +7,6 @@ import android.widget.TextView;
 import android.widget.ImageView;
 import android.util.Log;
 
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import com.genzopia.Instagame.common.BaseActivity;
 import androidx.fragment.app.Fragment;
@@ -45,7 +44,6 @@ public class ChannelActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_channel);
 
         developerId = getIntent().getStringExtra("developer_id");

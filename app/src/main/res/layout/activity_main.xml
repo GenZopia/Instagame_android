@@ -22,6 +22,7 @@
         android:background="?android:attr/windowBackground"
         android:elevation="8dp"
         android:minHeight="56dp"
+        android:paddingBottom="0dp"
         app:itemIconSize="24dp"
         app:itemIconTint="?attr/colorOnSurface"
         app:itemTextColor="?attr/colorOnSurface"

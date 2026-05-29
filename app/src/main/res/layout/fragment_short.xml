@@ -24,7 +24,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Top Controls -->
+    <!-- Top Controls — padded below status bar -->
     <LinearLayout
         android:id="@+id/topControls"
         android:layout_width="match_parent"
@@ -66,12 +66,12 @@
 
     </LinearLayout>
 
-    <!-- Bottom Controls -->
+    <!-- Bottom Controls — extra bottom padding for nav bar -->
     <LinearLayout
         android:id="@+id/bottomControls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="80dp"
+        android:layout_marginBottom="96dp"
         android:gravity="center"
         android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent">
