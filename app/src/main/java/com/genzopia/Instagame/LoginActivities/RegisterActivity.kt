@@ -77,8 +77,8 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
         registerBtnOriginalText = binding.btnRegister.text
 
         // Verification UI is removed — hide those views if they exist in the layout
-        try { binding.btnVerifyEmail.visibility = View.GONE } catch (_: Exception) {}
-        try { binding.imgEmailVerified.visibility = View.GONE } catch (_: Exception) {}
+
+       
 
         binding.txtMobileNumber.filters = arrayOf(InputFilter.LengthFilter(10))
 
@@ -161,6 +161,12 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
                         }
                     }
                 }
+        }
+
+        binding.txtSignInInstead.setOnClickListener {
+            val intent = Intent(this, LoginActivity::class.java)
+            startActivity(intent)
+            finish()
         }
     }
 
