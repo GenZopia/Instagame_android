@@ -20,7 +20,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.datasource.DefaultDataSourceFactory;
+
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.RecyclerView;
@@ -44,8 +44,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import de.hdodenhof.circleimageview.CircleImageView;
-import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.exoplayer.source.MediaSource;
+
 
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -1083,78 +1082,98 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     @OptIn(markerClass = UnstableApi.class)
     private void tryExoPlayerThumbnail(VideoItem videoItem) {
         android.util.Log.d("VideoViewHolder", "Trying ExoPlayer thumbnail generation for video: " + videoItem.id);
-        
-        // Create a temporary ExoPlayer for thumbnail generation
-        ExoPlayer thumbnailPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
-        
+
+        // Use a shorter timeout to avoid lingering ExoPlayer instances
+        // that trigger 'Failed to query component interface' on some devices
+        final java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        ExoPlayer thumbnailPlayer = null;
+        try {
+            thumbnailPlayer = new ExoPlayer.Builder(itemView.getContext()).build();
+        } catch (Exception e) {
+            android.util.Log.e("VideoViewHolder", "Failed to create ExoPlayer for thumbnail: " + e.getMessage());
+            showFallbackThumbnail();
+            return;
+        }
+
+        final ExoPlayer player = thumbnailPlayer;
+        final android.os.Handler timeoutHandler = new android.os.Handler(Looper.getMainLooper());
+
+        // Safety timeout — release player after 3 seconds max
+        timeoutHandler.postDelayed(() -> {
+            if (!released.getAndSet(true)) {
+                android.util.Log.w("VideoViewHolder", "Thumbnail ExoPlayer timed out, releasing for video: " + videoItem.id);
+                playerView.setPlayer(null);
+                try { player.release(); } catch (Exception ignored) {}
+                showFallbackThumbnail();
+            }
+        }, 3000);
+
         try {
             String videoUri = videoItem.videoUrl;
-            DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(itemView.getContext(), "instagame-agent");
             MediaItem mediaItem = MediaItem.fromUri(videoUri);
-            MediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
-            
-            thumbnailPlayer.setMediaSource(mediaSource);
-            thumbnailPlayer.prepare();
-            thumbnailPlayer.seekTo(1000); // Seek to 1 second for thumbnail
-            
-            thumbnailPlayer.addListener(new Player.Listener() {
+
+            player.setMediaItem(mediaItem);
+            player.prepare();
+            player.seekTo(1000); // Seek to 1 second for thumbnail
+
+            player.addListener(new Player.Listener() {
                 @Override
                 public void onPlaybackStateChanged(int playbackState) {
-                    if (playbackState == Player.STATE_READY) {
+                    if (playbackState == Player.STATE_READY && !released.get()) {
                         android.util.Log.d("VideoViewHolder", "ExoPlayer ready, capturing frame");
-                        // Temporarily set the player to capture frame
-                        playerView.setPlayer(thumbnailPlayer);
-                        
-                        // Wait a bit for the frame to be rendered
-                        new android.os.Handler().postDelayed(() -> {
+                        playerView.setPlayer(player);
+
+                        new android.os.Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            if (released.getAndSet(true)) return;
+                            timeoutHandler.removeCallbacksAndMessages(null);
                             try {
                                 android.graphics.Bitmap frameBitmap = captureFrameFromPlayerView();
                                 if (frameBitmap != null) {
                                     android.util.Log.d("VideoViewHolder", "ExoPlayer thumbnail capture succeeded");
-                                    // Scale the bitmap to fit the video container
                                     android.graphics.Bitmap scaledBitmap = scaleBitmap(frameBitmap, videoContainer.getWidth(), videoContainer.getHeight());
-                                    frameBitmap.recycle(); // Free the original bitmap
-                                    
-                                    // Create and store the thumbnail drawable
+                                    if (scaledBitmap != frameBitmap) frameBitmap.recycle();
+
                                     storedThumbnail = new android.graphics.drawable.BitmapDrawable(
-                                        itemView.getContext().getResources(), 
+                                        itemView.getContext().getResources(),
                                         scaledBitmap
                                     );
-                                    
-                                    // Set the bitmap as background of the video container instead of player view
                                     videoContainer.setBackground(storedThumbnail);
-                                    
                                     hasThumbnail = true;
-                                    
-                                    android.util.Log.d("VideoViewHolder", "Successfully captured thumbnail with ExoPlayer for video: " + videoItem.id);
+                                    android.util.Log.d("VideoViewHolder", "Thumbnail captured for: " + videoItem.id);
                                 } else {
-                                    android.util.Log.d("VideoViewHolder", "ExoPlayer frame capture failed, showing fallback");
                                     showFallbackThumbnail();
                                 }
                             } catch (Exception e) {
-                                android.util.Log.e("VideoViewHolder", "Error capturing ExoPlayer thumbnail: " + e.getMessage());
+                                android.util.Log.e("VideoViewHolder", "Error capturing thumbnail: " + e.getMessage());
                                 showFallbackThumbnail();
                             }
-                            
-                            // Detach player and release
+
                             playerView.setPlayer(null);
-                            thumbnailPlayer.release();
-                        }, 1000); // Wait 1 second to ensure frame is rendered
+                            try { player.release(); } catch (Exception ignored) {}
+                        }, 500); // Reduced to 500ms for faster fallback
                     }
                 }
-                
+
                 @Override
                 public void onPlayerError(PlaybackException error) {
+                    if (released.getAndSet(true)) return;
+                    timeoutHandler.removeCallbacksAndMessages(null);
                     android.util.Log.e("VideoViewHolder", "ExoPlayer thumbnail error: " + error.getMessage());
-                    thumbnailPlayer.release();
+                    playerView.setPlayer(null);
+                    try { player.release(); } catch (Exception ignored) {}
                     showFallbackThumbnail();
                 }
             });
-            
+
         } catch (Exception e) {
-            android.util.Log.e("VideoViewHolder", "Error setting up ExoPlayer thumbnail: " + e.getMessage());
-            thumbnailPlayer.release();
-            showFallbackThumbnail();
+            if (!released.getAndSet(true)) {
+                timeoutHandler.removeCallbacksAndMessages(null);
+                android.util.Log.e("VideoViewHolder", "Error setting up ExoPlayer thumbnail: " + e.getMessage());
+                playerView.setPlayer(null);
+                try { player.release(); } catch (Exception ignored) {}
+                showFallbackThumbnail();
+            }
         }
     }
     

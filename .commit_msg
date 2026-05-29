@@ -1,0 +1,30 @@
+Edge-to-edge UI, AMOLED reel theme & compatibility fixes
+
+• Added enableEdgeToEdge() to BaseActivity so all screens draw
+  behind system bars properly — no more cutoffs or overlaps.
+• Removed hardcoded statusBarColor from themes. Added
+  fitsSystemWindows=true on all activity layouts to keep
+  content safe from system bars.
+• New SystemBarUtils helper for API 24+ that lets us switch
+  between transparent bars (normal screens) and true-black
+  AMOLED bars (reel screen) with white icons.
+• Reel screen now has Instagram-style black status + nav bar,
+  immersive full-screen mode (swipe to reveal), and bottom
+  nav hidden during viewing.
+• Force dark color scheme on reel screen only — rest of app
+  stays unaffected.
+• SplashActivity: removed duplicate finish() call (was
+  triggering "Duplicate finish request" in logcat).
+• ShortsFragment: added error handling around camera
+  bindToLifecycle() so CameraX doesn't crash on devices
+  with service binding issues.
+• PlayerManager: wrapped all ExoPlayer operations in try-catch
+  with automatic error recovery.
+• VideoViewHolder: added 3-second safety timeout on thumbnail
+  ExoPlayer to prevent lingering codec resources.
+• HomeAdapter: replaced deprecated DefaultDataSourceFactory
+  with DefaultDataSource.Factory.
+• DataPrefetchService: added error listeners on pre-built
+  players, graceful failure handling.
+• LoginScreen: added systemBarsPadding() for proper edge-to-edge.
+• Removed unused dependencies (accompanist-pager).

@@ -1,38 +1,37 @@
 [versions]
-accompanistPager = "0.36.0"
 activityCompose = "1.13.0"
-agp = "8.9.1"
+agp = "9.2.0"
 cameraCore = "1.6.1"
 ccp = "2.7.3"
 circleimageview = "3.1.0"
 coilCompose = "2.7.0"
-compiler = "5.0.7"
-composeBom = "2024.09.00"
-composeUi = "1.7.4"
-material3 = "1.3.1"
+compiler = "4.12.0"
+composeBom = "2026.05.01"
 converterGson = "3.0.0"
 coreSplashscreen = "1.2.0"
 coreKtx = "1.18.0"
 firebaseAuth = "23.1.0"
-firebaseBom = "33.5.1"
-firebaseBomVersion = "32.1.0"
+firebaseBom = "33.9.0"
+firebaseAuthKtx = "23.1.0"
+firebaseDatabase = "21.0.0"
+firebaseFirestore = "25.1.1"
+firebaseStorageKtx = "21.0.1"
 glide = "4.12.0"
 gson = "2.14.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-appcompat = "1.7.0"
+appcompat = "1.7.1"
 libphonenumber = "9.0.31"
 lifecycleRuntimeCompose = "2.10.0"
 lifecycleViewmodelCompose = "2.10.0"
+lifecycleLivedataKtx = "2.10.0"
+lifecycleViewmodelKtx = "2.10.0"
 lottie = "6.7.1"
-material = "1.12.0"
-activity = "1.9.3"
-constraintlayout = "2.1.4"
-firebaseAuthKtx = "23.1.0"
+material = "1.14.0"
+activity = "1.13.0"
+constraintlayout = "2.2.1"
 kotlin = "2.3.21"
-composeCompiler = "1.5.8"
-firebaseDatabase = "21.0.0"
 media3Datasource = "1.10.1"
 media3Exoplayer = "1.10.1"
 media3ExoplayerHls = "1.10.1"
@@ -41,14 +40,9 @@ okhttp = "5.3.2"
 pagingCompose = "3.5.0"
 pagingRuntimeKtx = "3.5.0"
 photoview = "2.3.0"
-photoviewVersion = "2.0.0"
-playServicesAuth = "21.2.0"
-firebaseFirestore = "25.1.1"
-firebaseStorageKtx = "21.0.1"
-navigationUi = "2.8.3"
-lifecycleLivedataKtx = "2.8.7"
-lifecycleViewmodelKtx = "2.8.7"
-navigationFragment = "2.8.3"
+playServicesAuth = "21.6.0"
+navigationUi = "2.9.8"
+navigationFragment = "2.9.8"
 recyclerview = "1.4.0"
 retrofit = "3.0.0"
 shimmer = "0.5.0"
@@ -56,10 +50,8 @@ subsamplingScaleImageView = "3.10.0"
 swiperefreshlayout = "1.2.0"
 workRuntime = "2.11.2"
 workRuntimeKtx = "2.11.2"
-zoomy = "1.1.0"
 
 [libraries]
-accompanist-pager = { module = "com.google.accompanist:accompanist-pager", version.ref = "accompanistPager" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraCore" }
@@ -80,7 +72,6 @@ firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-auth = { module = "com.google.firebase:firebase-auth", version.ref = "firebaseAuth" }
 firebase-auth-ktx = { group = "com.google.firebase", name = "firebase-auth-ktx", version.ref = "firebaseAuthKtx" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
-firebase-bom-v3210 = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBomVersion" }
 firebase-database = { group = "com.google.firebase", name = "firebase-database", version.ref = "firebaseDatabase" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore", version.ref = "firebaseFirestore" }
 firebase-storage-ktx = { group = "com.google.firebase", name = "firebase-storage-ktx", version.ref = "firebaseStorageKtx" }
@@ -99,7 +90,6 @@ lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel
 lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
 lottie = { module = "com.airbnb.android:lottie", version.ref = "lottie" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 media3-datasource = { module = "androidx.media3:media3-datasource", version.ref = "media3Datasource" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3Exoplayer" }
 media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3ExoplayerHls" }
@@ -111,21 +101,21 @@ okhttp3-integration = { module = "com.github.bumptech.glide:okhttp3-integration"
 paging-compose = { module = "androidx.paging:paging-compose", version.ref = "pagingCompose" }
 paging-runtime-ktx = { module = "androidx.paging:paging-runtime-ktx", version.ref = "pagingRuntimeKtx" }
 photoview = { module = "com.github.chrisbanes:PhotoView", version.ref = "photoview" }
-photoview-v200 = { module = "com.github.chrisbanes:PhotoView", version.ref = "photoviewVersion" }
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 shimmer = { module = "com.facebook.shimmer:shimmer", version.ref = "shimmer" }
 subsampling-scale-image-view = { module = "com.davemorrissey.labs:subsampling-scale-image-view", version.ref = "subsamplingScaleImageView" }
 swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "composeUi" }
-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
+material-icons-core = { module = "androidx.compose.material:material-icons-core" }
+material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+ui = { module = "androidx.compose.ui:ui" }
+ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+material3 = { module = "androidx.compose.material3:material3" }
 work-runtime = { module = "androidx.work:work-runtime", version.ref = "workRuntime" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtx" }
-zoomy = { module = "com.ablanco.zoomy:zoomy", version.ref = "zoomy" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

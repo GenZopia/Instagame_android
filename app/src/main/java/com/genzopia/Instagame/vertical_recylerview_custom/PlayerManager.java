@@ -15,6 +15,7 @@ import java.util.Map;
 public class PlayerManager {
     private static PlayerManager instance;
     private final Map<String, ExoPlayer> playerMap = new HashMap<>();
+    private static final String TAG = "PlayerManager";
 
     public static synchronized PlayerManager getInstance() {
         if (instance == null) {
@@ -28,67 +29,96 @@ public class PlayerManager {
             return playerMap.get(videoId);
         }
 
-        ExoPlayer player = new ExoPlayer.Builder(context).build();
-        MediaItem mediaItem = MediaItem.fromUri(videoUrl);
-        
-        // Use progressive media source (works for both MP4 and HLS)
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.setRepeatMode(Player.REPEAT_MODE_ONE);
+        try {
+            ExoPlayer player = new ExoPlayer.Builder(context).build();
+            MediaItem mediaItem = MediaItem.fromUri(videoUrl);
 
-        // Add error listener
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                // Log error but don't crash
-                android.util.Log.e("PlayerManager", "Player error: " + error.getMessage());
-            }
-        });
+            // Use progressive media source (works for both MP4 and HLS)
+            player.setMediaItem(mediaItem);
+            player.prepare();
+            player.setRepeatMode(Player.REPEAT_MODE_ONE);
 
-        playerMap.put(videoId, player);
-        return player;
+            // Add error listener with recovery
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    android.util.Log.e(TAG, "Player error: " + error.getMessage() + " for video: " + videoId);
+                    // Attempt recovery — release and remove from map so next call recreates
+                    releasePlayer(videoId);
+                }
+
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_IDLE) {
+                        android.util.Log.w(TAG, "Player went IDLE for video: " + videoId + " — releasing");
+                        releasePlayer(videoId);
+                    }
+                }
+            });
+
+            playerMap.put(videoId, player);
+            return player;
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Failed to create player for video: " + videoId + " — " + e.getMessage());
+            return null;
+        }
     }
 
     public void playVideo(String videoId) {
-        ExoPlayer player = playerMap.get(videoId);
-        if (player != null) {
-            // Reset to beginning if near end
-            if (player.getDuration() > 0 &&
-                    player.getCurrentPosition() >= player.getDuration() - 1000) {
-                player.seekTo(0);
+        try {
+            ExoPlayer player = playerMap.get(videoId);
+            if (player != null) {
+                // Reset to beginning if near end
+                if (player.getDuration() > 0 &&
+                        player.getCurrentPosition() >= player.getDuration() - 1000) {
+                    player.seekTo(0);
+                }
+                player.setPlayWhenReady(true);
             }
-            player.setPlayWhenReady(true);
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Error playing video " + videoId + " — " + e.getMessage());
+            releasePlayer(videoId);
         }
     }
 
     public void pauseVideo(String videoId) {
-        ExoPlayer player = playerMap.get(videoId);
-        if (player != null) {
-            player.setPlayWhenReady(false);
+        try {
+            ExoPlayer player = playerMap.get(videoId);
+            if (player != null) {
+                player.setPlayWhenReady(false);
+            }
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Error pausing video " + videoId + " — " + e.getMessage());
         }
     }
 
     public void preloadAndPause(Context context, String videoId, String videoUrl) {
-        ExoPlayer player = getPlayer(context, videoId, videoUrl);
-        if (player != null) {
-            player.setPlayWhenReady(false);
+        try {
+            ExoPlayer player = getPlayer(context, videoId, videoUrl);
+            if (player != null) {
+                player.setPlayWhenReady(false);
+            }
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Error preloading video " + videoId + " — " + e.getMessage());
         }
     }
 
     public void releasePlayer(String videoId) {
-        ExoPlayer player = playerMap.get(videoId);
-        if (player != null) {
-            player.release();
-            playerMap.remove(videoId);
+        try {
+            ExoPlayer player = playerMap.remove(videoId);
+            if (player != null) {
+                player.stop();
+                player.release();
+            }
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Error releasing player for " + videoId + " — " + e.getMessage());
         }
     }
 
     public void releaseAll() {
-        for (ExoPlayer player : playerMap.values()) {
-            player.release();
+        for (String videoId : playerMap.keySet().toArray(new String[0])) {
+            releasePlayer(videoId);
         }
         playerMap.clear();
     }
-
-
 }

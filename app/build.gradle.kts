@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.gms.google-services")
-    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.compose.compiler)
 }
 
@@ -87,6 +86,8 @@ dependencies {
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
     implementation(libs.material3)
+    implementation(libs.material.icons.core)
+    implementation(libs.material.icons.extended)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
@@ -104,9 +105,6 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.datasource)
-
-    // Accompanist Pager (kept for any legacy usages)
-    implementation(libs.accompanist.pager)
 
     // CameraX
     implementation(libs.camera.core)

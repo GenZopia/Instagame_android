@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.Display;
 import android.view.WindowManager;
 
+import androidx.activity.EdgeToEdge;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -12,14 +13,18 @@ import androidx.appcompat.app.AppCompatActivity;
  * BaseActivity — extend every Activity in the app from this.
  *
  * Responsibilities:
- *  1. Requests the highest refresh rate the display supports (120 Hz, 90 Hz, etc.)
- *  2. Keeps the screen on while the app is in the foreground.
- *  3. Ensures hardware acceleration is active (belt-and-suspenders on top of the manifest flag).
+ *  1. Enables edge-to-edge rendering so content draws behind system bars.
+ *  2. Requests the highest refresh rate the display supports (120 Hz, 90 Hz, etc.)
+ *  3. Keeps the screen on while the app is in the foreground.
+ *  4. Ensures hardware acceleration is active (belt-and-suspenders on top of the manifest flag).
  */
 public class BaseActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        // Enable edge-to-edge so content draws behind status bar & navigation bar.
+        // Individual screens handle proper padding via fitsSystemWindows / systemBarsPadding().
+        EdgeToEdge.enable(this);
         // Must be called BEFORE super.onCreate so window flags are set early.
         applyMaxRefreshRate();
         super.onCreate(savedInstanceState);

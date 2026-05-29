@@ -12,7 +12,7 @@ import android.view.GestureDetector;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.datasource.DefaultDataSourceFactory;
+
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -335,7 +335,7 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         
         // Set up the player with the video URL
         String videoUri = videoItem.videoUrl;
-        DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(context, "instagame-agent");
+        androidx.media3.datasource.DefaultDataSource.Factory dataSourceFactory = new androidx.media3.datasource.DefaultDataSource.Factory(context);
         MediaItem mediaItem = MediaItem.fromUri(videoUri);
         
         // Use progressive media source for MP4 files

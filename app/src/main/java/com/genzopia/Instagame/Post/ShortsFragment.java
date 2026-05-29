@@ -235,17 +235,25 @@ public class ShortsFragment extends Fragment {
 
                 // Unbind all use cases and bind new ones
                 cameraProvider.unbindAll();
-                camera = cameraProvider.bindToLifecycle(
-                        this,
-                        currentCameraSelector,
-                        preview,
-                        videoCapture
-                );
+                try {
+                    camera = cameraProvider.bindToLifecycle(
+                            this,
+                            currentCameraSelector,
+                            preview,
+                            videoCapture
+                    );
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to bind camera to lifecycle — device may have camera limitations", e);
+                    Toast.makeText(requireContext(), "Camera initialization issue. Try restarting.", Toast.LENGTH_LONG).show();
+                    return;
+                }
 
                 updateTorchButton();
 
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Error starting camera", e);
+            } catch (Exception e) {
+                Log.e(TAG, "Unexpected error initializing camera", e);
             }
         }, cameraExecutor);
     }

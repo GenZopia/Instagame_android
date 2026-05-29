@@ -3,6 +3,7 @@ package com.genzopia.Instagame.utils
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -204,32 +205,54 @@ object DataPrefetchService {
                 val url = signedUrlCache[videoId] ?: return@forEach
                 try {
                     val player = buildPlayer(appCtx, url)
-                    playerPool[videoId] = player
-                    if (index == 0) { preloadedVideoId = videoId; preloadedPlayer = player }
-                    Log.d(TAG, "[$index] Player ready: $videoId")
+                    if (player != null) {
+                        playerPool[videoId] = player
+                        if (index == 0) { preloadedVideoId = videoId; preloadedPlayer = player }
+                        Log.d(TAG, "[$index] Player ready: $videoId")
+                    } else {
+                        Log.w(TAG, "[$index] Player creation returned null for: $videoId")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "[$index] Player failed: $videoId", e)
                 }
             }
             firstVideoReady = true
-            Log.d(TAG, "All ${playerPool.size} players buffering")
+            Log.d(TAG, "${playerPool.size} players buffering")
         }
     }
 
-    private fun buildPlayer(context: Context, url: String): ExoPlayer {
+    private fun buildPlayer(context: Context, url: String): ExoPlayer? {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(2000, 30000, 100, 500)
             .build()
-        return ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                setMediaItem(MediaItem.fromUri(url))
-                repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                volume = 0f
-                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
-                prepare()
-            }
+        return try {
+            ExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .build()
+                .apply {
+                    setMediaItem(MediaItem.fromUri(url))
+                    repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                    volume = 0f
+                    setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+
+                    // Add error listener to detect and handle playback failures early
+                    addListener(object : androidx.media3.common.Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) {
+                            Log.e(TAG, "Prefetched player error: ${error.message}")
+                        }
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == androidx.media3.common.Player.STATE_IDLE) {
+                                Log.w(TAG, "Prefetched player entered IDLE state")
+                            }
+                        }
+                    })
+
+                    prepare()
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to build prefetch player: ${e.message}", e)
+            null
+        }
     }
 
     // ── URL resolution (HLS-first, persistent cache, 3 retries) ─────────────
@@ -344,7 +367,9 @@ object DataPrefetchService {
         signedUrlCache.clear()
         followedUsersCache = null
         firstVideoReady = false
-        playerPool.values.forEach { it.release() }
+        playerPool.values.forEach { 
+            try { it.release() } catch (e: Exception) { Log.e(TAG, "Error releasing player on clear", e) }
+        }
         playerPool.clear()
         preloadedPlayer = null
         preloadedVideoId = null
