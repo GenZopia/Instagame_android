@@ -9,91 +9,74 @@
     tools:context=".ui.profile.ProfileFragment">
 
     <!-- Top guideline: keeps profile area slightly below the absolute top -->
-    <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/topGuideline"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.07" />
+
 
     <!-- top-right menu icon (stays at top) -->
-    <ImageView
-        android:id="@+id/menuIcon"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:src="@drawable/ic_baseline_menu_24"
-        android:contentDescription="Menu"
-        app:tint="?android:attr/textColorPrimary"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="12dp"
-        android:padding="6dp" />
 
     <!-- PROFILE AREA (flat, no card) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/profileArea"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="@id/topGuideline"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
+
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
         android:paddingTop="4dp"
-        android:paddingBottom="6dp">
+        android:paddingBottom="6dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
 
         <!-- Profile image (slight elevation for depth only) -->
         <de.hdodenhof.circleimageview.CircleImageView
             android:id="@+id/profileImage"
             android:layout_width="96dp"
             android:layout_height="96dp"
+            android:contentDescription="Profile image"
+            android:elevation="2dp"
+            android:scaleType="centerCrop"
             android:src="@drawable/profile"
             app:civ_border_color="@color/instagram_orange"
             app:civ_border_width="2dp"
-            android:scaleType="centerCrop"
-            android:contentDescription="Profile image"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            android:elevation="2dp" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- Username to the right of avatar -->
         <TextView
             android:id="@+id/usernameTop"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
+            android:ellipsize="end"
             android:fontFamily="@font/inter_bold"
+            android:maxLines="1"
             android:text="username"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:ellipsize="end"
-            android:maxLines="1"
             app:layout_constraintStart_toEndOf="@id/profileImage"
-            app:layout_constraintTop_toTopOf="@id/profileImage"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="8dp" />
+            app:layout_constraintTop_toTopOf="@id/profileImage" />
 
         <!-- Stats row: equal columns with no heavy separators -->
         <LinearLayout
             android:id="@+id/statsContainer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            app:layout_constraintStart_toEndOf="@id/profileImage"
-            app:layout_constraintTop_toBottomOf="@id/usernameTop"
-            app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginStart="12dp"
             android:layout_marginTop="8dp"
-            android:layout_marginEnd="8dp">
+            android:layout_marginEnd="8dp"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/profileImage"
+            app:layout_constraintTop_toBottomOf="@id/usernameTop">
 
             <!-- Post column -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                >
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/postsCount"
@@ -115,20 +98,19 @@
             </LinearLayout>
 
             <!-- lightweight divider between stats (subtle) -->
-<!--            <View-->
-<!--                android:layout_width="1dp"-->
-<!--                android:layout_height="50dp"-->
+            <!--            <View-->
+            <!--                android:layout_width="1dp"-->
+            <!--                android:layout_height="50dp"-->
 
-<!--                android:layout_marginEnd="6dp"-->
-<!--                android:background="@color/border_light" />-->
+            <!--                android:layout_marginEnd="6dp"-->
+            <!--                android:background="@color/border_light" />-->
 
             <!-- Followers column -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-               >
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/followersCount"
@@ -149,19 +131,18 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-<!--            <View-->
-<!--                android:layout_width="1dp"-->
-<!--                android:layout_height="50dp"-->
-<!--                android:layout_marginEnd="6dp"-->
-<!--                android:background="@color/border_light" />-->
+            <!--            <View-->
+            <!--                android:layout_width="1dp"-->
+            <!--                android:layout_height="50dp"-->
+            <!--                android:layout_marginEnd="6dp"-->
+            <!--                android:background="@color/border_light" />-->
 
             <!-- Following column -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                >
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/followingCount"
@@ -196,6 +177,7 @@
             android:elevation="0dp"
             android:focusable="true"
             android:fontFamily="@font/inter_medium"
+            android:foreground="?android:attr/selectableItemBackground"
             android:hapticFeedbackEnabled="true"
             android:stateListAnimator="@null"
             android:text="Edit Profile"
@@ -206,95 +188,105 @@
             app:layout_constraintTop_toBottomOf="@+id/profileImage"
             app:rippleColor="@color/instagram_orange"
             app:strokeColor="@color/instagram_orange"
-            android:foreground="?android:attr/selectableItemBackground"
             app:strokeWidth="1dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/genzLabBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toTopOf="@id/editProfileBtn"
-            app:layout_constraintBottom_toBottomOf="@id/editProfileBtn"
-            app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginEnd="6dp"
-            android:text="GenZLab"
-            android:textAllCaps="false"
-            android:fontFamily="@font/inter_medium"
-            android:textColor="@color/instagram_orange"
-            android:stateListAnimator="@null"
-            android:clickable="true"
-            android:focusable="true"
-            android:hapticFeedbackEnabled="true"
-            app:strokeWidth="1dp"
-            app:strokeColor="@color/instagram_orange"
             android:backgroundTint="@android:color/transparent"
+            android:clickable="true"
             android:elevation="0dp"
+            android:focusable="true"
+            android:fontFamily="@font/inter_medium"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:hapticFeedbackEnabled="true"
             android:paddingLeft="12dp"
             android:paddingRight="12dp"
+            android:stateListAnimator="@null"
+            android:text="GenZLab"
+            android:textAllCaps="false"
+            android:textColor="@color/instagram_orange"
+            app:layout_constraintBottom_toBottomOf="@id/editProfileBtn"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/editProfileBtn"
             app:rippleColor="@color/instagram_orange"
-            android:foreground="?android:attr/selectableItemBackground" />
+            app:strokeColor="@color/instagram_orange"
+            app:strokeWidth="1dp" />
 
         <!-- Bio and website below buttons -->
         <TextView
             android:id="@+id/bio"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toBottomOf="@id/editProfileBtn"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="12dp"
             android:layout_marginStart="6dp"
+            android:layout_marginTop="12dp"
             android:layout_marginEnd="6dp"
-            android:text="This is your bio. Add something about yourself!"
-            android:textSize="14sp"
-            android:textColor="?android:attr/textColorPrimary"
+            android:ellipsize="end"
             android:fontFamily="@font/inter_medium"
             android:maxLines="3"
-            android:ellipsize="end"
-            android:paddingLeft="2dp" />
+            android:paddingLeft="2dp"
+            android:text="This is your bio. Add something about yourself!"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/editProfileBtn" />
 
         <TextView
             android:id="@+id/bioExpand"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toBottomOf="@id/bio"
-            app:layout_constraintStart_toStartOf="@id/bio"
             android:layout_marginTop="2dp"
-            android:text="more"
-            android:textSize="13sp"
-            android:textColor="@color/instagram_orange"
             android:fontFamily="@font/inter_medium"
-            android:visibility="gone" />
+            android:text="more"
+            android:textColor="@color/instagram_orange"
+            android:textSize="13sp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/bio"
+            app:layout_constraintTop_toBottomOf="@id/bio" />
 
         <TextView
             android:id="@+id/website"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toBottomOf="@id/bioExpand"
-            app:layout_constraintStart_toStartOf="@id/bio"
-            app:layout_constraintEnd_toEndOf="@id/bio"
             android:layout_marginTop="6dp"
-            android:text="www.yourwebsite.com"
-            android:textSize="14sp"
-            android:textColor="@color/instagram_orange"
             android:fontFamily="@font/inter_bold"
-            android:paddingLeft="2dp" />
+            android:paddingLeft="2dp"
+            android:text="www.yourwebsite.com"
+            android:textColor="@color/instagram_orange"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="@id/bio"
+            app:layout_constraintStart_toStartOf="@id/bio"
+            app:layout_constraintTop_toBottomOf="@id/bioExpand" />
 
         <TextView
             android:id="@+id/story"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toBottomOf="@id/website"
-            app:layout_constraintStart_toStartOf="@id/bio"
-            app:layout_constraintEnd_toEndOf="@id/bio"
             android:layout_marginTop="4dp"
-            android:text="Add your story"
-            android:textSize="13sp"
-            android:textColor="?android:attr/textColorSecondary"
+            android:ellipsize="end"
             android:fontFamily="@font/inter_medium"
             android:maxLines="3"
-            android:ellipsize="end"
-            android:paddingLeft="2dp" />
+            android:paddingLeft="2dp"
+            android:text="Add your story"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="@id/bio"
+            app:layout_constraintStart_toStartOf="@id/bio"
+            app:layout_constraintTop_toBottomOf="@id/website" />
+
+        <ImageView
+            android:id="@+id/menuIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="Menu"
+            android:padding="6dp"
+            android:src="@drawable/ic_baseline_menu_24"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/usernameTop"
+            app:tint="?android:attr/textColorPrimary" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
