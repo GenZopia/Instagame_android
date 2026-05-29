@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="CircleImageView" parent="">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
@@ -16,6 +16,15 @@
         <!-- Tint for search EditText and list items (if library honors these attrs) -->
         <item name="colorControlNormal">?attr/colorOnSurface</item>
         <item name="colorControlActivated">?attr/colorOnSurface</item>
+    </style>
+
+    <style name="Theme.Splash" parent="Theme.Genzcrop">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
     </style>
 
     <!-- Removed custom MaterialDatePicker overlay: prefer using platform DatePickerDialog or

@@ -48,6 +48,7 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+
         <activity
             android:name=".channel_view.ChannelActivity"
             android:exported="false"
@@ -94,6 +95,7 @@
         <activity
             android:name=".SplashActivity"
             android:exported="true"
+            android:theme="@style/Theme.Splash"
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
