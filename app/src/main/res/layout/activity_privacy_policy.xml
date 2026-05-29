@@ -44,7 +44,7 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         android:clipToPadding="false"
-        android:paddingBottom="160dp">
+        android:paddingBottom="220dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -73,7 +73,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="Welcome to Instagame"
+                    android:text="Welcome to Genzopia"
                     android:textSize="22sp"
                     android:textStyle="bold"
                     android:textColor="?android:attr/textColorPrimary"
@@ -192,7 +192,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="You have the right to:\n\n• Access the personal data we hold about you.\n\n• Request correction of inaccurate data.\n\n• Request deletion of your account and associated data.\n\n• Withdraw consent at any time by deleting your account.\n\nTo exercise these rights, contact us at privacy@genzopia.com."
+                android:text="You have the right to:\n\n• Access the personal data we hold about you.\n\n• Request correction of inaccurate data.\n\n• Request deletion of your account and associated data.\n\n• Withdraw consent at any time by deleting your account.\n\nTo exercise these rights, contact us at genzopia@gmail.com."
                 android:textSize="14sp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:lineSpacingMultiplier="1.5"
@@ -232,7 +232,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Instagame is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately."
+                android:text="Genzopia is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately."
                 android:textSize="14sp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:lineSpacingMultiplier="1.5"
@@ -272,7 +272,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="If you have any questions about this Privacy Policy or how we handle your data, please contact us at:\n\nprivacy@genzopia.com"
+                android:text="If you have any questions about this Privacy Policy or how we handle your data, please contact us at:\n\ngenzopia@gmail.com"
                 android:textSize="14sp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:lineSpacingMultiplier="1.5"
@@ -345,7 +345,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Decline — I don\'t want to use Instagame"
+            android:text="Decline — I don\'t want to use Genzopia"
             android:textSize="13sp"
             android:textColor="@color/secondaryText"
             android:gravity="center"
