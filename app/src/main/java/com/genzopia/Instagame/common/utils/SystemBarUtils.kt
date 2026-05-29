@@ -35,16 +35,17 @@ object SystemBarUtils {
     }
 
     /**
-     * Restore the default edge-to-edge transparent bars used by the rest of the app.
+     * Restore bars to the default app state:
+     *   - Status bar: solid black with white icons (dark theme style)
+     *   - Navigation bar: subtle dark scrim so it's always present
      */
     fun restoreDefaultBars(window: Window) {
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.statusBarColor = android.graphics.Color.BLACK
+        window.navigationBarColor = 0x33000000  // ~20% black — subtle, keeps nav bar visible
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        // Default: light icons on light backgrounds
-        controller.isAppearanceLightStatusBars = true
-        controller.isAppearanceLightNavigationBars = true
+        controller.isAppearanceLightStatusBars = false   // white icons on black status bar
+        controller.isAppearanceLightNavigationBars = false  // white icons on scrim
 
         if (Build.VERSION.SDK_INT >= 30) {
             window.decorView.windowInsetsController?.let { ic ->

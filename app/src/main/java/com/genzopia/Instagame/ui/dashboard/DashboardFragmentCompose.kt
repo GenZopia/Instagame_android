@@ -1,6 +1,7 @@
 package com.genzopia.Instagame.ui.dashboard
 
 import ReelViewModel
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -23,11 +24,15 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 
 /**
  * Modern Dashboard Fragment using Jetpack Compose.
- * Hosts the reel screen with Instagram-style AMOLED-black bars.
+ * Hosts the reel screen with AMOLED-black bars.
+ * The bottom tab bar stays visible at all times.
  */
 class DashboardFragmentCompose : Fragment() {
 
     private val viewModel: ReelViewModel by viewModels()
+    private var navOriginalBackground: android.graphics.drawable.Drawable? = null
+    private var navOriginalIconTint: ColorStateList? = null
+    private var navOriginalTextColor: ColorStateList? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,7 +45,6 @@ class DashboardFragmentCompose : Fragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 
             setContent {
-                // Force dark colour scheme for the reel
                 MaterialTheme(
                     colorScheme = darkColorScheme(
                         background = Color.Black,
@@ -62,17 +66,43 @@ class DashboardFragmentCompose : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // True-black AMOLED bars + white icons
         SystemBarUtils.applyReelBars(requireActivity().window)
-        // Hide bottom nav so reel goes edge-to-edge
-        requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.GONE
+        styleBottomNavReel()
     }
 
     override fun onPause() {
         super.onPause()
-        // Restore transparent bars
         SystemBarUtils.restoreDefaultBars(requireActivity().window)
-        // Show bottom nav again
-        requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.VISIBLE
+        styleBottomNavNormal()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        activity?.let { act ->
+            SystemBarUtils.restoreDefaultBars(act.window)
+            styleBottomNavNormal()
+        }
+    }
+
+    private fun styleBottomNavReel() {
+        val nav = activity?.findViewById<BottomNavigationView>(R.id.nav_view) ?: return
+        if (navOriginalBackground == null) {
+            navOriginalBackground = nav.background
+            navOriginalIconTint = nav.itemIconTintList
+            navOriginalTextColor = nav.itemTextColor
+        }
+        nav.setBackgroundColor(android.graphics.Color.BLACK)
+        nav.itemIconTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
+        nav.itemTextColor = ColorStateList.valueOf(android.graphics.Color.WHITE)
+    }
+
+    private fun styleBottomNavNormal() {
+        val nav = activity?.findViewById<BottomNavigationView>(R.id.nav_view) ?: return
+        navOriginalBackground?.let { nav.background = it }
+        navOriginalIconTint?.let { nav.itemIconTintList = it }
+        navOriginalTextColor?.let { nav.itemTextColor = it }
+        navOriginalBackground = null
+        navOriginalIconTint = null
+        navOriginalTextColor = null
     }
 }

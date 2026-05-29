@@ -6,6 +6,7 @@ import android.view.Display;
 import android.view.WindowManager;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.SystemBarStyle;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -22,9 +23,16 @@ public class BaseActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
-        // Enable edge-to-edge so content draws behind status bar & navigation bar.
-        // Individual screens handle proper padding via fitsSystemWindows / systemBarsPadding().
-        EdgeToEdge.enable(this);
+        // Enable edge-to-edge with a solid black status bar (white icons) and
+        // a subtle dark scrim on the nav bar (white icons).
+        // Individual screens can override these colors when needed (e.g. reel → pure black).
+        // Using SystemBarStyle avoids the flickering/override issues that happen when
+        // setting window.statusBarColor manually in onResume.
+        EdgeToEdge.enable(
+                this,
+                SystemBarStyle.dark(android.graphics.Color.BLACK),    // status bar: solid black, white icons
+                SystemBarStyle.dark(0x33000000)                       // nav bar: subtle scrim, white icons
+        );
         // Must be called BEFORE super.onCreate so window flags are set early.
         applyMaxRefreshRate();
         super.onCreate(savedInstanceState);

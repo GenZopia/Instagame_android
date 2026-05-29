@@ -11,7 +11,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.genzopia.Instagame.common.BaseActivity
 import com.genzopia.Instagame.R
@@ -45,7 +44,6 @@ class ForgotPassword : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        enableEdgeToEdge()
         setContentView(R.layout.activity_forgot_password)
 
         // Ensure Firebase is initialized for this process (idempotent)

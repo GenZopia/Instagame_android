@@ -17,7 +17,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import com.genzopia.Instagame.common.BaseActivity;
@@ -75,8 +74,6 @@ public class Game_mode extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        EdgeToEdge.enable(this);
 
         binding = ActivityGameModeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
