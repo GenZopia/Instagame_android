@@ -1,0 +1,9 @@
+Add X close button on video picker screen
+
+• Added a top header bar with an X (close) button and "Select Video"
+  title on the gallery/file picker screen (Upload tab).
+• Header has a semi-transparent dark background that matches the
+  black gallery theme.
+• X button closes the Post activity and returns to the previous
+  screen — no animation, feels snappy.
+• Fixed RecyclerView height constraint so it sits below the header.

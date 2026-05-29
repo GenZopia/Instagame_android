@@ -10,6 +10,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -59,6 +60,14 @@ public class VideosFragment extends Fragment {
             startActivity(i);
         });
         recyclerView.setAdapter(adapter);
+
+        // X close button — closes the Post activity and goes back
+        ImageView btnClose = root.findViewById(R.id.btn_close_picker);
+        btnClose.setOnClickListener(v -> {
+            requireActivity().finish();
+            requireActivity().overridePendingTransition(0, 0);
+        });
+
         updatePermissionUI();
         return root;
     }

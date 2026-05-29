@@ -64,8 +64,6 @@ class DashboardFragmentCompose : Fragment() {
         super.onResume()
         // True-black AMOLED bars + white icons
         SystemBarUtils.applyReelBars(requireActivity().window)
-        // Hide system bars for full-immersion
-        SystemBarUtils.hideSystemBars(requireActivity().window)
         // Hide bottom nav so reel goes edge-to-edge
         requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.GONE
     }
@@ -74,7 +72,6 @@ class DashboardFragmentCompose : Fragment() {
         super.onPause()
         // Restore transparent bars
         SystemBarUtils.restoreDefaultBars(requireActivity().window)
-        SystemBarUtils.showSystemBars(requireActivity().window)
         // Show bottom nav again
         requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.VISIBLE
     }

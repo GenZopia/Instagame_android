@@ -66,8 +66,6 @@ class ReelComposeFragment : Fragment() {
         super.onResume()
         // True-black AMOLED bars + white icons (like Instagram reels)
         SystemBarUtils.applyReelBars(requireActivity().window)
-        // Hide system bars for full-immersion (swipe to reveal)
-        SystemBarUtils.hideSystemBars(requireActivity().window)
         // Hide the bottom navigation so the reel goes edge-to-edge
         requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.GONE
     }
@@ -76,7 +74,6 @@ class ReelComposeFragment : Fragment() {
         super.onPause()
         // Restore transparent bars and default icon colours
         SystemBarUtils.restoreDefaultBars(requireActivity().window)
-        SystemBarUtils.showSystemBars(requireActivity().window)
         // Show the bottom navigation again
         requireActivity().findViewById<BottomNavigationView>(R.id.nav_view)?.visibility = View.VISIBLE
     }

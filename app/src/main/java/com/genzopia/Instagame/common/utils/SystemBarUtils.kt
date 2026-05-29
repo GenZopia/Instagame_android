@@ -3,7 +3,6 @@ package com.genzopia.Instagame.common.utils
 import android.os.Build
 import android.view.Window
 import android.view.WindowInsetsController
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
@@ -53,24 +52,5 @@ object SystemBarUtils {
                     WindowInsetsController.BEHAVIOR_DEFAULT
             }
         }
-    }
-
-    /**
-     * Hide the system bars (for true full-screen experiences).
-     * Call when the reel screen is showing.
-     */
-    fun hideSystemBars(window: Window) {
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-    }
-
-    /**
-     * Show the system bars again (when leaving reel screen).
-     */
-    fun showSystemBars(window: Window) {
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.show(WindowInsetsCompat.Type.systemBars())
     }
 }
