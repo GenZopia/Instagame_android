@@ -4,13 +4,23 @@ import androidx.lifecycle.viewModelScope
 import com.genzopia.Instagame.features.home.data.FollowingRepository
 import com.genzopia.Instagame.features.home.domain.FollowedUser
 import com.genzopia.Instagame.utils.DataPrefetchService
+import com.genzopia.Instagame.utils.GameSearchEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 private const val PAGE_SIZE = 20
+private const val SEARCH_DEBOUNCE_MS = 300L
 
+@OptIn(FlowPreview::class)
 class HomeViewModel : ViewModel() {
 
     private val followingRepository = FollowingRepository()
@@ -33,6 +43,18 @@ class HomeViewModel : ViewModel() {
     private val _allLoaded = MutableStateFlow(false)
     val allLoaded = _allLoaded.asStateFlow()
 
+    // Search — debounced raw input, filtered results computed off main thread
+    val searchQuery = MutableStateFlow("")
+
+    val filteredGames = searchQuery
+        .debounce(SEARCH_DEBOUNCE_MS)
+        .combine(_games) { query, allGames ->
+            if (query.isBlank()) allGames
+            else GameSearchEngine.search(query, allGames)
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     // ordered list of all game keys fetched from Firebase (lightweight)
     private val allGameKeys = mutableListOf<String>()
     private var nextPageIndex = 0
@@ -41,6 +63,16 @@ class HomeViewModel : ViewModel() {
     init {
         loadFollowedUsers()
         loadGameKeys()
+        // Rebuild search index whenever the game list grows
+        viewModelScope.launch {
+            _games.collect { games ->
+                if (games.isNotEmpty()) {
+                    kotlinx.coroutines.withContext(Dispatchers.Default) {
+                        GameSearchEngine.buildIndex(games)
+                    }
+                }
+            }
+        }
     }
 
     // No-op — kept so existing call sites compile

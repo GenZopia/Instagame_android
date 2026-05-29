@@ -24,9 +24,11 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
     val followedUsers by viewModel.followedUsers.collectAsState()
     val followedUsersLoading by viewModel.followedUsersLoading.collectAsState()
     val games by viewModel.games.collectAsState()
+    val filteredGames by viewModel.filteredGames.collectAsState()
     val gamesLoading by viewModel.gamesLoading.collectAsState()
     val loadingMore by viewModel.loadingMore.collectAsState()
     val allLoaded by viewModel.allLoaded.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     LazyColumn(
         modifier = modifier
@@ -41,14 +43,16 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
         item {
             HomeGamesSection(
                 games = games,
+                filteredGames = filteredGames,
                 isLoading = gamesLoading,
                 loadingMore = loadingMore,
                 allLoaded = allLoaded,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { viewModel.searchQuery.value = it },
                 onLoadMore = { viewModel.loadMoreGames() }
             )
         }
         item {
-            // Push last item above the navigation bar
             Spacer(modifier = Modifier.navigationBarsPadding())
         }
     }
