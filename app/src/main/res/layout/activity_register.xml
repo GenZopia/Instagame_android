@@ -138,17 +138,17 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="8dp"
-                        android:textColor="?attr/colorOnSurface"
+                        app:ccpDialog_textColor="#9E9E9E"
                         app:ccp_showFlag="true"
                         app:ccp_showNameCode="false"
                         app:ccp_showPhoneCode="true"
                         app:ccp_showFullName="false"
-                        app:ccp_contentColor="?attr/colorOnSurface"
+                        app:ccp_contentColor="#9E9E9E"
                         app:ccp_arrowColor="?attr/colorOnSurface"
                         app:ccp_textSize="14sp"
-                        app:ccpDialog_textColor="?attr/colorOnSurface"
-                        app:ccpDialog_searchEditTextTint="?attr/colorOnSurface"
-                        app:ccpDialog_backgroundColor="?attr/colorSurface"
+
+
+
                         app:ccpDialog_fastScroller_bubbleColor="?attr/colorOnSurface" />
 
                     <View
