@@ -296,7 +296,10 @@ object InstagameAnalytics {
         developerId: String,
         developerName: String,
         gameId: String,
-        gameName: String
+        gameName: String,
+        watchTimeMs: Long = 0L,        // how long user watched this reel
+        videoDurationMs: Long = 0L,    // total video duration
+        completionPercent: Int = 0     // watch_time / video_duration * 100
     ) = track("reel_viewed", mapOf(
         "video_id" to videoId,
         "video_title" to videoTitle,
@@ -304,7 +307,10 @@ object InstagameAnalytics {
         "developer_id" to developerId,
         "developer_name" to developerName,
         "game_id" to gameId,
-        "game_name" to gameName
+        "game_name" to gameName,
+        "watch_time_ms" to watchTimeMs,
+        "video_duration_ms" to videoDurationMs,
+        "completion_percent" to completionPercent
     ))
 
     fun trackReelSwiped(fromIndex: Int, toIndex: Int) =
@@ -466,7 +472,8 @@ object InstagameAnalytics {
         "was_preloaded" to wasPreloaded
     ))
 
-    /** Fired when user leaves a reel — captures watch depth. */
+    /** Fired when user leaves a reel — watch depth is now a property of reel_viewed. */
+    @Deprecated("Use reel_viewed with watch_time_ms/completion_percent instead")
     fun trackVideoWatchTime(
         videoId: String,
         videoTitle: String,
@@ -475,15 +482,7 @@ object InstagameAnalytics {
         watchDurationMs: Long,
         videoDurationMs: Long,
         completionPercent: Int
-    ) = track("video_watch_time", mapOf(
-        "video_id" to videoId,
-        "video_title" to videoTitle,
-        "developer_name" to developerName,
-        "game_name" to gameName,
-        "watch_duration_ms" to watchDurationMs,
-        "video_duration_ms" to videoDurationMs,
-        "completion_percent" to completionPercent
-    ))
+    ) = Unit // no-op — data now lives in reel_viewed properties
 
     fun trackVideoBufferingOccurred(videoId: String, videoTitle: String, bufferDurationMs: Long) =
         track("perf_video_buffering", mapOf(
@@ -544,23 +543,32 @@ object InstagameAnalytics {
         "load_duration_ms" to loadDurationMs
     ))
 
-    /** Fired in Game_mode.onDestroy() — full play session length. */
-    fun trackGameSessionEnded(gameId: String, gameName: String, sessionDurationMs: Long, exitMethod: String = "unknown") {
-        track("game_session_ended", mapOf(
-            "game_id" to gameId,
-            "game_name" to gameName,
-            "session_duration_ms" to sessionDurationMs,
-            "exit_method" to exitMethod   // "back_button" | "system" | "unknown"
-        ))
+    /** Fired when user exits the game — time_played_ms is actual play time (from page load, not Activity start). */
+    fun trackGameEnded(
+        gameId: String,
+        gameName: String,
+        timePlayedMs: Long,
+        exitMethod: String  // "back_button" | "system"
+    ) {
+        track(
+            "game_ended", mapOf(
+                "game_id" to gameId,
+                "game_name" to gameName,
+                "time_played_ms" to timePlayedMs,
+                "exit_method" to exitMethod
+            )
+        )
         incrementUserProperty("total_games_played")
     }
 
-    fun trackGameBackPressed(gameId: String, gameName: String, sessionDurationMs: Long) =
-        track("game_back_pressed", mapOf(
-            "game_id" to gameId,
-            "game_name" to gameName,
-            "session_duration_ms" to sessionDurationMs
-        ))
+    /** Fired in Game_mode.onDestroy() — full play session length. */
+    @Deprecated("Use trackGameEnded instead")
+    fun trackGameSessionEnded(
+        gameId: String,
+        gameName: String,
+        sessionDurationMs: Long,
+        exitMethod: String = "unknown"
+    ) = Unit // no-op — replaced by trackGameEnded
 
     // ─────────────────────────────────────────────────────────────────────────
     // UPLOAD FUNNEL

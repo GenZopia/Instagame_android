@@ -21,7 +21,7 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AlertDialog;
 import com.genzopia.Instagame.common.BaseActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -74,7 +74,7 @@ public class Game_mode extends BaseActivity {
     private long gameActivityStartMs;      // when onCreate fires
     private long gameUrlFetchStartMs;      // when network call starts
     private long gamePageLoadStartMs;      // when WebView starts loading
-    private boolean backPressedTracked = false;
+    private long gamePlayStartMs;          // when game page finishes loading (actual play start)
     private boolean exitedViaBack = false;
 
     private OkHttpClient httpClient;
@@ -356,6 +356,8 @@ public class Game_mode extends BaseActivity {
                         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
                                 .trackGameLoaded(gameId, gameName, orient, loadDuration);
                         com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onGamePlayed();
+                        // Start actual play timer — excludes loading time
+                        gamePlayStartMs = System.currentTimeMillis();
                         gamePageLoadStartMs = 0; // fire only once
                     }
                 }
@@ -489,11 +491,16 @@ public class Game_mode extends BaseActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Track full game session duration with how the user exited
-        long sessionDurationMs = System.currentTimeMillis() - gameActivityStartMs;
+        // time_played_ms = time from game page load to exit (excludes loading time).
+        // Falls back to time from Activity start if page never finished loading.
+        long timePlayedMs = gamePlayStartMs > 0
+                ? System.currentTimeMillis() - gamePlayStartMs
+                : System.currentTimeMillis() - gameActivityStartMs;
         String exitMethod = exitedViaBack ? "back_button" : "system";
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
-                .trackGameSessionEnded(gameId != null ? gameId : "", gameName, sessionDurationMs, exitMethod);
+                .trackGameEnded(gameId != null ? gameId : "", gameName, timePlayedMs, exitMethod);
+        // Flush immediately so the event isn't lost when the process dies
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.flushEvents();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         if (webView != null) {
             webView.loadUrl("about:blank");
@@ -513,15 +520,26 @@ public class Game_mode extends BaseActivity {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
         } else {
-            if (!backPressedTracked) {
-                backPressedTracked = true;
-                exitedViaBack = true;
-                long sessionDurationMs = System.currentTimeMillis() - gameActivityStartMs;
-                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
-                        .trackGameBackPressed(gameId != null ? gameId : "", gameName, sessionDurationMs);
-            }
-            super.onBackPressed();
+            showExitConfirmDialog();
         }
+    }
+
+    private void showExitConfirmDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Exit Game?")
+                .setMessage("Do you really want to exit the game?")
+                .setPositiveButton("Exit", (dialog, which) -> {
+                    exitedViaBack = true;
+                    finish();
+                })
+                .setNegativeButton("Keep Playing", (dialog, which) -> {
+                    dialog.dismiss();
+                    // Re-apply immersive mode since the dialog temporarily shows system bars
+                    hideSystemBars();
+                })
+                .setCancelable(true)
+                .setOnCancelListener(dialog -> hideSystemBars())
+                .show();
     }
 
     public String getGameId() {

@@ -119,6 +119,8 @@ fun ReelScreen(
     val coroutineScope = rememberCoroutineScope()
     // Track previous page for swipe direction analytics
     var previousPage by remember { mutableIntStateOf(0) }
+    // Track when the current reel became active (for watch_time_ms in reel_viewed)
+    val reelViewStartMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // Hand the tutorial a stable lambda it can call to animate to the next page.
     // Re-registers whenever pagerState or itemCount changes (e.g. after first load).
@@ -169,25 +171,58 @@ fun ReelScreen(
                 val currentReelsList = (0 until reels.itemCount).mapNotNull { i -> reels[i] }
                 viewModel.preloadVideos(pagerState.currentPage, currentReelsList)
 
-                // Track reel viewed + increment session counter
-                com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelViewed(
-                    videoId = it.videoId,
-                    videoTitle = it.title,
-                    reelIndex = pagerState.currentPage,
-                    developerId = it.developerId,
-                    developerName = it.developerName,
-                    gameId = it.gameId,
-                    gameName = it.gameName
-                )
-                com.genzopia.Instagame.analytics.SessionTracker.onReelWatched()
-                // Track swipe if page actually changed
+                // If page actually changed: fire reel_swiped FIRST, then reel_viewed
+                // This ensures correct event order in Amplitude's timeline.
                 if (pagerState.currentPage != previousPage) {
+                    val watchTimeMs = System.currentTimeMillis() - reelViewStartMs.longValue
+                    // Get the previous reel's video duration from its player
+                    val prevReel = reels[previousPage]
+                    val videoDurationMs = prevReel?.videoId?.let { viewModel.getPlayerDurationMs(it) } ?: 0L
+                    val completionPct = if (videoDurationMs > 0)
+                        ((watchTimeMs.toFloat() / videoDurationMs.toFloat()) * 100).toInt().coerceIn(0, 100)
+                    else 0
+
+                    // 1. reel_swiped — about the transition (from → to)
                     com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelSwiped(
                         fromIndex = previousPage,
                         toIndex = pagerState.currentPage
                     )
+
+                    // 2. reel_viewed for the NEW reel — watch_time_ms/completion_percent
+                    //    describe how long the user watched the PREVIOUS reel before swiping
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelViewed(
+                        videoId = it.videoId,
+                        videoTitle = it.title,
+                        reelIndex = pagerState.currentPage,
+                        developerId = it.developerId,
+                        developerName = it.developerName,
+                        gameId = it.gameId,
+                        gameName = it.gameName,
+                        watchTimeMs = watchTimeMs,
+                        videoDurationMs = videoDurationMs,
+                        completionPercent = completionPct
+                    )
+
                     previousPage = pagerState.currentPage
+                    reelViewStartMs.longValue = System.currentTimeMillis()
+                } else {
+                    // First reel on load — no prior watch time
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelViewed(
+                        videoId = it.videoId,
+                        videoTitle = it.title,
+                        reelIndex = pagerState.currentPage,
+                        developerId = it.developerId,
+                        developerName = it.developerName,
+                        gameId = it.gameId,
+                        gameName = it.gameName,
+                        watchTimeMs = 0L,
+                        videoDurationMs = 0L,
+                        completionPercent = 0
+                    )
+                    reelViewStartMs.longValue = System.currentTimeMillis()
                 }
+
+                com.genzopia.Instagame.analytics.SessionTracker.onReelWatched()
             }
         }
     }
@@ -315,8 +350,6 @@ fun ReelItem(
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // Watch time tracking
-    val reelActiveStartMs = remember { mutableLongStateOf(0L) }
     // Video load time tracking
     val videoLoadStartMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
     val videoLoadTracked = remember { mutableStateOf(false) }
@@ -393,26 +426,9 @@ fun ReelItem(
             if (isActive) {
                 player.volume = 1f
                 player.playWhenReady = true
-                reelActiveStartMs.longValue = System.currentTimeMillis()
                 videoLoadStartMs.longValue = System.currentTimeMillis()
             } else {
-                // Reel left — track watch time
-                if (reelActiveStartMs.longValue > 0L) {
-                    val watchDuration = System.currentTimeMillis() - reelActiveStartMs.longValue
-                    val videoDuration = player.duration.takeIf { it > 0 } ?: 1L
-                    val completionPct = ((watchDuration.toFloat() / videoDuration.toFloat()) * 100)
-                        .toInt().coerceIn(0, 100)
-                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackVideoWatchTime(
-                        videoId = reel.videoId,
-                        videoTitle = reel.title,
-                        developerName = reel.developerName,
-                        gameName = reel.gameName,
-                        watchDurationMs = watchDuration,
-                        videoDurationMs = videoDuration,
-                        completionPercent = completionPct
-                    )
-                    reelActiveStartMs.longValue = 0L
-                }
+                // Reel left — watch time is now tracked in ReelScreen via reel_viewed properties
                 player.playWhenReady = false
                 player.volume = 0f
             }

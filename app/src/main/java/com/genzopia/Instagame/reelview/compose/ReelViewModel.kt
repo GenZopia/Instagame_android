@@ -273,6 +273,10 @@ class ReelViewModel : ViewModel() {
     fun getFollowState(developerId: String, defaultState: Boolean) =
         followStates[developerId] ?: defaultState
 
+    /** Returns the video duration in ms for a given videoId, or 0 if unknown. */
+    fun getPlayerDurationMs(videoId: String): Long =
+        playerPool[videoId]?.duration?.takeIf { it > 0 } ?: 0L
+
     fun updateFollowState(developerId: String, isFollowing: Boolean) {
         followStates[developerId] = isFollowing
     }
