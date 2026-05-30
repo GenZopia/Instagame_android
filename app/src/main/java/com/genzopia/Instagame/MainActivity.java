@@ -66,6 +66,9 @@ public class MainActivity extends BaseActivity {
             NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_main);
             NavigationUI.setupWithNavController(navView, navController);
 
+            // Track bottom nav taps
+            final String[] previousTab = {"dashboard"}; // default start tab
+
             // Block bottom nav if onboarding not yet complete
             navView.setOnItemSelectedListener(item -> {
                 String uid = FirebaseAuth.getInstance().getCurrentUser() != null
@@ -76,10 +79,22 @@ public class MainActivity extends BaseActivity {
                     Toast.makeText(this,
                             "Please complete the onboarding first 🎮",
                             Toast.LENGTH_SHORT).show();
-                    return false; // block navigation
+                    return false;
                 }
 
-                // Allow navigation — mirror what NavigationUI does
+                // Resolve tab name for analytics
+                String tabName;
+                int id = item.getItemId();
+                if (id == R.id.navigation_home)          tabName = "home";
+                else if (id == R.id.navigation_dashboard) tabName = "dashboard";
+                else if (id == R.id.navigation_notifications) tabName = "notifications";
+                else                                      tabName = "profile";
+
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackBottomNavTapped(
+                        tabName, previousTab[0]);
+                com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged(tabName);
+                previousTab[0] = tabName;
+
                 return NavigationUI.onNavDestinationSelected(item, navController);
             });
             

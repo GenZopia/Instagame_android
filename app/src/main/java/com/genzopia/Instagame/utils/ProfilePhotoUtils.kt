@@ -40,7 +40,7 @@ object ProfilePhotoUtils {
 object PhotoUrlResolver {
 
     private const val TAG = "profile_photo"
-    private const val R2_BASE = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+    private const val R2_BASE = "https://pub-22db73b8d33244d1a53831aed22cd78b.r2.dev"
 
     /**
      * Given a photo_id and file_ext, returns the direct R2 URL.

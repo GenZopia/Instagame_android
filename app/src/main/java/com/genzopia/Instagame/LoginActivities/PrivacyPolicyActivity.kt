@@ -10,6 +10,8 @@ import androidx.appcompat.app.AlertDialog
 import com.google.android.material.button.MaterialButton
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.R
+import com.genzopia.Instagame.analytics.InstagameAnalytics
+import com.genzopia.Instagame.analytics.SessionTracker
 import com.genzopia.Instagame.common.BaseActivity
 import com.google.firebase.auth.FirebaseAuth
 
@@ -42,6 +44,9 @@ class PrivacyPolicyActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_privacy_policy)
 
+        InstagameAnalytics.trackPrivacyPolicyViewed()
+        SessionTracker.onScreenChanged("privacy_policy")
+
         val checkboxAccept = findViewById<CheckBox>(R.id.checkboxAccept)
         val btnAccept = findViewById<MaterialButton>(R.id.btnAccept)
         val tvDecline = findViewById<TextView>(R.id.tvDecline)
@@ -54,12 +59,11 @@ class PrivacyPolicyActivity : BaseActivity() {
         btnAccept.alpha = 0.5f
 
         btnAccept.setOnClickListener {
-            // Persist acceptance so we never show this screen again
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_ACCEPTED, true)
                 .apply()
-
+            InstagameAnalytics.trackPrivacyPolicyAccepted()
             goToMain()
         }
 

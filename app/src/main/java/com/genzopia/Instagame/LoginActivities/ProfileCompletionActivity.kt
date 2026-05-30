@@ -9,6 +9,8 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.genzopia.Instagame.analytics.InstagameAnalytics
+import com.genzopia.Instagame.analytics.SessionTracker
 import com.genzopia.Instagame.common.BaseActivity
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.R
@@ -195,6 +197,12 @@ class ProfileCompletionActivity : BaseActivity() {
     }
     
     private fun showProfileCompletionUI() {
+        val missing = mutableListOf<String>()
+        if (needsFullName) missing.add("full_name")
+        if (needsDob) missing.add("date_of_birth")
+        if (needsMobile) missing.add("mobile_no")
+        InstagameAnalytics.trackProfileCompletionViewed(missing)
+        SessionTracker.onScreenChanged("profile_completion")
         binding.tvTitle.text = "Complete Your Profile"
         binding.tvSubtitle.text = "Please provide the following information"
         binding.layoutVerification.visibility = View.GONE
@@ -285,6 +293,23 @@ class ProfileCompletionActivity : BaseActivity() {
         database.reference.child("users").child(userId)
             .updateChildren(updates)
             .addOnSuccessListener {
+                val filled = updates.keys.toList()
+                InstagameAnalytics.trackProfileCompletionSubmitted(filled)
+                // Re-identify so Amplitude gets the updated name if it was just filled in
+                val updatedName = updates["full_name"] as? String
+                if (updatedName != null) {
+                    val user = auth.currentUser
+                    if (user != null) {
+                        database.reference.child("users").child(userId).get()
+                            .addOnSuccessListener { snap ->
+                                val name = snap.child("full_name").getValue(String::class.java) ?: ""
+                                val email = snap.child("email").getValue(String::class.java) ?: ""
+                                val rawPhoto = snap.child("profile_photo_url").getValue(String::class.java)
+                                val photo = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhoto)
+                                InstagameAnalytics.identifyUser(userId, name, email, photo, "profile_completion")
+                            }
+                    }
+                }
                 binding.progressBar.visibility = View.GONE
                 Toast.makeText(this, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
                 goToMainActivity()

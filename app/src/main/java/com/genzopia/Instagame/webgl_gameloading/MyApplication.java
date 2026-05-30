@@ -4,6 +4,10 @@ import android.app.Application;
 import android.content.Context;
 import android.util.Log;
 
+import androidx.lifecycle.DefaultLifecycleObserver;
+import androidx.lifecycle.LifecycleOwner;
+import androidx.lifecycle.ProcessLifecycleOwner;
+
 import coil.Coil;
 import coil.ImageLoader;
 
@@ -11,7 +15,6 @@ import com.airbnb.lottie.LottieComposition;
 import com.airbnb.lottie.LottieCompositionFactory;
 import com.genzopia.Instagame.BuildConfig;
 import com.genzopia.Instagame.R;
-
 
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
@@ -31,7 +34,77 @@ public class MyApplication extends Application {
     public void onCreate() {
         super.onCreate();
         setupCoil();
-        prewarmLottie();  // ✅
+        prewarmLottie();
+        // Init Amplitude — must be first so all subsequent events are captured
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.init(this);
+        // Start session tracking
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppCreated();
+        // Re-identify returning user so they are never shown as Anonymous
+        reIdentifyReturningUser();
+        // Register process-level lifecycle observer — fires only on true
+        // app foreground/background, NOT on Activity-to-Activity transitions.
+        ProcessLifecycleOwner.get().getLifecycle().addObserver(new DefaultLifecycleObserver() {
+            @Override
+            public void onStart(LifecycleOwner owner) {
+                // App came to foreground (from home screen / recents / lock screen)
+                com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppForegrounded();
+            }
+
+            @Override
+            public void onStop(LifecycleOwner owner) {
+                // App went to background — track it and flush immediately
+                com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppBackgrounded();
+                // Flush queued events so Amplitude receives them before the process dies
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.flushEvents();
+            }
+        });
+    }
+
+    /**
+     * If a user is already logged in (returning session), re-attach their
+     * identity to Amplitude immediately so no events fire as Anonymous.
+     *
+     * Step 1: set userId synchronously from FirebaseAuth (no network call) —
+     *         this runs before SplashActivity fires app_opened, so that event
+     *         is already attributed to the real user.
+     * Step 2: fetch name/email/photo from Realtime DB async and call identifyUser()
+     *         to populate the user profile properties including $avatar.
+     */
+    private void reIdentifyReturningUser() {
+        com.google.firebase.auth.FirebaseUser firebaseUser =
+                com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+        if (firebaseUser == null) return;
+
+        String uid = firebaseUser.getUid();
+
+        // ── Step 1: set userId immediately (synchronous, no network) ──────────
+        // This ensures app_opened and all early events are attributed to the
+        // real user, not Anonymous.
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.setUserId(uid);
+
+        // ── Step 2: fetch full profile and set user properties async ──────────
+        com.google.firebase.database.FirebaseDatabase.getInstance()
+                .getReference("users").child(uid)
+                .get()
+                .addOnSuccessListener(snapshot -> {
+                    if (snapshot == null || !snapshot.exists()) {
+                        Log.w("AmplitudeDebug", "reIdentify: snapshot null or missing for uid=" + uid);
+                        return;
+                    }
+                    String name = snapshot.child("full_name").getValue(String.class);
+                    String email = snapshot.child("email").getValue(String.class);
+                    String rawPhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                    String photoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhotoUrl);
+                    Log.d("AmplitudeDebug", "reIdentify → name='" + name + "' rawPhoto='" + rawPhotoUrl + "' sanitized='" + photoUrl + "'");
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.identifyUser(
+                            uid,
+                            name != null ? name : "",
+                            email != null ? email : "",
+                            photoUrl,
+                            "returning"
+                    );
+                })
+                .addOnFailureListener(e -> Log.e("AmplitudeDebug", "reIdentify DB fetch FAILED: " + e.getMessage()));
     }
 
     public static LottieComposition cachedComposition = null;

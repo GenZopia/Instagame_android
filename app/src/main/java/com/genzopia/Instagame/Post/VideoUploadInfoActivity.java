@@ -106,6 +106,9 @@ public class VideoUploadInfoActivity extends BaseActivity {
         uploadProgressBar.setVisibility(View.GONE);
         uploadProgressBar.setIndeterminate(true);
 
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackUploadScreenViewed();
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("upload");
+
         editbutton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -232,6 +235,11 @@ public class VideoUploadInfoActivity extends BaseActivity {
             String gameId = gameNameToId.get(matchedGame);
             if(this.devid!=""){
             String devid=this.devid;}
+
+            // Track upload started
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackUploadStarted(
+                    gameId != null ? gameId : "", matchedGame != null ? matchedGame : "");
+
             // Move file I/O to background thread
             new Thread(() -> {
                 File originalFile = FileUtils.getFileFromUri(this, videoUri);
@@ -274,11 +282,14 @@ public class VideoUploadInfoActivity extends BaseActivity {
                     uploadProgressBar.setVisibility(View.GONE);
                     btnConfirmUpload.setEnabled(true);
                     if ("success".equals(result)) {
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackUploadCompleted();
                         Toast.makeText(context, "Upload succeeded!", Toast.LENGTH_LONG).show();
                         finish();
                     } else if ("fail".equals(result)) {
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackUploadFailed("upload_error");
                         Toast.makeText(context, "Upload failed!", Toast.LENGTH_LONG).show();
                     } else if ("cancelled".equals(result)) {
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackUploadFailed("cancelled");
                         Toast.makeText(context, "Upload cancelled.", Toast.LENGTH_LONG).show();
                     }
                 }

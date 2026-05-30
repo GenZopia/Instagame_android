@@ -70,6 +70,12 @@ public class Game_mode extends BaseActivity {
 
     private String gameId;
     private String currentUserId;
+    private String gameName = "";          // resolved from Firebase
+    private long gameActivityStartMs;      // when onCreate fires
+    private long gameUrlFetchStartMs;      // when network call starts
+    private long gamePageLoadStartMs;      // when WebView starts loading
+    private boolean backPressedTracked = false;
+    private boolean exitedViaBack = false;
 
     private OkHttpClient httpClient;
     private ExecutorService executorService;
@@ -89,9 +95,19 @@ public class Game_mode extends BaseActivity {
 
         currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         gameId = getIntent().getStringExtra("game_id");
+        gameActivityStartMs = System.currentTimeMillis();
 
         Log.d(TAG, "Game ID: " + gameId);
         Log.d(TAG, "Current User ID: " + currentUserId);
+
+        // Track launch initiated — game name resolved later from Firebase
+        String launchSource = getIntent().getStringExtra("launch_source");
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackGameLaunchInitiated(
+                gameId != null ? gameId : "",
+                "",  // name filled in after Firebase fetch
+                launchSource != null ? launchSource : "reel_double_tap"
+        );
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("game_" + gameId);
 
         fetchGameDataAndGetSignedUrl();
     }
@@ -112,6 +128,8 @@ public class Game_mode extends BaseActivity {
                     String gameUserId = snapshot.child("user_id").getValue(String.class);
                     String orientation = snapshot.child("orientation").getValue(String.class);
                     String gameLink = snapshot.child("game_link").getValue(String.class);
+                    gameName = snapshot.child("game_name").getValue(String.class) != null
+                            ? snapshot.child("game_name").getValue(String.class) : "";
 
                     Log.d(TAG, "Game user_id: " + gameUserId);
                     Log.d(TAG, "Orientation: " + orientation);
@@ -121,12 +139,17 @@ public class Game_mode extends BaseActivity {
 
                     if (gameLink != null && !gameLink.isEmpty()) {
                         Log.d(TAG, "Using direct game_link: " + gameLink);
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                .trackGameUrlFetchSuccess(gameId, gameName, 0, "direct");
                         runOnUiThread(() -> {
                             if (!isFinishing() && !isDestroyed()) {
                                 setupWebView(gameLink);
                             }
                         });
                     } else if (gameUserId != null && !gameUserId.isEmpty()) {
+                        gameUrlFetchStartMs = System.currentTimeMillis();
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                .trackGameUrlFetchStarted(gameId, gameName);
                         getSignedGameUrl(gameUserId);
                     } else {
                         Log.e(TAG, "Game user_id is null or empty");
@@ -177,6 +200,8 @@ public class Game_mode extends BaseActivity {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Network error: " + e.getMessage());
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                        .trackGameUrlFetchFailed(gameId, gameName, e.getMessage() != null ? e.getMessage() : "network_error");
                 runOnUiThread(() -> {
                     if (!isFinishing() && !isDestroyed()) {
                         Toast.makeText(Game_mode.this, "Network error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -197,6 +222,9 @@ public class Game_mode extends BaseActivity {
                         if (success) {
                             String signedGameUrl = jsonResponse.get("url").getAsString();
                             Log.d(TAG, "Signed game URL: " + signedGameUrl);
+                            long fetchDuration = System.currentTimeMillis() - gameUrlFetchStartMs;
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                    .trackGameUrlFetchSuccess(gameId, gameName, fetchDuration, "signed");
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
                                     setupWebView(signedGameUrl);
@@ -321,6 +349,15 @@ public class Game_mode extends BaseActivity {
                 public void onPageFinished(WebView view, String url) {
                     super.onPageFinished(view, url);
                     Log.d(TAG, "Page loaded: " + url);
+                    if (gamePageLoadStartMs > 0) {
+                        long loadDuration = System.currentTimeMillis() - gamePageLoadStartMs;
+                        String orient = getRequestedOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                ? "portrait" : "landscape";
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                .trackGameLoaded(gameId, gameName, orient, loadDuration);
+                        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onGamePlayed();
+                        gamePageLoadStartMs = 0; // fire only once
+                    }
                 }
 
                 @Override
@@ -418,6 +455,7 @@ public class Game_mode extends BaseActivity {
             });
 
             Log.d(TAG, "Loading game URL: " + gameUrl);
+            gamePageLoadStartMs = System.currentTimeMillis();
             webView.loadUrl(gameUrl);
 
         } catch (Exception e) {
@@ -451,6 +489,11 @@ public class Game_mode extends BaseActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // Track full game session duration with how the user exited
+        long sessionDurationMs = System.currentTimeMillis() - gameActivityStartMs;
+        String exitMethod = exitedViaBack ? "back_button" : "system";
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                .trackGameSessionEnded(gameId != null ? gameId : "", gameName, sessionDurationMs, exitMethod);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         if (webView != null) {
             webView.loadUrl("about:blank");
@@ -470,6 +513,13 @@ public class Game_mode extends BaseActivity {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
         } else {
+            if (!backPressedTracked) {
+                backPressedTracked = true;
+                exitedViaBack = true;
+                long sessionDurationMs = System.currentTimeMillis() - gameActivityStartMs;
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                        .trackGameBackPressed(gameId != null ? gameId : "", gameName, sessionDurationMs);
+            }
             super.onBackPressed();
         }
     }

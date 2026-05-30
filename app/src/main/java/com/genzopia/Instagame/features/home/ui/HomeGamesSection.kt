@@ -164,12 +164,20 @@ fun HomeGamesSection(
                 userScrollEnabled = false
             ) {
                 items(displayGames, key = { it.gameId }) { game ->
+                    val position = displayGames.indexOf(game)
                     GameCard(
                         game = game,
                         isDark = isDark,
                         textColor = textColor,
                         subColor = subColor,
-                        onClick = { selectedGame = game }
+                        onClick = {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackHomeGameCardTapped(
+                                gameId = game.gameId,
+                                gameName = game.gameName,
+                                positionInList = position
+                            )
+                            selectedGame = game
+                        }
                     )
                 }
             }
@@ -230,7 +238,24 @@ fun HomeGamesSection(
     }
 
     selectedGame?.let { game ->
-        GameDetailSheet(game = game, onDismiss = { selectedGame = null })
+        LaunchedEffect(game.gameId) {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailSheetOpened(
+                gameId = game.gameId,
+                gameName = game.gameName,
+                source = "home_card"
+            )
+        }
+        GameDetailSheet(
+            game = game,
+            onDismiss = { didPlay ->
+                com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailSheetDismissed(
+                    gameId = game.gameId,
+                    gameName = game.gameName,
+                    didPlay = didPlay
+                )
+                selectedGame = null
+            }
+        )
     }
 }
 
@@ -297,7 +322,15 @@ private fun SmartSearchBar(
                 ),
                 cursorBrush = SolidColor(Orange),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                keyboardActions = KeyboardActions(onSearch = {
+                    focusManager.clearFocus()
+                    if (localQuery.isNotBlank()) {
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.trackHomeSearchUsed(
+                            query = localQuery,
+                            resultsCount = 0 // count not available here; ViewModel filters async
+                        )
+                    }
+                }),
                 decorationBox = { innerTextField ->
                     if (localQuery.isEmpty()) {
                         Text("Search", fontSize = 13.sp, color = subColor)
@@ -416,7 +449,7 @@ private fun GameCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
+private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -> Unit) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val sheetBg = if (isDark) Color(0xFF1C1C1E) else Color.White
@@ -425,7 +458,7 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
     val rowBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFF5F5F5)
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { onDismiss(false) },
         containerColor = sheetBg,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
@@ -489,8 +522,20 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
                         .clip(RoundedCornerShape(12.dp))
                         .background(rowBg)
                         .clickable {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailDeveloperTapped(
+                                gameId = game.gameId,
+                                gameName = game.gameName,
+                                developerId = game.developerId,
+                                developerName = game.developerName
+                            )
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackChannelViewed(
+                                developerId = game.developerId,
+                                developerName = game.developerName,
+                                source = "home_game_card"
+                            )
                             val intent = Intent(context, ChannelActivity::class.java)
                             intent.putExtra("developer_id", game.developerId)
+                            intent.putExtra("channel_source", "home_game_card")
                             context.startActivity(intent)
                         }
                         .padding(12.dp),
@@ -520,11 +565,17 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: () -> Unit) {
 
             Button(
                 onClick = {
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
+                        gameId = game.gameId,
+                        gameName = game.gameName,
+                        source = "home_card"
+                    )
                     val intent = Intent(context, Game_mode::class.java)
                     intent.putExtra("game_id", game.gameId)
                     intent.putExtra("game_name", game.gameName)
+                    intent.putExtra("launch_source", "home_card")
                     context.startActivity(intent)
-                    onDismiss()
+                    onDismiss(true)
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Orange),

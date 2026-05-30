@@ -28,6 +28,11 @@ class HomeFragmentCompose : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        com.genzopia.Instagame.analytics.InstagameAnalytics.trackHomeScreenViewed(
+            followedUsersCount = viewModel.followedUsers.value.size,
+            gamesCount = viewModel.games.value.size
+        )
+        com.genzopia.Instagame.analytics.SessionTracker.onScreenChanged("home")
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 

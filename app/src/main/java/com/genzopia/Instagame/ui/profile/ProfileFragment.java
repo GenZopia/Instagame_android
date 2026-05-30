@@ -74,6 +74,8 @@ public class ProfileFragment extends Fragment {
         initializeFragments(view);
         setupClickListeners();
         fetchUserData();
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileScreenViewed();
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("profile");
         return view;
     }
 
@@ -186,9 +188,13 @@ public class ProfileFragment extends Fragment {
     }
 
     private void setupClickListeners() {
-        profileImage.setOnClickListener(v -> openFullScreenImage());
+        profileImage.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfilePhotoTapped();
+            openFullScreenImage();
+        });
         
         editProfileBtn.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackEditProfileOpened();
             Intent intent = new Intent(getActivity(), EditProfileActivity.class);
             startActivity(intent);
         });
@@ -215,15 +221,27 @@ public class ProfileFragment extends Fragment {
             }
         });
 
-        menuIcon.setOnClickListener(v -> showProfileMenu());
+        menuIcon.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileMenuOpened();
+            showProfileMenu();
+        });
 
         genzLabBtn.setOnClickListener(v ->
                 Toast.makeText(getContext(), "Coming soon!", Toast.LENGTH_SHORT).show());
 
         // Tab click listeners
-        videos_ff.setOnClickListener(v -> switchTab("Videos"));
-        games_ff.setOnClickListener(v -> switchTab("Games"));
-        details_ff.setOnClickListener(v -> switchTab("Details"));
+        videos_ff.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileTabSwitched("videos");
+            switchTab("Videos");
+        });
+        games_ff.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileTabSwitched("games");
+            switchTab("Games");
+        });
+        details_ff.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileTabSwitched("details");
+            switchTab("Details");
+        });
     }
 
     private void fetchUserData() {
@@ -327,6 +345,7 @@ public class ProfileFragment extends Fragment {
     }
 
     private void openFullScreenImage() {
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfilePhotoFullscreenOpened();
         Intent intent = new Intent(getActivity(), FullScreenImageActivity.class);
         String profilePhotoUrl = sharedPreferences.getString("profilePhotoUrl", "");
         intent.putExtra("image", profilePhotoUrl);
@@ -344,6 +363,10 @@ public class ProfileFragment extends Fragment {
 
 
     private void logout() {
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLogoutTapped();
+        long sessionDurationMs = com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.getSessionDurationMs();
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLogoutCompleted(sessionDurationMs);
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.clearIdentity();
         clearSharedPreferences();
         
         if (auth != null) {

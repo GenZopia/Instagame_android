@@ -70,9 +70,32 @@ public class ChannelActivity extends BaseActivity {
         loadFragment(gamesFragment);
         setActiveTab(tabGames);
 
-        tabGames.setOnClickListener(v -> { loadFragment(gamesFragment); setActiveTab(tabGames); });
-        tabVideos.setOnClickListener(v -> { loadFragment(videosFragment); setActiveTab(tabVideos); });
-        tabDetails.setOnClickListener(v -> { loadFragment(detailsFragment); setActiveTab(tabDetails); });
+        // Track channel viewed — source passed via intent, default to "unknown"
+        String channelSource = getIntent().getStringExtra("channel_source");
+        // Name resolved after loadDeveloperData; we track with a placeholder and
+        // update once the name arrives via the listener in loadDeveloperData()
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelViewed(
+                developerId,
+                "",  // name filled in loadDeveloperData callback
+                channelSource != null ? channelSource : "unknown"
+        );
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("channel_" + developerId);
+
+        tabGames.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelTabSwitched(developerId, "games");
+            loadFragment(gamesFragment);
+            setActiveTab(tabGames);
+        });
+        tabVideos.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelTabSwitched(developerId, "videos");
+            loadFragment(videosFragment);
+            setActiveTab(tabVideos);
+        });
+        tabDetails.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelTabSwitched(developerId, "details");
+            loadFragment(detailsFragment);
+            setActiveTab(tabDetails);
+        });
 
         setupFollowButton();
     }
@@ -122,6 +145,13 @@ public class ChannelActivity extends BaseActivity {
             if (currentUid == null) return;
             isFollowing = !isFollowing;
             updateFollowButton();
+            // Track follow/unfollow with developer name from channelName TextView
+            String devName = channelName != null ? channelName.getText().toString() : "";
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelFollowTapped(
+                    developerId,
+                    devName,
+                    isFollowing ? "follow" : "unfollow"
+            );
             DatabaseReference followRef = FirebaseDatabase.getInstance().getReference("users")
                     .child(currentUid).child("following_list").child(developerId);
             DatabaseReference followersCountRef = FirebaseDatabase.getInstance().getReference("users")

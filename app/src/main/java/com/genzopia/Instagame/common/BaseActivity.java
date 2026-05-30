@@ -22,13 +22,23 @@ public class BaseActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
-        // Enable edge-to-edge BEFORE super.onCreate so the window is configured
-        // before the layout is inflated. Each layout is responsible for applying
-        // WindowInsetsCompat padding to avoid content being obscured by system bars.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        // Must be called BEFORE super.onCreate so window flags are set early.
         applyMaxRefreshRate();
         super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // NOTE: foreground/background tracking is handled by ProcessLifecycleOwner
+        // in MyApplication — do NOT call SessionTracker here as it fires on every
+        // Activity transition (e.g. opening Game_mode), not true app background.
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // NOTE: same as above — handled by ProcessLifecycleOwner in MyApplication.
     }
 
     private void applyMaxRefreshRate() {

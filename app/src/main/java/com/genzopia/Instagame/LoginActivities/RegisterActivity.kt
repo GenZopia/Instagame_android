@@ -17,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts.TakePicture
 import androidx.appcompat.app.AppCompatActivity
 import com.genzopia.Instagame.common.BaseActivity
 import androidx.core.content.FileProvider
+import com.genzopia.Instagame.analytics.InstagameAnalytics
+import com.genzopia.Instagame.analytics.SessionTracker
 import com.genzopia.Instagame.BuildConfig
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.databinding.ActivityRegisterBinding
@@ -52,6 +54,7 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
             selectedImageUri = it
             binding.profilePicture.setImageURI(it)
             binding.avatarPlus.visibility = View.GONE
+            InstagameAnalytics.trackRegisterPhotoSelected("gallery")
         }
     }
 
@@ -72,6 +75,9 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
 
         auth = FirebaseAuth.getInstance()
         database = FirebaseDatabase.getInstance()
+
+        InstagameAnalytics.trackRegisterScreenViewed()
+        SessionTracker.onScreenChanged("register")
 
         binding.btnRegister.isEnabled = true
         registerBtnOriginalText = binding.btnRegister.text
@@ -120,6 +126,8 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
 
             if (!validateInputs(email, password, confirmPassword, fullName, dob, mobileNo)) return@setOnClickListener
 
+            InstagameAnalytics.trackRegisterAttempted()
+
             binding.progressTop.visibility = View.VISIBLE
             binding.btnRegisterProgress.visibility = View.VISIBLE
             registerBtnOriginalText = registerBtnOriginalText ?: binding.btnRegister.text
@@ -137,6 +145,9 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
                                     binding.btnRegisterProgress.visibility = View.GONE
                                     binding.btnRegister.text = registerBtnOriginalText
                                 }
+                                // Identify user immediately after account creation
+                                InstagameAnalytics.identifyUser(user.uid, fullName, email, downloadUrl, "email")
+                                InstagameAnalytics.trackRegisterSuccess(user.uid, fullName)
                                 saveUserToDatabaseWithRollback(user.uid, email, fullName, dob, mobileNo, downloadUrl, uploadedPath, photoId)
                             }
                             override fun onFailure(message: String) {
@@ -153,6 +164,7 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
                     } else {
                         val msg = task.exception?.message ?: "Registration failed"
                         runOnUiThread {
+                            InstagameAnalytics.trackRegisterFailed(msg)
                             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                             binding.progressTop.visibility = View.GONE
                             binding.btnRegisterProgress.visibility = View.GONE
@@ -280,7 +292,16 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
                     try {
                         if (body.trimStart().startsWith("{")) {
                             val obj = org.json.JSONObject(body)
-                            val key = obj.optString("key", "")
+                            var key = obj.optString("key", "")
+                            // Fix: worker sometimes returns key with filename duplicated
+                            // e.g. "instagame/uid/file.jpg/file.jpg" → "instagame/uid/file.jpg"
+                            if (key.isNotEmpty()) {
+                                val parts = key.split("/")
+                                if (parts.size >= 2 && parts[parts.size - 1] == parts[parts.size - 2]) {
+                                    key = parts.dropLast(1).joinToString("/")
+                                    Log.d(TAG, "Fixed duplicate key: $key")
+                                }
+                            }
                             downloadUrl = when {
                                 key.isNotEmpty() -> "https://file-upload-worker.genzopia.workers.dev/?key=$key"
                                 obj.has("url") -> obj.optString("url")

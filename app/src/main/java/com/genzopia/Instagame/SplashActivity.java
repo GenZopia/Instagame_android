@@ -29,11 +29,25 @@ public class SplashActivity extends BaseActivity {
     private boolean dataLoaded = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    // Perf tracking
+    private long splashStartMs;
+    private long animationEndMs;
+    private long prefetchEndMs;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         setContentView(R.layout.activity_splash);
+        splashStartMs = System.currentTimeMillis();
+
+        // Track app open — detect source
+        android.net.Uri deepLinkData = getIntent().getData();
+        boolean isDeepLink = deepLinkData != null;
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackAppOpened(
+                isDeepLink ? "deep_link" : "cold_start",
+                isDeepLink ? deepLinkData.getLastPathSegment() : null
+        );
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("splash");
 
         // Start data prefetch immediately
         startDataPrefetch();
@@ -63,6 +77,7 @@ public class SplashActivity extends BaseActivity {
             @Override
             public void onAnimationEnd(android.animation.Animator animation) {
                 Log.d(TAG, "Animation complete");
+                animationEndMs = System.currentTimeMillis();
                 animationComplete = true;
                 checkAndNavigate();
             }
@@ -100,6 +115,7 @@ public class SplashActivity extends BaseActivity {
     private void startDataPrefetch() {
         DataPrefetchService.INSTANCE.startPrefetch(this, () -> {
             Log.d(TAG, "Prefetch callback received");
+            prefetchEndMs = System.currentTimeMillis();
             dataLoaded = true;
             checkAndNavigate();
             return Unit.INSTANCE;
@@ -110,6 +126,16 @@ public class SplashActivity extends BaseActivity {
         if (hasNavigated) return;
         if (animationComplete && dataLoaded) {
             hasNavigated = true;
+            long now = System.currentTimeMillis();
+            long animDuration = animationEndMs > 0 ? animationEndMs - splashStartMs : 0;
+            long prefetchDuration = prefetchEndMs > 0 ? prefetchEndMs - splashStartMs : 0;
+            long totalDuration = now - splashStartMs;
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashLoadTime(
+                    animDuration, prefetchDuration, totalDuration
+            );
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashCompleted(
+                    totalDuration, dataLoaded
+            );
             navigateToNextScreen();
         }
     }

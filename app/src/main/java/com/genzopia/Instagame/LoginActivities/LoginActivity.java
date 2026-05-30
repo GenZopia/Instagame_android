@@ -69,6 +69,10 @@ public class LoginActivity extends BaseActivity {
         setContentView(binding.getRoot());
         FirebaseApp.initializeApp(this);
 
+        // Analytics
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginScreenViewed();
+        com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("login");
+
         firebaseAuth = FirebaseAuth.getInstance();
 
         // Initialize sharedPrefContext and retrieve saved email and password
@@ -84,6 +88,7 @@ public class LoginActivity extends BaseActivity {
         txtSignUpNow = findViewById(R.id.txtSignUpNow);
 
         txtForgotPassword.setOnClickListener(v -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackForgotPasswordTapped();
             Intent intent = new Intent(LoginActivity.this, ForgotPassword.class);
             startActivity(intent);
         });
@@ -129,6 +134,8 @@ public class LoginActivity extends BaseActivity {
             String pass = binding.txtPassword.getText().toString();
 
             if (!email.isEmpty() && !pass.isEmpty()) {
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginMethodSelected("email");
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginAttempted("email");
                 binding.btnLoginNow.setText("Logging In...");
                 binding.btnLoginNow.startAnimation(AnimationUtils.loadAnimation(LoginActivity.this, R.anim.text_fade));
 
@@ -138,10 +145,32 @@ public class LoginActivity extends BaseActivity {
                                 .putString("email", email)
                                 .putString("password", pass)
                                 .apply();
-                        
-                        // Check if user needs to complete profile or verify email
+                        FirebaseUser u = firebaseAuth.getCurrentUser();
+                        if (u != null) {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                    .trackLoginSuccess("email", u.getUid(),
+                                            u.getDisplayName() != null ? u.getDisplayName() : "");
+                            // Identify user in Amplitude — fetch name + photo from DB
+                            database.getReference("users").child(u.getUid()).get()
+                                    .addOnSuccessListener(snapshot -> {
+                                        String name = snapshot.child("full_name").getValue(String.class);
+                                        String photoUrl = snapshot.child("profile_photo_url").getValue(String.class);
+                                        String sanitizedPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(photoUrl);
+                                        android.util.Log.d("AmplitudeDebug", "Login DB fetch → name='" + name + "' rawPhoto='" + photoUrl + "' sanitized='" + sanitizedPhoto + "'");
+                                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                .identifyUser(u.getUid(),
+                                                        name != null ? name : "",
+                                                        email,
+                                                        sanitizedPhoto,
+                                                        "email");
+                                    })
+                                    .addOnFailureListener(e -> android.util.Log.e("AmplitudeDebug", "Login DB fetch FAILED: " + e.getMessage()));
+                        }
                         checkUserStatusAndNavigate();
                     } else {
+                        String errMsg = task.getException() != null ? task.getException().getMessage() : "unknown";
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                .trackLoginFailed("email", errMsg != null ? errMsg : "unknown");
                         Toast.makeText(LoginActivity.this, "Login failed. Please check your credentials.", Toast.LENGTH_SHORT).show();
                         binding.btnLoginNow.clearAnimation();
                         binding.btnLoginNow.setText("Login");
@@ -174,6 +203,8 @@ public class LoginActivity extends BaseActivity {
         mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
 
         findViewById(R.id.loginBtn).setOnClickListener(view -> {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginMethodSelected("google");
+            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginAttempted("google");
             Intent intent = mGoogleSignInClient.getSignInIntent();
             startActivityForResult(intent, RC_SIGN_IN);
         });
@@ -239,12 +270,22 @@ public class LoginActivity extends BaseActivity {
                                                             getApplicationContext()
                                                                     .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
                                                                     .edit().putString("email", emailAddress).apply();
+                                                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                                    .trackLoginSuccess("google", user.getUid(), fullName != null ? fullName : "");
+                                                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                                    .identifyUser(user.getUid(), fullName != null ? fullName : "",
+                                                                            emailAddress != null ? emailAddress : "", profilePhotoUrl, "google");
                                                             checkUserStatusAndNavigate();
                                                         });
                                             } else {
                                                 getApplicationContext()
                                                         .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
                                                         .edit().putString("email", emailAddress).apply();
+                                                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                        .trackLoginSuccess("google", user.getUid(), fullName != null ? fullName : "");
+                                                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                        .identifyUser(user.getUid(), fullName != null ? fullName : "",
+                                                                emailAddress != null ? emailAddress : "", profilePhotoUrl, "google");
                                                 checkUserStatusAndNavigate();
                                             }
 
@@ -269,6 +310,14 @@ public class LoginActivity extends BaseActivity {
                                                             getApplicationContext()
                                                                     .getSharedPreferences(sharedPrefFile, Context.MODE_PRIVATE)
                                                                     .edit().putString("email", emailAddress).apply();
+                                                            // Identify new Google user in Amplitude
+                                                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                                    .trackLoginSuccess("google", user.getUid(), fullName != null ? fullName : "");
+                                                            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                                                    .identifyUser(user.getUid(),
+                                                                            fullName != null ? fullName : "",
+                                                                            emailAddress != null ? emailAddress : "",
+                                                                            profilePhotoUrl, "google");
                                                             checkUserStatusAndNavigate();
                                                         } else {
                                                             Toast.makeText(LoginActivity.this,

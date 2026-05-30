@@ -117,6 +117,8 @@ fun ReelScreen(
     val context = LocalContext.current
     var shouldPauseAll by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    // Track previous page for swipe direction analytics
+    var previousPage by remember { mutableIntStateOf(0) }
 
     // Hand the tutorial a stable lambda it can call to animate to the next page.
     // Re-registers whenever pagerState or itemCount changes (e.g. after first load).
@@ -161,14 +163,31 @@ fun ReelScreen(
             Log.d("ReelScreen", "Page ${pagerState.currentPage}, videoUrl=${reel?.videoUrl}")
             reel?.let {
                 viewModel.setCurrentVideo(it.videoId, it.playbackUrl)
-                // Note: actual play is driven by ReelItem's LaunchedEffect(isActive, player)
-                // which runs after the player is created. We still call playVideo here as
-                // a best-effort in case the player already exists in the pool.
                 if (!shouldPauseAll) {
                     viewModel.playVideo(it.videoId)
                 }
                 val currentReelsList = (0 until reels.itemCount).mapNotNull { i -> reels[i] }
                 viewModel.preloadVideos(pagerState.currentPage, currentReelsList)
+
+                // Track reel viewed + increment session counter
+                com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelViewed(
+                    videoId = it.videoId,
+                    videoTitle = it.title,
+                    reelIndex = pagerState.currentPage,
+                    developerId = it.developerId,
+                    developerName = it.developerName,
+                    gameId = it.gameId,
+                    gameName = it.gameName
+                )
+                com.genzopia.Instagame.analytics.SessionTracker.onReelWatched()
+                // Track swipe if page actually changed
+                if (pagerState.currentPage != previousPage) {
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelSwiped(
+                        fromIndex = previousPage,
+                        toIndex = pagerState.currentPage
+                    )
+                    previousPage = pagerState.currentPage
+                }
             }
         }
     }
@@ -296,6 +315,14 @@ fun ReelItem(
     var showLikeAnimation by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    // Watch time tracking
+    val reelActiveStartMs = remember { mutableLongStateOf(0L) }
+    // Video load time tracking
+    val videoLoadStartMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val videoLoadTracked = remember { mutableStateOf(false) }
+    // Buffering tracking
+    val bufferStartMs = remember { mutableLongStateOf(0L) }
+
     // Player state listener — drives loading/thumbnail visibility.
     DisposableEffect(player) {
         if (player == null) return@DisposableEffect onDispose {}
@@ -311,18 +338,44 @@ fun ReelItem(
                 // First frame is actually painted — safe to hide loading UI.
                 isLoading = false
                 showThumbnail = false
+                // Track video load time (first frame = video is playing)
+                if (!videoLoadTracked.value && videoLoadStartMs.longValue > 0) {
+                    val loadDuration = System.currentTimeMillis() - videoLoadStartMs.longValue
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackVideoLoadTime(
+                        videoId = reel.videoId,
+                        videoTitle = reel.title,
+                        loadDurationMs = loadDuration,
+                        wasPreloaded = player.playbackState == androidx.media3.common.Player.STATE_READY
+                    )
+                    videoLoadTracked.value = true
+                }
             }
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
                     androidx.media3.common.Player.STATE_READY -> {
                         isLoading = false
                         showThumbnail = false
+                        // Track buffering end
+                        if (bufferStartMs.longValue > 0) {
+                            val bufferDuration = System.currentTimeMillis() - bufferStartMs.longValue
+                            if (bufferDuration > 500) { // only track meaningful buffering > 500ms
+                                com.genzopia.Instagame.analytics.InstagameAnalytics.trackVideoBufferingOccurred(
+                                    videoId = reel.videoId,
+                                    videoTitle = reel.title,
+                                    bufferDurationMs = bufferDuration
+                                )
+                            }
+                            bufferStartMs.longValue = 0L
+                        }
                     }
                     androidx.media3.common.Player.STATE_BUFFERING -> {
-                        if (isActive) isLoading = true
+                        if (isActive) {
+                            isLoading = true
+                            if (bufferStartMs.longValue == 0L) {
+                                bufferStartMs.longValue = System.currentTimeMillis()
+                            }
+                        }
                     }
-                    // STATE_IDLE or STATE_ENDED — clear the spinner so it never
-                    // gets stuck (e.g. after error recovery replaces the player).
                     androidx.media3.common.Player.STATE_IDLE,
                     androidx.media3.common.Player.STATE_ENDED -> {
                         isLoading = false
@@ -335,16 +388,31 @@ fun ReelItem(
     }
 
     // Drive play/pause from isActive.
-    // Also handles the race where the player is created AFTER ReelScreen's
-    // LaunchedEffect already called playVideo() — at that point playerPool was
-    // empty so nothing happened. This LaunchedEffect runs after composition
-    // (when the player definitely exists) and is the authoritative play trigger.
     LaunchedEffect(isActive, player) {
         if (player != null) {
             if (isActive) {
                 player.volume = 1f
                 player.playWhenReady = true
+                reelActiveStartMs.longValue = System.currentTimeMillis()
+                videoLoadStartMs.longValue = System.currentTimeMillis()
             } else {
+                // Reel left — track watch time
+                if (reelActiveStartMs.longValue > 0L) {
+                    val watchDuration = System.currentTimeMillis() - reelActiveStartMs.longValue
+                    val videoDuration = player.duration.takeIf { it > 0 } ?: 1L
+                    val completionPct = ((watchDuration.toFloat() / videoDuration.toFloat()) * 100)
+                        .toInt().coerceIn(0, 100)
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackVideoWatchTime(
+                        videoId = reel.videoId,
+                        videoTitle = reel.title,
+                        developerName = reel.developerName,
+                        gameName = reel.gameName,
+                        watchDurationMs = watchDuration,
+                        videoDurationMs = videoDuration,
+                        completionPercent = completionPct
+                    )
+                    reelActiveStartMs.longValue = 0L
+                }
                 player.playWhenReady = false
                 player.volume = 0f
             }
@@ -359,8 +427,14 @@ fun ReelItem(
                 detectTapGestures(
                     onDoubleTap = {
                         if (reel.gameId.isNotEmpty()) {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelDoubleTapGameLaunch(
+                                videoId = reel.videoId,
+                                gameId = reel.gameId,
+                                gameName = reel.gameName
+                            )
                             val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
                             intent.putExtra("game_id", reel.gameId)
+                            intent.putExtra("launch_source", "reel_double_tap")
                             context.startActivity(intent)
                         } else {
                             android.widget.Toast.makeText(context, "No game associated with this video", android.widget.Toast.LENGTH_SHORT).show()
@@ -458,12 +532,27 @@ fun ReelItem(
                 }
 
                 val newLikedState = !isLiked
-                // FIX 6: store the NEW count to use in failure revert
                 val newLikeCount = likeCount + if (newLikedState) 1 else -1
 
                 isLiked = newLikedState
                 likeCount = newLikeCount
                 viewModel.updateLikeState(reel.videoId, newLikedState, newLikeCount)
+
+                // Track like / unlike
+                if (newLikedState) {
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelLiked(
+                        videoId = reel.videoId,
+                        videoTitle = reel.title,
+                        developerId = reel.developerId,
+                        gameId = reel.gameId
+                    )
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.incrementUserProperty("total_likes_given")
+                } else {
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelUnliked(
+                        videoId = reel.videoId,
+                        videoTitle = reel.title
+                    )
+                }
 
                 val videoRef = FirebaseDatabase.getInstance().reference
                     .child("videos").child(reel.videoId).child("like_count")
@@ -503,6 +592,12 @@ fun ReelItem(
                 val newFollowState = !isFollowing
                 isFollowing = newFollowState
                 viewModel.updateFollowState(reel.developerId, newFollowState)
+
+                com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelFollowTapped(
+                    developerId = reel.developerId,
+                    developerName = reel.developerName,
+                    action = if (newFollowState) "follow" else "unfollow"
+                )
 
                 val db = FirebaseDatabase.getInstance().reference
                 val followingRef = db.child("users").child(currentUserId)
@@ -549,8 +644,19 @@ fun ReelItem(
                         }
                 }
             },
-            onShareClick = { },
-            onCommentClick = { showComments = true },
+            onShareClick = {
+                com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelShareTapped(
+                    videoId = reel.videoId,
+                    gameId = reel.gameId
+                )
+            },
+            onCommentClick = {
+                com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelCommentOpened(
+                    videoId = reel.videoId,
+                    videoTitle = reel.title
+                )
+                showComments = true
+            },
             player = player,
             viewModel = viewModel,
             modifier = Modifier.fillMaxSize()
@@ -615,6 +721,16 @@ fun ReelOverlay(
                 modifier = Modifier
                     .padding(bottom = 8.dp)
                     .clickable {
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.trackReelProfilePhotoTapped(
+                            videoId = reel.videoId,
+                            developerId = reel.developerId,
+                            developerName = reel.developerName
+                        )
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.trackChannelViewed(
+                            developerId = reel.developerId,
+                            developerName = reel.developerName,
+                            source = "reel_profile_photo"
+                        )
                         try {
                             val intent = Intent(
                                 context,

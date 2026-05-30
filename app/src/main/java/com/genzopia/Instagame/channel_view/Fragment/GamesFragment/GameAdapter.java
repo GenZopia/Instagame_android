@@ -70,9 +70,14 @@ public class GameAdapter extends RecyclerView.Adapter<GameAdapter.GameViewHolder
         holder.btnPlay.setOnClickListener(v -> {
             String gameId = item.getGameId();
             if (gameId != null && !gameId.isEmpty()) {
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelGameTapped(
+                        "", gameId, item.getTitle()); // developerId not available in adapter
+                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackGameLaunchInitiated(
+                        gameId, item.getTitle(), "channel_games");
                 Intent intent = new Intent(context, Game_mode.class);
                 intent.putExtra("game_id", gameId);
                 intent.putExtra("game_name", item.getTitle());
+                intent.putExtra("launch_source", "channel_games");
                 context.startActivity(intent);
             }
         });

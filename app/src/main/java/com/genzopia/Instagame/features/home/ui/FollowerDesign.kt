@@ -122,8 +122,13 @@ private fun StoryItem(user: FollowedUser, textColor: Color) {
             .width(68.dp)
             .clickable {
                 try {
+                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackFollowingUserTapped(
+                        targetUid = user.userId,
+                        targetName = user.fullName
+                    )
                     val intent = Intent(context, ChannelActivity::class.java)
                     intent.putExtra("developer_id", user.userId)
+                    intent.putExtra("channel_source", "home_following_bar")
                     context.startActivity(intent)
                 } catch (e: Exception) {
                     Log.e("FollowerDesign", "Error opening channel", e)

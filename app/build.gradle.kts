@@ -21,6 +21,9 @@ android {
 
         val videoProcessorApiKey: String = (project.findProperty("video_processor_api_key") as String?) ?: ""
         buildConfigField("String", "VIDEO_PROCESSOR_API_KEY", "\"$videoProcessorApiKey\"")
+
+        val amplitudeApiKey: String = (project.findProperty("amplitude_api_key") as String?) ?: ""
+        buildConfigField("String", "AMPLITUDE_API_KEY", "\"$amplitudeApiKey\"")
     }
 
     buildFeatures {
@@ -125,6 +128,7 @@ dependencies {
     // Lifecycle
     implementation(libs.lifecycle.livedata.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
+    implementation(libs.lifecycle.process)
 
     // Navigation
     implementation(libs.navigation.fragment)
@@ -151,6 +155,7 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
+    implementation(libs.amplitude.analytics)
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")
