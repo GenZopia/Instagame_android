@@ -35,15 +35,27 @@ object ProfilePhotoUtils {
  *  1. Read photo_id from game node
  *  2. Read file_ext from /photos/{photo_id} in Firebase
  *  3. Call https://video-signer.genzopia.workers.dev/?path=photo/{photo_id}.{ext}
- *  4. Parse {"success":true,"url":"..."} → use the signed URL directly (no auth header needed)
+ *     with x-api-key header
+ *  4. Parse {"success":true,"url":"..."} → return the signed URL
  */
 object PhotoUrlResolver {
 
-    private const val TAG = "profile_photo"
-    private const val R2_BASE = "https://pub-22db73b8d33244d1a53831aed22cd78b.r2.dev"
+    private const val TAG = "PhotoUrlResolver"
+    private const val R2_BASE = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
 
     /**
-     * Given a photo_id and file_ext, returns the direct R2 URL.
+     * Builds the direct URL for a game/photo thumbnail from file-upload-worker.
+     * Both workers (file-upload-worker and the link-bucket worker) share the same
+     * R2 bucket, so photos stored at photo/{photo_id}.{ext} are accessible via:
+     *   https://file-upload-worker.genzopia.workers.dev/?key=photo/{photo_id}.{ext}
+     *
+     * The x-api-key header is injected automatically by InstagameGlideModule and
+     * MyApplication's Coil interceptor — no manual auth needed here.
+     *
+     * This replaces the old video-signer approach which required a network round-trip
+     * just to get a signed URL. The file-upload-worker serves the file directly.
+     *
+     * Can be called from any thread — no network I/O.
      */
     @JvmStatic
     fun resolveSync(photoId: String, fileExt: String): String {
