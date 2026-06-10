@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.gms.google-services")
-    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.compose.compiler)
 }
 
@@ -55,12 +54,6 @@ android {
         }
     }
 
-    java {
-        toolchain {
-            languageVersion.set(JavaLanguageVersion.of(17))
-        }
-    }
-
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -91,6 +84,8 @@ dependencies {
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
     implementation(libs.material3)
+    implementation(libs.material.icons.core)
+    implementation(libs.material.icons.extended)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
@@ -161,7 +156,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
-    testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:2.4.0")
 
 
 

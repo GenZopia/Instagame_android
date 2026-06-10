@@ -1,15 +1,13 @@
 [versions]
 accompanistPager = "0.36.0"
 activityCompose = "1.13.0"
-agp = "8.9.1"
+agp = "9.2.1"
 cameraCore = "1.6.1"
 ccp = "2.7.3"
 circleimageview = "3.1.0"
 coilCompose = "2.7.0"
 compiler = "5.0.7"
-composeBom = "2024.09.00"
-composeUi = "1.7.4"
-material3 = "1.3.1"
+composeBom = "2026.05.01"
 converterGson = "3.0.0"
 coreSplashscreen = "1.2.0"
 coreKtx = "1.18.0"
@@ -30,8 +28,7 @@ material = "1.12.0"
 activity = "1.9.3"
 constraintlayout = "2.1.4"
 firebaseAuthKtx = "23.1.0"
-kotlin = "2.3.21"
-composeCompiler = "1.5.8"
+kotlin = "2.4.0"
 firebaseDatabase = "21.0.0"
 media3Datasource = "1.10.1"
 media3Exoplayer = "1.10.1"
@@ -102,7 +99,9 @@ lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel
 lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
 lottie = { module = "com.airbnb.android:lottie", version.ref = "lottie" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
+material3 = { module = "androidx.compose.material3:material3" }
+material-icons-core = { module = "androidx.compose.material:material-icons-core" }
+material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 media3-datasource = { module = "androidx.media3:media3-datasource", version.ref = "media3Datasource" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3Exoplayer" }
 media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3ExoplayerHls" }
@@ -121,9 +120,9 @@ retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit
 shimmer = { module = "com.facebook.shimmer:shimmer", version.ref = "shimmer" }
 subsampling-scale-image-view = { module = "com.davemorrissey.labs:subsampling-scale-image-view", version.ref = "subsamplingScaleImageView" }
 swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "composeUi" }
-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
+ui = { module = "androidx.compose.ui:ui" }
+ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 work-runtime = { module = "androidx.work:work-runtime", version.ref = "workRuntime" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtx" }
 zoomy = { module = "com.ablanco.zoomy:zoomy", version.ref = "zoomy" }
@@ -131,5 +130,4 @@ amplitude-analytics = { module = "com.amplitude:analytics-android", version.ref 
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
