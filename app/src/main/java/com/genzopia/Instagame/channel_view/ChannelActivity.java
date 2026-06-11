@@ -159,7 +159,7 @@ public class ChannelActivity extends BaseActivity {
             DatabaseReference followersCountRef = FirebaseDatabase.getInstance().getReference("users")
                     .child(developerId).child("followers_count");
             if (isFollowing) {
-                followRef.setValue(true);
+                followRef.setValue(true).addOnFailureListener(e -> followButton.setEnabled(true));
                 followersCountRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
                     @Override
                     public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
@@ -173,7 +173,7 @@ public class ChannelActivity extends BaseActivity {
                     }
                 });
             } else {
-                followRef.removeValue();
+                followRef.removeValue().addOnFailureListener(e -> followButton.setEnabled(true));
                 followersCountRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
                     @Override
                     public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
