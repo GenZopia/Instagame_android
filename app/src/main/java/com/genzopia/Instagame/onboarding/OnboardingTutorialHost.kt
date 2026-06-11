@@ -42,6 +42,13 @@ fun OnboardingTutorialHost(viewModel: ReelViewModel) {
         uid != null && controller.shouldShowTutorial(uid)
     }
 
+    // Track onboarding start
+    LaunchedEffect(shouldShow) {
+        if (shouldShow) {
+            com.genzopia.Instagame.analytics.InstagameAnalytics.trackOnboardingStarted()
+        }
+    }
+
     // ── Tutorial state ────────────────────────────────────────────────────────
     var tutorialVisible by remember { mutableStateOf(shouldShow) }
     var currentStep by remember { mutableStateOf<TutorialStep>(TutorialStep.Scroll) }
