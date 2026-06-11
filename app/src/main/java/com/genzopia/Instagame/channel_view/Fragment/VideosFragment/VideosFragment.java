@@ -27,9 +27,10 @@ public class VideosFragment extends Fragment {
 
     private RecyclerView recyclerView;
     private VideoAdapter adapter;
-    private List<VideoItem_channel> videoList;
-    private String developerId;
-    private String currentUserId;
+    private static List<VideoItem_channel> sVideoList;
+    private static String sDeveloperId;
+    private static String sCurrentUserId;
+    private static boolean sIsDataLoaded = false;
 
     @Nullable
     @Override
@@ -40,17 +41,19 @@ public class VideosFragment extends Fragment {
         recyclerView = view.findViewById(R.id.videosRecyclerView);
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 3, RecyclerView.VERTICAL, false));
 
-        // Initialize video list
-        videoList = new ArrayList<>();
+        // Initialize video list if null (preserve data across view recreation)
+        if (sVideoList == null) {
+            sVideoList = new ArrayList<>();
+        }
 
-        adapter = new VideoAdapter(getContext(), videoList);
+        adapter = new VideoAdapter(getContext(), sVideoList);
         recyclerView.setAdapter(adapter);
         
         // Get current user ID
-        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        sCurrentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         
-        // Load videos if developer ID is set
-        if (developerId != null) {
+        // Load videos only if not already loaded
+        if (sDeveloperId != null && !sIsDataLoaded) {
             loadVideosFromFirebase();
         }
 
@@ -58,28 +61,29 @@ public class VideosFragment extends Fragment {
     }
     
     public void setDeveloperId(String developerId) {
-        this.developerId = developerId;
-        if (isAdded() && recyclerView != null) {
+        sDeveloperId = developerId;
+        if (isAdded() && recyclerView != null && !sIsDataLoaded) {
             loadVideosFromFirebase();
         }
     }
     
     private void loadVideosFromFirebase() {
-        if (developerId == null) {
+        if (sDeveloperId == null) {
             Log.e("VideosFragment", "Developer ID is null");
             return;
         }
         
-        Log.d("VideosFragment", "Loading videos for developer: " + developerId);
-        Log.d("VideosFragment", "Current user ID: " + currentUserId);
-        Log.d("VideosFragment", "Is viewing own channel: " + (currentUserId.equals(developerId)));
+        Log.d("VideosFragment", "Loading videos for developer: " + sDeveloperId);
+        Log.d("VideosFragment", "Current user ID: " + sCurrentUserId);
+        Log.d("VideosFragment", "Is viewing own channel: " + (sCurrentUserId.equals(sDeveloperId)));
         
         // Get the developer's videos
-        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId).child("videos");
+        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(sDeveloperId).child("videos");
         userRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                videoList.clear();
+                sVideoList.clear();
+                sIsDataLoaded = true;
                 
                 Log.d("VideosFragment", "Videos snapshot exists: " + snapshot.exists());
                 Log.d("VideosFragment", "Videos snapshot children count: " + snapshot.getChildrenCount());
@@ -95,7 +99,7 @@ public class VideosFragment extends Fragment {
                         }
                     }
                 } else {
-                    Log.d("VideosFragment", "No videos found for developer: " + developerId);
+
                     adapter.notifyDataSetChanged();
                 }
             }
@@ -164,13 +168,13 @@ public class VideosFragment extends Fragment {
                             viewCount != null ? viewCount + " views" : "0 views",
                             title != null ? title : "Untitled Video",
                             isVerified,
-                            currentUserId.equals(developerId) // Check if viewing own channel
+                            sCurrentUserId.equals(sDeveloperId) // Check if viewing own channel
                         );
                         
-                        videoList.add(videoItem);
+                        sVideoList.add(videoItem);
                         adapter.notifyDataSetChanged();
                         
-                        Log.d("VideosFragment", "Added video: " + title + " (Total videos in list: " + videoList.size() + ")");
+                        Log.d("VideosFragment", "Added video: " + title + " (Total videos in list: " + sVideoList.size() + ")");
                     } else {
                         Log.d("VideosFragment", "Skipping video: " + title + " - not verified or not owned by user");
                     }
@@ -188,7 +192,7 @@ public class VideosFragment extends Fragment {
     
     private boolean shouldShowVideo(Boolean isVerified, String videoUserId) {
         // If viewing own channel (current user = developer), show all videos
-        if (currentUserId.equals(developerId)) {
+        if (sCurrentUserId.equals(sDeveloperId)) {
             Log.d("VideosFragment", "User viewing own channel - showing all videos");
             return true;
         }

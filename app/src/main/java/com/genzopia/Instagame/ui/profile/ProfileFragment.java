@@ -38,6 +38,17 @@ import de.hdodenhof.circleimageview.CircleImageView;
 public class ProfileFragment extends Fragment {
 
     private static final String TAG = "profile_photo";
+    
+    // Static cache to persist across fragment recreation by Navigation Component
+    private static boolean sIsDataLoaded = false;
+    private static String sCachedProfilePhotoUrl;
+    private static String sCachedFullName;
+    private static String sCachedBio;
+    private static String sCachedWebsite;
+    private static String sCachedStory;
+    private static String sCachedPostsCount;
+    private static String sCachedFollowersCount;
+    private static String sCachedFollowingCount;
 
     private FirebaseAuth auth;
     private SharedPreferences sharedPreferences;
@@ -49,9 +60,6 @@ public class ProfileFragment extends Fragment {
     private ImageView menuIcon, videos_ff, games_ff, details_ff;
     private DatabaseReference userRef;
     private ValueEventListener userListener;
-    private GamesFragment gamesFragment;
-    private VideosFragment videosFragment;
-    private DetailsFragment detailsFragment;
 
     @Nullable
     @Override
@@ -73,7 +81,15 @@ public class ProfileFragment extends Fragment {
         initializeViews(view);
         initializeFragments(view);
         setupClickListeners();
-        fetchUserData();
+        
+        // Restore cached data immediately to avoid flickering
+        if (sIsDataLoaded) {
+            restoreCachedData();
+        } else {
+            fetchUserData();
+            sIsDataLoaded = true;
+        }
+        
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfileScreenViewed();
         com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onScreenChanged("profile");
         return view;
@@ -110,43 +126,53 @@ public class ProfileFragment extends Fragment {
         games_ff = view.findViewById(R.id.games_ff);
         details_ff = view.findViewById(R.id.details_ff);
 
-        gamesFragment = new GamesFragment();
-        videosFragment = new VideosFragment();
-        detailsFragment = new DetailsFragment();
+        // Check if fragments are already added (restored by child fragment manager)
+        GamesFragment gamesFragment = (GamesFragment) getChildFragmentManager().findFragmentByTag("games_fragment");
+        VideosFragment videosFragment = (VideosFragment) getChildFragmentManager().findFragmentByTag("videos_fragment");
+        DetailsFragment detailsFragment = (DetailsFragment) getChildFragmentManager().findFragmentByTag("details_fragment");
 
-        if (FirebaseAuth.getInstance().getCurrentUser() == null) return;
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        // Only create and add fragments if they don't exist
+        if (gamesFragment == null || videosFragment == null || detailsFragment == null) {
+            if (FirebaseAuth.getInstance().getCurrentUser() == null) return;
+            String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
 
-        gamesFragment.setDeveloperId(userId);
-        videosFragment.setDeveloperId(userId);
-        detailsFragment.setDeveloperId(userId);
+            // Create new fragments if needed
+            if (gamesFragment == null) {
+                gamesFragment = new GamesFragment();
+                gamesFragment.setDeveloperId(userId);
+            }
+            if (videosFragment == null) {
+                videosFragment = new VideosFragment();
+                videosFragment.setDeveloperId(userId);
+            }
+            if (detailsFragment == null) {
+                detailsFragment = new DetailsFragment();
+                detailsFragment.setDeveloperId(userId);
+            }
 
-        if (getActivity() != null) {
-            getActivity().getSupportFragmentManager().beginTransaction()
-                    .add(R.id.contentGridPlaceholder, gamesFragment)
-                    .add(R.id.contentGridPlaceholder, videosFragment)
-                    .add(R.id.contentGridPlaceholder, detailsFragment)
-                    .hide(videosFragment)
-                    .hide(detailsFragment)
-                    .commit();
-
-            videos_ff.setAlpha(0.5f);
-            games_ff.setAlpha(0.5f);
-            details_ff.setAlpha(0.5f);
-
-            // Hide all fragments
-            getActivity().getSupportFragmentManager().beginTransaction()
-                    .hide(videosFragment)
+            // Add fragments to child fragment manager with tags
+            getChildFragmentManager().beginTransaction()
+                    .add(R.id.contentGridPlaceholder, gamesFragment, "games_fragment")
+                    .add(R.id.contentGridPlaceholder, videosFragment, "videos_fragment")
+                    .add(R.id.contentGridPlaceholder, detailsFragment, "details_fragment")
                     .hide(gamesFragment)
                     .hide(detailsFragment)
                     .commit();
-
-            getActivity().getSupportFragmentManager().beginTransaction()
-                    .show(videosFragment)
-                    .commit();
-
-            videos_ff.setAlpha(1.0f);
         }
+
+        // Reset tab states
+        videos_ff.setAlpha(0.5f);
+        games_ff.setAlpha(0.5f);
+        details_ff.setAlpha(0.5f);
+
+        // Show videos tab by default
+        getChildFragmentManager().beginTransaction()
+                .hide(gamesFragment)
+                .hide(detailsFragment)
+                .show(videosFragment)
+                .commit();
+
+        videos_ff.setAlpha(1.0f);
     }
 
     private void switchTab(String tab) {
@@ -155,35 +181,39 @@ public class ProfileFragment extends Fragment {
         games_ff.setAlpha(0.5f);
         details_ff.setAlpha(0.5f);
 
-        // Hide all fragments
-        if (getActivity() != null) {
-            getActivity().getSupportFragmentManager().beginTransaction()
-                    .hide(videosFragment)
-                    .hide(gamesFragment)
-                    .hide(detailsFragment)
-                    .commit();
+        // Get fragment references from child fragment manager
+        GamesFragment gamesFragment = (GamesFragment) getChildFragmentManager().findFragmentByTag("games_fragment");
+        VideosFragment videosFragment = (VideosFragment) getChildFragmentManager().findFragmentByTag("videos_fragment");
+        DetailsFragment detailsFragment = (DetailsFragment) getChildFragmentManager().findFragmentByTag("details_fragment");
 
-            // Activate selected tab and show corresponding fragment
-            switch (tab) {
-                case "Games":
-                    games_ff.setAlpha(1.0f);
-                    getActivity().getSupportFragmentManager().beginTransaction()
-                            .show(gamesFragment)
-                            .commit();
-                    break;
-                case "Videos":
-                    videos_ff.setAlpha(1.0f);
-                    getActivity().getSupportFragmentManager().beginTransaction()
-                            .show(videosFragment)
-                            .commit();
-                    break;
-                case "Details":
-                    details_ff.setAlpha(1.0f);
-                    getActivity().getSupportFragmentManager().beginTransaction()
-                            .show(detailsFragment)
-                            .commit();
-                    break;
-            }
+        if (gamesFragment == null || videosFragment == null || detailsFragment == null) return;
+
+        // Hide all fragments and show the selected one
+        switch (tab) {
+            case "Games":
+                games_ff.setAlpha(1.0f);
+                getChildFragmentManager().beginTransaction()
+                        .hide(videosFragment)
+                        .hide(detailsFragment)
+                        .show(gamesFragment)
+                        .commit();
+                break;
+            case "Videos":
+                videos_ff.setAlpha(1.0f);
+                getChildFragmentManager().beginTransaction()
+                        .hide(gamesFragment)
+                        .hide(detailsFragment)
+                        .show(videosFragment)
+                        .commit();
+                break;
+            case "Details":
+                details_ff.setAlpha(1.0f);
+                getChildFragmentManager().beginTransaction()
+                        .hide(gamesFragment)
+                        .hide(videosFragment)
+                        .show(detailsFragment)
+                        .commit();
+                break;
         }
     }
 
@@ -256,7 +286,8 @@ public class ProfileFragment extends Fragment {
         userRef = FirebaseDatabase.getInstance().getReference()
                 .child("users").child(userId);
 
-        userListener = new ValueEventListener() {
+        // Use addListenerForSingleValueEvent instead of addValueEventListener for one-time load
+        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 Log.d(TAG, "onDataChange: snapshot exists = " + dataSnapshot.exists());
@@ -265,12 +296,14 @@ public class ProfileFragment extends Fragment {
                     return;
                 }
 
-                // Profile photo
+                // Profile photo - same approach as ChannelActivity
                 String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
                 Log.d(TAG, "onDataChange: raw profile_photo_url = '" + profilePhotoUrl + "'");
 
                 String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
                 Log.d(TAG, "onDataChange: sanitized url = '" + sanitizedPhotoUrl + "'");
+
+                sCachedProfilePhotoUrl = sanitizedPhotoUrl;
 
                 if (sanitizedPhotoUrl != null && getActivity() != null) {
                     Log.d(TAG, "onDataChange: calling Glide.load() with url = " + sanitizedPhotoUrl);
@@ -297,21 +330,20 @@ public class ProfileFragment extends Fragment {
                                 }
                             })
                             .into(profileImage);
-                    sharedPreferences.edit().putString("profilePhotoUrl", sanitizedPhotoUrl).apply();
                 } else {
                     Log.e(TAG, "onDataChange: sanitizedPhotoUrl is null or activity is null — skipping Glide load");
                 }
 
                 // Username and full name
-                String fullName = dataSnapshot.child("full_name").getValue(String.class);
-                Log.d(TAG, "onDataChange: full_name = '" + fullName + "'");
-                usernameTop.setText(fullName);
+                sCachedFullName = dataSnapshot.child("full_name").getValue(String.class);
+                Log.d(TAG, "onDataChange: full_name = '" + sCachedFullName + "'");
+                usernameTop.setText(sCachedFullName);
 
                 // Bio and website
-                String userBio = dataSnapshot.child("bio").getValue(String.class);
-                String userWebsite = dataSnapshot.child("website").getValue(String.class);
-                String userStory = dataSnapshot.child("story").getValue(String.class);
-                bio.setText(userBio != null ? userBio : "Add a bio to tell your story!");
+                sCachedBio = dataSnapshot.child("bio").getValue(String.class);
+                sCachedWebsite = dataSnapshot.child("website").getValue(String.class);
+                sCachedStory = dataSnapshot.child("story").getValue(String.class);
+                bio.setText(sCachedBio != null ? sCachedBio : "Add a bio to tell your story!");
                 bio.setMaxLines(3);
                 bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 bio.post(() -> {
@@ -322,17 +354,21 @@ public class ProfileFragment extends Fragment {
                         bioExpand.setVisibility(View.GONE);
                     }
                 });
-                website.setText(userWebsite != null ? userWebsite : "Add your website");
-                story.setText(userStory != null ? userStory : "Add your story");
+                website.setText(sCachedWebsite != null ? sCachedWebsite : "Add your website");
+                story.setText(sCachedStory != null ? sCachedStory : "Add your story");
 
                 // Stats
                 long posts = dataSnapshot.child("posts").getChildrenCount();
                 String followers = dataSnapshot.child("followers").getValue(String.class);
                 long following = dataSnapshot.child("following").getChildrenCount();
 
-                postsCount.setText(String.valueOf(posts));
-                followersCount.setText(followers != null ? followers : "0");
-                followingCount.setText(String.valueOf(following));
+                sCachedPostsCount = String.valueOf(posts);
+                sCachedFollowersCount = followers != null ? followers : "0";
+                sCachedFollowingCount = String.valueOf(following);
+
+                postsCount.setText(sCachedPostsCount);
+                followersCount.setText(sCachedFollowersCount);
+                followingCount.setText(sCachedFollowingCount);
             }
 
             @Override
@@ -340,15 +376,55 @@ public class ProfileFragment extends Fragment {
                 Log.e(TAG, "onCancelled: " + error.getMessage());
                 Toast.makeText(getContext(), "Failed to fetch user data", Toast.LENGTH_SHORT).show();
             }
-        };
-        userRef.addValueEventListener(userListener);
+        });
+    }
+
+    private void restoreCachedData() {
+        // Restore profile photo
+        if (sCachedProfilePhotoUrl != null && getActivity() != null) {
+            Glide.with(this)
+                    .load(sCachedProfilePhotoUrl)
+                    .placeholder(R.drawable.profile)
+                    .error(R.drawable.profile)
+                    .into(profileImage);
+        }
+
+        // Restore text data
+        if (sCachedFullName != null) {
+            usernameTop.setText(sCachedFullName);
+        }
+        
+        bio.setText(sCachedBio != null ? sCachedBio : "Add a bio to tell your story!");
+        bio.setMaxLines(3);
+        bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bio.post(() -> {
+            if (bio.getLayout() != null && bio.getLayout().getLineCount() > 3) {
+                bioExpand.setVisibility(View.VISIBLE);
+                bioExpand.setText("more");
+            } else {
+                bioExpand.setVisibility(View.GONE);
+            }
+        });
+        
+        website.setText(sCachedWebsite != null ? sCachedWebsite : "Add your website");
+        story.setText(sCachedStory != null ? sCachedStory : "Add your story");
+
+        // Restore stats
+        if (sCachedPostsCount != null) {
+            postsCount.setText(sCachedPostsCount);
+        }
+        if (sCachedFollowersCount != null) {
+            followersCount.setText(sCachedFollowersCount);
+        }
+        if (sCachedFollowingCount != null) {
+            followingCount.setText(sCachedFollowingCount);
+        }
     }
 
     private void openFullScreenImage() {
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackProfilePhotoFullscreenOpened();
         Intent intent = new Intent(getActivity(), FullScreenImageActivity.class);
-        String profilePhotoUrl = sharedPreferences.getString("profilePhotoUrl", "");
-        intent.putExtra("image", profilePhotoUrl);
+        intent.putExtra("image", sCachedProfilePhotoUrl);
         startActivity(intent);
     }
 
@@ -388,8 +464,6 @@ public class ProfileFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (userRef != null && userListener != null) {
-            userRef.removeEventListener(userListener);
-        }
+        // No need to remove listener since we're using addListenerForSingleValueEvent
     }
 }

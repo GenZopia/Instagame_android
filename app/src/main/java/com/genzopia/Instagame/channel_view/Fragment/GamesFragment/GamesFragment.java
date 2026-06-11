@@ -26,8 +26,9 @@ public class GamesFragment extends Fragment {
 
     private RecyclerView rvGames;
     private GameAdapter adapter;
-    private List<GameItem> gameList;
-    private String developerId;
+    private static List<GameItem> sGameList;
+    private static String sDeveloperId;
+    private static boolean sIsDataLoaded = false;
 
     @Override
     public View onCreateView(LayoutInflater inflater,
@@ -45,43 +46,46 @@ public class GamesFragment extends Fragment {
         rvGames = view.findViewById(R.id.rvGames);
         Log.d("GamesFragment", "Fragment created");
 
-        // 2) Prepare data
-        gameList = new ArrayList<>();
+        // 2) Prepare data list if null
+        if (sGameList == null) {
+            sGameList = new ArrayList<>();
+        }
 
         // 3) Create adapter
-        adapter = new GameAdapter(requireContext(), gameList);
+        adapter = new GameAdapter(requireContext(), sGameList);
 
         // 4) Set LayoutManager and Adapter
         rvGames.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvGames.setAdapter(adapter);
         
-        // 5) Load games if developer ID is set
-        if (developerId != null) {
+        // 5) Load games only if not already loaded
+        if (sDeveloperId != null && !sIsDataLoaded) {
             loadGamesFromFirebase();
         }
     }
     
     public void setDeveloperId(String developerId) {
-        this.developerId = developerId;
-        if (isAdded() && rvGames != null) {
+        sDeveloperId = developerId;
+        if (isAdded() && rvGames != null && !sIsDataLoaded) {
             loadGamesFromFirebase();
         }
     }
     
     private void loadGamesFromFirebase() {
-        if (developerId == null) {
+        if (sDeveloperId == null) {
             Log.e("GamesFragment", "Developer ID is null");
             return;
         }
         
-        Log.d("GamesFragment", "Loading games for developer: " + developerId);
+        Log.d("GamesFragment", "Loading games for developer: " + sDeveloperId);
         
         // First, get the developer's games list
-        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId).child("games");
+        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(sDeveloperId).child("games");
         userRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                gameList.clear();
+                sGameList.clear();
+                sIsDataLoaded = true;
                 
                 Log.d("GamesFragment", "Games snapshot exists: " + snapshot.exists());
                 Log.d("GamesFragment", "Games snapshot children count: " + snapshot.getChildrenCount());
@@ -97,7 +101,7 @@ public class GamesFragment extends Fragment {
                         }
                     }
                 } else {
-                    Log.d("GamesFragment", "No games found for developer: " + developerId);
+
                     adapter.notifyDataSetChanged();
                 }
             }
@@ -174,7 +178,7 @@ public class GamesFragment extends Fragment {
             imageUrl,
             playStoreUrl != null ? playStoreUrl : ""
         );
-        gameList.add(gameItem);
+        sGameList.add(gameItem);
         if (isAdded()) adapter.notifyDataSetChanged();
     }
 }

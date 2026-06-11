@@ -25,8 +25,9 @@ public class DetailsFragment extends Fragment {
 
     private RecyclerView recyclerView;
     private LinkAdapter adapter;
-    private List<LinkItem> linkList;
-    private String developerId;
+    private static List<LinkItem> sLinkList;
+    private static String sDeveloperId;
+    private static boolean sIsDataLoaded = false;
 
     private TextView tvBio, tvFollowersCount, tvVideosCount, tvGamesCount;
 
@@ -43,26 +44,30 @@ public class DetailsFragment extends Fragment {
 
         recyclerView = view.findViewById(R.id.linksRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
-        linkList = new ArrayList<>();
-        adapter = new LinkAdapter(linkList);
+        if (sLinkList == null) {
+            sLinkList = new ArrayList<>();
+        }
+        adapter = new LinkAdapter(sLinkList);
         recyclerView.setAdapter(adapter);
 
-        if (developerId != null) loadDeveloperDetails();
+        if (sDeveloperId != null && !sIsDataLoaded) loadDeveloperDetails();
     }
 
     public void setDeveloperId(String developerId) {
-        this.developerId = developerId;
-        if (isAdded() && recyclerView != null) loadDeveloperDetails();
+        sDeveloperId = developerId;
+        if (isAdded() && recyclerView != null && !sIsDataLoaded) loadDeveloperDetails();
     }
 
     private void loadDeveloperDetails() {
-        if (developerId == null) return;
+        if (sDeveloperId == null) return;
 
-        FirebaseDatabase.getInstance().getReference("users").child(developerId)
+        FirebaseDatabase.getInstance().getReference("users").child(sDeveloperId)
                 .addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
                         if (!snapshot.exists()) return;
+
+                        sIsDataLoaded = true;
 
                         // Bio
                         String bio = snapshot.child("bio").getValue(String.class);
@@ -88,7 +93,7 @@ public class DetailsFragment extends Fragment {
                         if (tvGamesCount != null) tvGamesCount.setText(String.valueOf(gameCount));
 
                         // Info rows
-                        linkList.clear();
+                        sLinkList.clear();
                         String email = snapshot.child("email").getValue(String.class);
                         String username = snapshot.child("username").getValue(String.class);
                         String dob = snapshot.child("date_of_birth").getValue(String.class);
@@ -97,17 +102,17 @@ public class DetailsFragment extends Fragment {
                         String story = snapshot.child("story").getValue(String.class);
 
                         if (username != null && !username.isEmpty())
-                            linkList.add(new LinkItem("Username", "@" + username));
+                            sLinkList.add(new LinkItem("Username", "@" + username));
                         if (email != null && !email.isEmpty())
-                            linkList.add(new LinkItem("Email", email));
+                            sLinkList.add(new LinkItem("Email", email));
                         if (dob != null && !dob.isEmpty())
-                            linkList.add(new LinkItem("Birthday", dob));
+                            sLinkList.add(new LinkItem("Birthday", dob));
                         if (website != null && !website.isEmpty())
-                            linkList.add(new LinkItem("Website", website));
+                            sLinkList.add(new LinkItem("Website", website));
                         if (location != null && !location.isEmpty())
-                            linkList.add(new LinkItem("Location", location));
+                            sLinkList.add(new LinkItem("Location", location));
                         if (story != null && !story.isEmpty())
-                            linkList.add(new LinkItem("Story", story));
+                            sLinkList.add(new LinkItem("Story", story));
 
                         adapter.notifyDataSetChanged();
                     }

@@ -238,7 +238,7 @@ class RegisterActivity : BaseActivity(), AvatarBottomSheetFragment.Listener {
         val ext = (queryFileName(uri) ?: "$user_id.jpg").substringAfterLast('.', "jpg")
         val photoId = "${user_id}_${System.currentTimeMillis()}"
         val safeFilename = "$photoId.$ext"
-        val r2Path = "instagame/$user_id/$safeFilename"
+        val r2Path = "instagame/$user_id"
 
         val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
