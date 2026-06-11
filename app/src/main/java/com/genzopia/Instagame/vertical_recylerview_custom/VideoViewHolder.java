@@ -34,7 +34,7 @@ import androidx.media3.ui.PlayerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
-import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
+import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheetFragment;
 import com.genzopia.Instagame.utils.ViewCountManager;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
@@ -1410,10 +1410,18 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     private void showVideoDetailsBottomSheet() {
         if (currentItem == null) return;
         
-        VideoDetailsBottomSheet bottomSheet = VideoDetailsBottomSheet.newInstance(
+        VideoDetailsBottomSheetFragment bottomSheet = VideoDetailsBottomSheetFragment.newInstance(
             currentItem.id,
             currentItem.title,
-            currentItem.description
+            currentItem.description,
+            currentItem.views,
+            "0",     // likeCount — not available on VideoItem, default to 0
+            "0",     // shareCount — not available on VideoItem, default to 0
+            currentItem.timeAgo,  // uploadDate — use timeAgo as the upload timestamp
+            currentItem.gameId != null ? currentItem.gameId : "",
+            "",      // gameName — not available on VideoItem
+            currentItem.channelName != null ? currentItem.channelName : "",
+            currentItem.developerId != null ? currentItem.developerId : ""
         );
         
         // Get the activity context
