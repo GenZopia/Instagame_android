@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -51,6 +53,15 @@ class HomeViewModel : ViewModel() {
         .combine(_games) { query, allGames ->
             if (query.isBlank()) allGames
             else GameSearchEngine.search(query, allGames)
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val searchSuggestions = searchQuery
+        .debounce(150L)
+        .distinctUntilChanged()
+        .combine(_games) { query, allGames ->
+            GameSearchEngine.suggest(query, allGames)
         }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())

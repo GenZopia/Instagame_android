@@ -16,3 +16,6 @@ local.properties
 
 # Sensitive config with API keys
 /.idea/deploymentTargetSelector.xml
+
+# AI-assisted development skills
+/.kiro/
