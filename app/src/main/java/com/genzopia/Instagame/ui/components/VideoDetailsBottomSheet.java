@@ -34,7 +34,8 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
     private String videoId;
     private String videoTitle;
     private String videoDescription;
-    private String fetchedVideoTitle; // Store the video title fetched from Firebase
+    private String fetchedVideoTitle;
+    private String fetchedGameId;
 
     private TextView videoTitleText;
     private TextView viewCountText;
@@ -44,6 +45,7 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
     private TextView uploadDateText;
     private MaterialButton shareButton;
     private MaterialButton reportButton;
+    private MaterialButton playNowButton;
     private ImageView closeButton;
 
     private DatabaseReference videoRef;
@@ -88,22 +90,32 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
         uploadDateText = view.findViewById(R.id.uploadDate);
         shareButton = view.findViewById(R.id.shareButton);
         reportButton = view.findViewById(R.id.reportButton);
+        playNowButton = view.findViewById(R.id.playNowButton);
         closeButton = view.findViewById(R.id.closeButton);
 
-        // Set initial data - title will be set from Firebase
         videoTitleText.setText("Loading...");
         videoDescriptionText.setText(videoDescription != null ? videoDescription : "No description available");
     }
 
     private void setupClickListeners() {
         shareButton.setOnClickListener(v -> {
-            // TODO: Implement share functionality
-            Toast.makeText(getContext(), "Share functionality coming soon!", Toast.LENGTH_SHORT).show();
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("text/plain");
+            shareIntent.putExtra(Intent.EXTRA_TEXT, "Check out this video on Instagame! Video ID: " + videoId);
+            startActivity(Intent.createChooser(shareIntent, "Share via"));
         });
 
         reportButton.setOnClickListener(v -> {
-            // TODO: Implement report functionality
             Toast.makeText(getContext(), "Report functionality coming soon!", Toast.LENGTH_SHORT).show();
+        });
+
+        playNowButton.setOnClickListener(v -> {
+            if (fetchedGameId != null && !fetchedGameId.isEmpty()) {
+                Intent intent = new Intent(getContext(), com.genzopia.Instagame.webgl_gameloading.Game_mode.class);
+                intent.putExtra("game_id", fetchedGameId);
+                startActivity(intent);
+                dismiss();
+            }
         });
 
         closeButton.setOnClickListener(v -> dismiss());
@@ -170,13 +182,18 @@ public class VideoDetailsBottomSheet extends BottomSheetDialogFragment {
                 // Load game name from game_id
                 String gameId = dataSnapshot.child("game_id").getValue(String.class);
                 if (gameId != null && !gameId.isEmpty()) {
+                    fetchedGameId = gameId;
+                    playNowButton.setVisibility(View.VISIBLE);
                     loadGameName(gameId);
                 } else {
                     // If no game_id, try to get from gameid field (for backward compatibility)
                     gameId = dataSnapshot.child("gameid").getValue(String.class);
                     if (gameId != null && !gameId.isEmpty()) {
+                        fetchedGameId = gameId;
+                        playNowButton.setVisibility(View.VISIBLE);
                         loadGameName(gameId);
                     } else {
+                        playNowButton.setVisibility(View.GONE);
                         // No game associated - show video title as fallback
                         if (fetchedVideoTitle != null && !fetchedVideoTitle.isEmpty()) {
                             videoTitleText.setText(fetchedVideoTitle);
