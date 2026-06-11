@@ -353,92 +353,67 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
 
     private void followUserOptimistic(String currentUserId, String developerId) {
-        // Use Firebase transaction for atomic updates
         DatabaseReference developerRef = FirebaseDatabase.getInstance()
                 .getReference("users")
                 .child(developerId);
         
-        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
-            @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
-                int newFollowerCount = 1;
-                if (currentFollowerCount != null) {
-                    newFollowerCount = Integer.parseInt(currentFollowerCount) + 1;
+        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(currentUserId)
+                .child("following_list")
+                .child(developerId);
+        
+        // Set following list first, then update follower count via transaction
+        currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
+            developerRef.child("followers_count").runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    long count = mutableData.getValue(Long.class) != null ? mutableData.getValue(Long.class) : 0L;
+                    mutableData.setValue(count + 1);
+                    return com.google.firebase.database.Transaction.success(mutableData);
                 }
-                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - add to current user's following list
-                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(currentUserId)
-                            .child("following_list")
-                            .child(developerId);
-                    
-                    currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
-                        Toast.makeText(itemView.getContext(), "Following", Toast.LENGTH_SHORT).show();
-                    }).addOnFailureListener(e -> {
-                        // Rollback UI on failure
-                        updateFollowUI(false);
-                        Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
-                    });
-                } else {
-                    // Rollback UI on failure
-                    updateFollowUI(false);
-                    Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot snapshot) {
+                    followButton.setEnabled(true);
                 }
-                followButton.setEnabled(true);
-            }
+            });
+            Toast.makeText(itemView.getContext(), "Following", Toast.LENGTH_SHORT).show();
+        }).addOnFailureListener(e -> {
+            updateFollowUI(false);
+            followButton.setEnabled(true);
+            Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
         });
     }
 
     private void unfollowUserOptimistic(String currentUserId, String developerId) {
-        // Use Firebase transaction for atomic updates
         DatabaseReference developerRef = FirebaseDatabase.getInstance()
                 .getReference("users")
                 .child(developerId);
         
-        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
-            @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
-                int newFollowerCount = 0;
-                if (currentFollowerCount != null) {
-                    newFollowerCount = Math.max(0, Integer.parseInt(currentFollowerCount) - 1);
+        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
+                .getReference("users")
+                .child(currentUserId)
+                .child("following_list")
+                .child(developerId);
+        
+        currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
+            developerRef.child("followers_count").runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                @Override
+                public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                    long count = mutableData.getValue(Long.class) != null ? mutableData.getValue(Long.class) : 1L;
+                    mutableData.setValue(Math.max(0, count - 1));
+                    return com.google.firebase.database.Transaction.success(mutableData);
                 }
-                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - remove from current user's following list
-                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(currentUserId)
-                            .child("following_list")
-                            .child(developerId);
-                    
-                    currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
-                        Toast.makeText(itemView.getContext(), "Unfollowed", Toast.LENGTH_SHORT).show();
-                    }).addOnFailureListener(e -> {
-                        // Rollback UI on failure
-                        updateFollowUI(true);
-                        Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
-                    });
-                } else {
-                    // Rollback UI on failure
-                    updateFollowUI(true);
-                    Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
+                @Override
+                public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot snapshot) {
+                    followButton.setEnabled(true);
                 }
-                followButton.setEnabled(true);
-            }
+            });
+            Toast.makeText(itemView.getContext(), "Unfollowed", Toast.LENGTH_SHORT).show();
+        }).addOnFailureListener(e -> {
+            updateFollowUI(true);
+            followButton.setEnabled(true);
+            Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
         });
     }
 
