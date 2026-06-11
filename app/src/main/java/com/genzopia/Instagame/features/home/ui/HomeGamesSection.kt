@@ -13,10 +13,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,10 +27,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,8 +52,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.genzopia.Instagame.channel_view.ChannelActivity
@@ -61,7 +66,9 @@ data class HomeGameItem(
     val imageUrl: String,
     val developerId: String,
     val developerName: String,
-    val developerPhotoUrl: String
+    val developerPhotoUrl: String,
+    val totalPlays: String = "—",
+    val categoryTags: List<String> = emptyList()
 )
 
 @Composable
@@ -249,6 +256,9 @@ fun HomeGamesSection(
         }
         GameDetailSheet(
             game = game,
+            relatedGames = (if (searchQuery.isBlank()) games else filteredGames)
+                .filter { it.gameId != game.gameId }
+                .take(8),
             onDismiss = { didPlay ->
                 com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailSheetDismissed(
                     gameId = game.gameId,
@@ -361,6 +371,62 @@ private fun SmartSearchBar(
     }
 }
 
+@Composable
+fun HomeGamesSectionPreview() {
+    val sampleGames = listOf(
+        HomeGameItem(
+            gameId = "1",
+            gameName = "Super Runner",
+            description = "An endless runner game with amazing graphics and smooth controls. Collect coins and avoid obstacles to set high scores.",
+            imageUrl = "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80",
+            developerId = "d1",
+            developerName = "Pixel Studio",
+            developerPhotoUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
+        ),
+        HomeGameItem(
+            gameId = "2",
+            gameName = "Magic Quest",
+            description = "Embark on an epic journey through mystical lands. Solve puzzles, fight monsters, and discover hidden treasures in this RPG adventure.",
+            imageUrl = "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=400&q=80",
+            developerId = "d2",
+            developerName = "Game Wizards",
+            developerPhotoUrl = "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=100&q=80"
+        ),
+        HomeGameItem(
+            gameId = "3",
+            gameName = "Space Wars",
+            description = "Defend the galaxy from alien invaders. Upgrade your spaceship and master advanced weaponry in this fast-paced shooter.",
+            imageUrl = "https://images.unsplash.com/photo-1614732414444-096e5f1122d5?auto=format&fit=crop&w=400&q=80",
+            developerId = "d3",
+            developerName = "Astro Games",
+            developerPhotoUrl = "https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=100&q=80"
+        ),
+        HomeGameItem(
+            gameId = "4",
+            gameName = "Puzzle Master",
+            description = "Test your brain with hundreds of challenging puzzles. Simple to learn, hard to master. Perfect for quick gaming sessions.",
+            imageUrl = "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=400&q=80",
+            developerId = "d4",
+            developerName = "Logic Lab",
+            developerPhotoUrl = "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=100&q=80"
+        )
+    )
+
+    MaterialTheme {
+        Surface {
+            HomeGamesSection(
+                games = sampleGames,
+                filteredGames = sampleGames,
+                isLoading = false,
+                loadingMore = false,
+                allLoaded = true,
+                searchQuery = "",
+                onSearchQueryChange = {}
+            )
+        }
+    }
+}
+
 // ── Game Card ─────────────────────────────────────────────────────────────────
 
 @Composable
@@ -446,282 +512,298 @@ private fun GameCard(
         }
     }
 }
-
-// ── Game Detail Sheet (Full-Screen Overlay) ───────────────────────────────────
+// ── Game Detail Sheet ────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -> Unit) {
+private fun GameDetailSheet(
+    game: HomeGameItem,
+    relatedGames: List<HomeGameItem> = emptyList(),
+    onDismiss: (didPlay: Boolean) -> Unit
+) {
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
-    val sheetBg = if (isDark) Color(0xFF121212) else Color(0xFFFAFAFA)
-    val textColor = if (isDark) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
-    val subColor = if (isDark) Color(0xFF9E9E9E) else Color(0xFF757575)
-    val cardBg = if (isDark) Color(0xFF1E1E1E) else Color.White
-    val scrollState = rememberScrollState()
+    val bg = Color(0xFF0E0F11)
+    val panelBg = Color(0xEE17191C)
+    val cardBg = Color(0x991B1D20)
+    val textColor = Color.White
+    val subColor = Color.White.copy(alpha = 0.68f)
+    val favoritePrefs = remember(context) {
+        context.getSharedPreferences("game_favorites", android.content.Context.MODE_PRIVATE)
+    }
+    var isFavorited by remember(game.gameId) {
+        mutableStateOf(favoritePrefs.getBoolean(game.gameId, false))
+    }
 
-    // Calculate hero image height as a fraction of screen
-    val heroHeight = 280.dp
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    val launchGame = {
+        com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
+            gameId = game.gameId,
+            gameName = game.gameName,
+            source = "home_card"
+        )
+        val intent = Intent(context, Game_mode::class.java)
+        intent.putExtra("game_id", game.gameId)
+        intent.putExtra("game_name", game.gameName)
+        intent.putExtra("launch_source", "home_card")
+        context.startActivity(intent)
+        onDismiss(true)
+    }
 
     ModalBottomSheet(
         onDismissRequest = { onDismiss(false) },
-        containerColor = sheetBg,
+        sheetState = sheetState,
+        containerColor = bg,
         shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp),
-        tonalElevation = 0.dp
+        tonalElevation = 0.dp,
+        dragHandle = null
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
+                .background(bg)
         ) {
-            // ── Scrollable Content ────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(356.dp)
+                    .align(Alignment.TopCenter)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(game.imageUrl.ifEmpty { null })
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = game.gameName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    bg.copy(alpha = 0.12f),
+                                    bg
+                                ),
+                                startY = 190f
+                            )
+                        )
+                )
+            }
+
+            IconButton(
+                onClick = { onDismiss(false) },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 18.dp, top = 22.dp)
+                    .size(54.dp)
+                    .background(Color(0xB5121720), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Close",
+                    tint = Color.White,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 312.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 28.dp)
             ) {
-                // ── Hero Image Section ────────────────────────────────────
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(heroHeight)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(panelBg)
+                        .padding(12.dp)
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(game.imageUrl.ifEmpty { null })
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = game.gameName,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-
-                    // Top gradient (for close button visibility)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Black.copy(alpha = 0.6f),
-                                        Color.Transparent
-                                    )
-                                )
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(game.imageUrl.ifEmpty { null })
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = game.gameName,
+                                modifier = Modifier
+                                    .size(112.dp)
+                                    .clip(RoundedCornerShape(18.dp)),
+                                contentScale = ContentScale.Crop
                             )
-                    )
-
-                    // Bottom gradient (for game name readability)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp)
-                            .align(Alignment.BottomCenter)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.85f)
-                                    )
-                                )
-                            )
-                    )
-
-                    // Game name overlay
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(horizontal = 20.dp, vertical = 20.dp)
-                    ) {
-                        Text(
-                            text = game.gameName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            letterSpacing = 0.5.sp
-                        )
-                        if (game.developerName.isNotEmpty()) {
-                            Spacer(Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 4.dp)
+                            ) {
                                 Text(
-                                    text = "by ",
-                                    fontSize = 13.sp,
-                                    color = Color.White.copy(alpha = 0.7f)
+                                    text = game.gameName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 30.sp,
+                                    color = textColor,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+
+                                if (game.categoryTags.isNotEmpty()) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        game.categoryTags.take(2).forEach { tag ->
+                                            Surface(
+                                                color = Color.White.copy(alpha = 0.10f),
+                                                shape = RoundedCornerShape(18.dp)
+                                            ) {
+                                                Text(
+                                                    text = tag,
+                                                    fontSize = 13.sp,
+                                                    color = Color.White.copy(alpha = 0.86f),
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(18.dp))
                                 Text(
-                                    text = game.developerName,
-                                    fontSize = 13.sp,
-                                    color = Color.White.copy(alpha = 0.9f),
+                                    text = "${formatPlayCount(game.totalPlays)}  Plays",
+                                    fontSize = 15.sp,
+                                    color = Color.White.copy(alpha = 0.86f),
                                     fontWeight = FontWeight.Medium
                                 )
                             }
                         }
-                    }
 
-                    // Close button - top left
-                    IconButton(
-                        onClick = { onDismiss(false) },
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(12.dp)
-                            .size(36.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.4f),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Close",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                        Spacer(Modifier.height(22.dp))
 
-                // ── Primary Actions ─────────────────────────────────────
-                // Play Now, Share always visible at top of scrollable content
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 20.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Play Now - prominent primary action
-                    Button(
-                        onClick = {
-                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
-                                gameId = game.gameId,
-                                gameName = game.gameName,
-                                source = "home_card"
-                            )
-                            val intent = Intent(context, Game_mode::class.java)
-                            intent.putExtra("game_id", game.gameId)
-                            intent.putExtra("game_name", game.gameName)
-                            intent.putExtra("launch_source", "home_card")
-                            context.startActivity(intent)
-                            onDismiss(true)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = ButtonDefaults.buttonElevation(
-                            defaultElevation = 4.dp,
-                            pressedElevation = 8.dp
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Play Now",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-
-                    // Share button
-                    OutlinedButton(
-                        onClick = {
-                            val shareText = buildString {
-                                append("🎮 Check out \"${game.gameName}\" on Instagame!\n\n")
-                                append("https://instagame.genzopia.com/game/${game.gameId}")
-                                append("\n\nDownload the app: https://play.google.com/store/apps/details?id=com.genzopia.Instagame")
-                            }
-                            val shareIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, shareText)
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share game"))
-                        },
-                        modifier = Modifier
-                            .widthIn(min = 56.dp)
-                            .height(50.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(
-                            1.5.dp,
-                            Orange.copy(alpha = 0.5f)
-                        ),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Orange
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = "Share",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                // ── Info Card ───────────────────────────────────────────
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = if (isDark) 0.dp else 1.dp
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        // Game stats row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            GameStat("Game ID", game.gameId.take(8) + "...", Orange, subColor)
-                            GameStat("Plays", "—", subColor, subColor)
-                            GameStat("Rating", "—", subColor, subColor)
+                            Button(
+                                onClick = launchGame,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(62.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = ButtonDefaults.buttonElevation(
+                                    defaultElevation = 0.dp,
+                                    pressedElevation = 2.dp
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "Play Now",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 24.sp
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    isFavorited = !isFavorited
+                                    favoritePrefs.edit().putBoolean(game.gameId, isFavorited).apply()
+                                },
+                                modifier = Modifier.size(62.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White.copy(alpha = 0.06f),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (isFavorited) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = if (isFavorited) "Remove from favorites" else "Add to favorites",
+                                    modifier = Modifier.size(30.dp),
+                                    tint = if (isFavorited) Orange else Color.White
+                                )
+                            }
                         }
 
-                        if (game.description.isNotEmpty()) {
-                            HorizontalDivider(
-                                color = if (isDark) Color(0xFF333333) else Color(0xFFEEEEEE),
-                                modifier = Modifier.padding(vertical = 12.dp)
-                            )
+                        Spacer(Modifier.height(18.dp))
 
-                            Text(
-                                "About",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = textColor,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            Text(
-                                game.description,
-                                fontSize = 14.sp,
-                                color = subColor,
-                                lineHeight = 22.sp
-                            )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "About the game",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp,
+                                        color = textColor,
+                                        modifier = Modifier.padding(bottom = 10.dp)
+                                    )
+                                    if (game.description.isNotEmpty()) {
+                                        var descExpanded by remember { mutableStateOf(false) }
+                                        Text(
+                                            text = game.description,
+                                            fontSize = 16.sp,
+                                            color = Color.White.copy(alpha = 0.78f),
+                                            lineHeight = 23.sp,
+                                            maxLines = if (descExpanded) Int.MAX_VALUE else 4,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (descExpanded) "Show less" else "Read more",
+                                            color = Orange,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .padding(top = 12.dp)
+                                                .clickable { descExpanded = !descExpanded }
+                                        )
+                                    } else {
+                                        Text(
+                                            "No description available",
+                                            fontSize = 16.sp,
+                                            color = subColor
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
 
-                // ── Developer Section ───────────────────────────────────
                 if (game.developerId.isNotEmpty()) {
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
-                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = cardBg),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (isDark) 0.dp else 1.dp
-                        ),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
                         onClick = {
                             com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailDeveloperTapped(
                                 gameId = game.gameId,
@@ -743,7 +825,7 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
@@ -754,118 +836,142 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                                     .build(),
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(48.dp)
+                                    .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)
-                                    ),
+                                    .background(Color.White.copy(alpha = 0.12f)),
                                 contentScale = ContentScale.Crop
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     "Developer",
-                                    fontSize = 11.sp,
-                                    color = subColor,
-                                    letterSpacing = 0.5.sp
+                                    fontSize = 14.sp,
+                                    color = subColor
                                 )
                                 Text(
                                     game.developerName,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 15.sp,
-                                    color = textColor
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    color = textColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        Orange.copy(alpha = 0.15f),
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    "View →",
-                                    fontSize = 13.sp,
-                                    color = Orange,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            Text(
+                                "View",
+                                fontSize = 17.sp,
+                                color = Orange,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
 
-                // Bottom spacer for scroll + safe area
-                Spacer(Modifier.height(100.dp))
-            }
-
-            // ── Sticky Bottom Button ─────────────────────────────────
-            Surface(
-                modifier = Modifier.align(Alignment.BottomCenter),
-                shadowElevation = 8.dp,
-                color = sheetBg
-            ) {
-                Button(
-                    onClick = {
-                        com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
-                            gameId = game.gameId,
-                            gameName = game.gameName,
-                            source = "home_card"
-                        )
-                        val intent = Intent(context, Game_mode::class.java)
-                        intent.putExtra("game_id", game.gameId)
-                        intent.putExtra("game_name", game.gameName)
-                        intent.putExtra("launch_source", "home_card")
-                        context.startActivity(intent)
-                        onDismiss(true)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                        .height(54.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = ButtonDefaults.buttonElevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 10.dp
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
+                if (relatedGames.isNotEmpty()) {
+                    Spacer(Modifier.height(22.dp))
                     Text(
-                        "Play Now",
+                        "You may also like",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        letterSpacing = 0.5.sp
+                        fontSize = 21.sp,
+                        color = textColor,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 12.dp)
                     )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(relatedGames, key = { it.gameId }) { recGame ->
+                            RecommendGameCard(
+                                game = recGame,
+                                isDark = true,
+                                textColor = textColor,
+                                subColor = subColor,
+                                onClick = { onDismiss(false) }
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+private fun formatPlayCount(rawCount: String): String {
+    val count = rawCount.replace(",", "").trim().toLongOrNull() ?: return rawCount
+    return when {
+        count >= 1_000_000 -> "${count / 100_000 / 10.0}M"
+        count >= 1_000 -> "${count / 100 / 10.0}K"
+        else -> count.toString()
+    }
+}
+
+// ── Recommended Game Card ────────────────────────────────────────────────────
+
 @Composable
-private fun GameStat(
-    label: String,
-    value: String,
-    valueColor: Color,
-    subColor: Color
+private fun RecommendGameCard(
+    game: HomeGameItem,
+    isDark: Boolean,
+    textColor: Color,
+    subColor: Color,
+    onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
-            color = valueColor
-        )
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            color = subColor,
-            modifier = Modifier.padding(top = 2.dp)
-        )
+    val cardBg = if (isDark) Color(0xFF1A1A1A) else Color.White
+
+    Card(
+        modifier = Modifier
+            .width(140.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(game.imageUrl.ifEmpty { null })
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = game.gameName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
+                            )
+                        )
+                )
+            }
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Text(
+                    text = game.gameName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (game.developerName.isNotEmpty()) {
+                    Spacer(Modifier.height(1.dp))
+                    Text(
+                        text = game.developerName,
+                        fontSize = 10.sp,
+                        color = subColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
