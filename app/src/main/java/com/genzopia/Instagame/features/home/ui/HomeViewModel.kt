@@ -147,11 +147,15 @@ class HomeViewModel : ViewModel() {
                         val description = gameSnap.child("description").getValue(String::class.java) ?: ""
                         val devId = gameSnap.child("user_id").getValue(String::class.java) ?: ""
                         val photoId = gameSnap.child("photo_id").getValue(String::class.java) ?: ""
+                        val totalPlaysLong = gameSnap.child("total_plays").getValue(Long::class.java)
+                        val totalPlaysStr = gameSnap.child("total_plays").getValue(String::class.java)
+                        val totalPlays = totalPlaysStr ?: totalPlaysLong?.toString() ?: "—"
+                        val categoryTags: List<String> = gameSnap.child("categories").getValue(object : com.google.firebase.database.GenericTypeIndicator<List<String>>() {}) ?: emptyList()
 
                         fun addGame(imageUrl: String, devName: String, devPhoto: String) {
                             synchronized(pageList) {
                                 pageList.add(com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                                    gameId, gameName, description, imageUrl, devId, devName, devPhoto
+                                    gameId, gameName, description, imageUrl, devId, devName, devPhoto, totalPlays, categoryTags
                                 ))
                             }
                             onResolved()
