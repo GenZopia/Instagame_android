@@ -32,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -72,6 +73,7 @@ fun HomeGamesSection(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     onLoadMore: () -> Unit = {},
+    suggestions: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val isDark = isSystemInDarkTheme()
@@ -122,12 +124,20 @@ fun HomeGamesSection(
         }
 
         // Smart search bar
+        var showSuggestions by remember { mutableStateOf(false) }
         SmartSearchBar(
             query = searchQuery,
             onQueryChange = onSearchQueryChange,
             isDark = isDark,
             textColor = textColor,
-            subColor = subColor
+            subColor = subColor,
+            suggestions = suggestions,
+            showSuggestions = showSuggestions,
+            onShowSuggestions = { showSuggestions = it },
+            onSuggestionSelected = { suggestion ->
+                onSearchQueryChange(suggestion)
+                showSuggestions = false
+            }
         )
 
         Spacer(Modifier.height(8.dp))
@@ -269,21 +279,28 @@ private fun SmartSearchBar(
     onQueryChange: (String) -> Unit,
     isDark: Boolean,
     textColor: Color,
-    subColor: Color
+    subColor: Color,
+    suggestions: List<String> = emptyList(),
+    showSuggestions: Boolean = false,
+    onShowSuggestions: (Boolean) -> Unit = {},
+    onSuggestionSelected: (String) -> Unit = {}
 ) {
-    // Local text state — updates immediately, no upstream recomposition
     var localQuery by remember { mutableStateOf(query) }
     val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
 
-    // Sync local → ViewModel only when local value actually changes
     LaunchedEffect(localQuery) {
         onQueryChange(localQuery)
     }
 
-    // If parent clears the query (e.g. clear button), sync back down
     LaunchedEffect(query) {
         if (query != localQuery) localQuery = query
+    }
+
+    LaunchedEffect(suggestions) {
+        if (suggestions.isNotEmpty() && localQuery.isNotBlank() && isFocused) {
+            onShowSuggestions(true)
+        }
     }
 
     val searchBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFEEEEEE)
@@ -293,67 +310,114 @@ private fun SmartSearchBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(searchBg)
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Search,
-                contentDescription = "Search",
-                tint = if (isFocused) Orange else subColor,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            BasicTextField(
-                value = localQuery,
-                onValueChange = { localQuery = it },
+        Column {
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .onFocusChanged { isFocused = it.isFocused },
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = textColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                cursorBrush = SolidColor(Orange),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    focusManager.clearFocus()
-                    if (localQuery.isNotBlank()) {
-                        com.genzopia.Instagame.analytics.InstagameAnalytics.trackHomeSearchUsed(
-                            query = localQuery,
-                            resultsCount = 0 // count not available here; ViewModel filters async
-                        )
-                    }
-                }),
-                decorationBox = { innerTextField ->
-                    if (localQuery.isEmpty()) {
-                        Text("Search", fontSize = 13.sp, color = subColor)
-                    }
-                    innerTextField()
-                }
-            )
-            AnimatedVisibility(
-                visible = localQuery.isNotEmpty(),
-                enter = fadeIn(tween(150)) + scaleIn(tween(150)),
-                exit = fadeOut(tween(100))
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(searchBg)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Clear search",
-                    tint = subColor,
-                    modifier = Modifier
-                        .size(15.dp)
-                        .clickable {
-                            localQuery = ""
-                            focusManager.clearFocus()
-                        }
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = "Search",
+                    tint = if (isFocused) Orange else subColor,
+                    modifier = Modifier.size(16.dp)
                 )
+                Spacer(Modifier.width(8.dp))
+                BasicTextField(
+                    value = localQuery,
+                    onValueChange = {
+                        localQuery = it
+                        if (it.isBlank()) onShowSuggestions(false)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .onFocusChanged { isFocused = it.isFocused },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = textColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                    cursorBrush = SolidColor(Orange),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        focusManager.clearFocus()
+                        onShowSuggestions(false)
+                        if (localQuery.isNotBlank()) {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackHomeSearchUsed(
+                                query = localQuery,
+                                resultsCount = 0
+                            )
+                        }
+                    }),
+                    decorationBox = { innerTextField ->
+                        if (localQuery.isEmpty()) {
+                            Text("Search", fontSize = 13.sp, color = subColor)
+                        }
+                        innerTextField()
+                    }
+                )
+                AnimatedVisibility(
+                    visible = localQuery.isNotEmpty(),
+                    enter = fadeIn(tween(150)) + scaleIn(tween(150)),
+                    exit = fadeOut(tween(100))
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Clear search",
+                        tint = subColor,
+                        modifier = Modifier
+                            .size(15.dp)
+                            .clickable {
+                                localQuery = ""
+                                onShowSuggestions(false)
+                                focusManager.clearFocus()
+                            }
+                    )
+                }
+            }
+
+            // ── Suggestion dropdown ────────────────────────────────────
+            if (showSuggestions && suggestions.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF))
+                        .shadow(4.dp)
+                ) {
+                    suggestions.take(5).forEachIndexed { index, suggestion ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    localQuery = suggestion
+                                    onSuggestionSelected(suggestion)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = suggestion,
+                                fontSize = 13.sp,
+                                color = textColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (index < suggestions.lastIndex && index < 4) {
+                            HorizontalDivider(
+                                color = if (isDark) Color(0xFF333333) else Color(0xFFEEEEEE),
+                                thickness = 0.5.dp
+                            )
+                        }
+                    }
+                }
             }
         }
     }

@@ -2,118 +2,190 @@ package com.genzopia.Instagame.utils
 
 import com.genzopia.Instagame.features.home.ui.HomeGameItem
 import kotlin.math.ln
+import kotlin.math.min
 
-/**
- * Smart search engine for games using:
- * - TF-IDF scoring (term frequency × inverse document frequency)
- * - Fuzzy matching via Levenshtein distance for typo tolerance
- * - Prefix boosting (exact prefix matches rank higher)
- * - Field weighting (name > developer > description)
- *
- * All computation is pure Kotlin — no ML libraries needed.
- */
 object GameSearchEngine {
+
+    private const val BM25_K1 = 1.2
+    private const val BM25_B = 0.75
+    private const val NGRAM_SIZE = 3
+    private const val FUZZY_THRESHOLD = 0.6
+    private const val MAX_SUGGESTIONS = 8
+
+    data class SearchResult(
+        val game: HomeGameItem,
+        val score: Double,
+        val matchedField: String,
+        val matchedText: String
+    )
 
     private data class GameIndex(
         val game: HomeGameItem,
         val nameTokens: List<String>,
         val descTokens: List<String>,
         val devTokens: List<String>,
-        val allText: String // lowercased concat for fast substring check
+        val allText: String,
+        val nameTrigrams: Set<String>,
+        val phoneticName: String
     )
 
     private var index: List<GameIndex> = emptyList()
-    private var idfCache: Map<String, Double> = emptyMap()
+    private var avgDocLen = 0.0
+    private var totalFieldLen = 0
+    private var docCount = 0
+    private var docFreq: Map<String, Int> = emptyMap()
 
-    /** Call this once when the full game list is loaded / updated. */
     fun buildIndex(games: List<HomeGameItem>) {
         index = games.map { game ->
+            val name = game.gameName
             GameIndex(
                 game = game,
-                nameTokens = tokenize(game.gameName),
+                nameTokens = tokenize(name),
                 descTokens = tokenize(game.description),
                 devTokens = tokenize(game.developerName),
-                allText = "${game.gameName} ${game.description} ${game.developerName}".lowercase()
+                allText = buildString {
+                    append(name.lowercase()); append(' ')
+                    append(game.description.lowercase()); append(' ')
+                    append(game.developerName.lowercase())
+                },
+                nameTrigrams = extractTrigrams(name),
+                phoneticName = soundexEncode(name)
             )
         }
-        idfCache = buildIdf(index)
+        docCount = index.size
+        docFreq = buildDocFreq(index)
+        val totalLen = index.sumOf { it.nameTokens.size + it.descTokens.size + it.devTokens.size }
+        avgDocLen = if (docCount > 0) totalLen.toDouble() / docCount else 0.0
+        totalFieldLen = totalLen
     }
 
-    /** Returns ranked results for the given query. Empty query returns all games. */
     fun search(query: String, allGames: List<HomeGameItem>): List<HomeGameItem> {
         if (query.isBlank()) return allGames
-
-        // Rebuild index lazily if games changed
         if (index.size != allGames.size) buildIndex(allGames)
 
         val q = query.trim().lowercase()
         val queryTokens = tokenize(q)
+        val queryTrigrams = extractTrigrams(q)
 
-        data class Scored(val game: HomeGameItem, val score: Double)
-
-        val results = index.mapNotNull { entry ->
-            val score = scoreEntry(entry, q, queryTokens)
-            if (score > 0.0) Scored(entry.game, score) else null
+        return index.mapNotNull { entry ->
+            val score = scoreEntry(entry, q, queryTokens, queryTrigrams)
+            if (score > 0.0) entry.game to score else null
         }
-
-        return results.sortedByDescending { it.score }.map { it.game }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
-    // ── Scoring ──────────────────────────────────────────────────────────────
+    fun searchWithDetails(query: String, allGames: List<HomeGameItem>): List<SearchResult> {
+        if (query.isBlank()) return emptyList()
+        if (index.size != allGames.size) buildIndex(allGames)
 
-    private fun scoreEntry(entry: GameIndex, rawQuery: String, queryTokens: List<String>): Double {
+        val q = query.trim().lowercase()
+        val queryTokens = tokenize(q)
+        val queryTrigrams = extractTrigrams(q)
+
+        return index.mapNotNull { entry ->
+            val score = scoreEntry(entry, q, queryTokens, queryTrigrams)
+            if (score > 0.0) {
+                val matched = findBestMatch(entry, q, queryTokens)
+                SearchResult(entry.game, score, matched.first, matched.second)
+            } else null
+        }
+            .sortedByDescending { it.score }
+    }
+
+    fun suggest(query: String, allGames: List<HomeGameItem>): List<String> {
+        if (query.isBlank() || query.length < 2) return emptyList()
+        if (index.size != allGames.size) buildIndex(allGames)
+
+        val q = query.trim().lowercase()
+        val qTrigrams = extractTrigrams(q)
+
+        data class ScoredName(val name: String, val score: Double)
+
+        val scored = index.mapNotNull { entry ->
+            val name = entry.game.gameName
+            val nameLower = name.lowercase()
+            if (nameLower == q) return@mapNotNull null
+
+            var score = 0.0
+            if (nameLower.startsWith(q)) score += 20.0
+            else if (nameLower.contains(q)) score += 10.0
+
+            val nameToks = entry.nameTokens
+            for (qt in tokenize(q)) {
+                if (nameToks.any { it.startsWith(qt) }) score += 8.0
+                if (nameToks.any { it.contains(qt) }) score += 4.0
+            }
+
+            val common = qTrigrams.intersect(entry.nameTrigrams)
+            score += common.size * 2.0
+
+            if (score > 0.0) ScoredName(name, score) else null
+        }
+
+        return scored
+            .sortedByDescending { it.score }
+            .take(MAX_SUGGESTIONS)
+            .map { it.name }
+    }
+
+    private fun scoreEntry(
+        entry: GameIndex, rawQuery: String,
+        queryTokens: List<String>, queryTrigrams: Set<String>
+    ): Double {
         var score = 0.0
 
-        // 1. Exact substring match (highest priority)
         if (entry.allText.contains(rawQuery)) {
             score += 10.0
-            // Extra boost if name starts with query
-            if (entry.game.gameName.lowercase().startsWith(rawQuery)) score += 5.0
+            if (entry.game.gameName.lowercase().startsWith(rawQuery)) score += 8.0
         }
 
-        // 2. TF-IDF for each query token
+        val commonTrigrams = queryTrigrams.intersect(entry.nameTrigrams)
+        if (queryTrigrams.isNotEmpty()) {
+            val ratio = commonTrigrams.size.toDouble() / queryTrigrams.size
+            score += ratio * 6.0
+        }
+
         for (token in queryTokens) {
-            // Name field — weight 4
-            score += tfidf(token, entry.nameTokens, entry.game.gameId) * 4.0
-            // Developer field — weight 2
-            score += tfidf(token, entry.devTokens, entry.game.gameId) * 2.0
-            // Description field — weight 1
-            score += tfidf(token, entry.descTokens, entry.game.gameId) * 1.0
+            score += bm25(token, entry.nameTokens) * 4.0
+            score += bm25(token, entry.devTokens) * 2.0
+            score += bm25(token, entry.descTokens) * 1.0
         }
 
-        // 3. Fuzzy matching — catches typos (only if TF-IDF gave nothing)
+        val qPhonetic = soundexEncode(rawQuery)
+        if (qPhonetic.isNotEmpty() && entry.phoneticName.isNotEmpty() && qPhonetic == entry.phoneticName) {
+            score += 7.0
+        }
+
         if (score < 0.5 && queryTokens.isNotEmpty()) {
             val allTokens = entry.nameTokens + entry.devTokens + entry.descTokens
             for (qToken in queryTokens) {
                 val bestFuzzy = allTokens.maxOfOrNull { fuzzyScore(qToken, it) } ?: 0.0
-                score += bestFuzzy * 2.0 // fuzzy is lower confidence
+                score += bestFuzzy * 1.5
             }
         }
 
         return score
     }
 
-    private fun tfidf(token: String, fieldTokens: List<String>, docId: String): Double {
-        if (fieldTokens.isEmpty()) return 0.0
-        val tf = fieldTokens.count { it == token }.toDouble() / fieldTokens.size
-        val idf = idfCache[token] ?: 0.0
-        return tf * idf
+    private fun bm25(token: String, fieldTokens: List<String>): Double {
+        if (fieldTokens.isEmpty() || docCount == 0) return 0.0
+        val tf = fieldTokens.count { it == token }
+        if (tf == 0) return 0.0
+        val df = docFreq[token] ?: return 0.0
+        val idf = ln(((docCount - df + 0.5) / (df + 0.5)).coerceAtLeast(1.0))
+        val fieldLen = fieldTokens.size
+        val numerator = tf * (BM25_K1 + 1)
+        val denominator = tf + BM25_K1 * (1 - BM25_B + BM25_B * (fieldLen / avgDocLen.coerceAtLeast(1.0)))
+        return idf * numerator / denominator
     }
 
-    // ── Fuzzy (Levenshtein-based) ─────────────────────────────────────────────
-
-    /**
-     * Returns a 0..1 similarity score between two tokens.
-     * 1.0 = identical, 0.0 = completely different.
-     * Skips computation for very short tokens to avoid false positives.
-     */
     private fun fuzzyScore(a: String, b: String): Double {
         if (a.length < 3 || b.length < 3) return if (a == b) 1.0 else 0.0
         val dist = levenshtein(a, b)
         val maxLen = maxOf(a.length, b.length).toDouble()
         val similarity = 1.0 - dist / maxLen
-        // Only count as a match if similarity is above threshold
-        return if (similarity >= 0.6) similarity else 0.0
+        return if (similarity >= FUZZY_THRESHOLD) similarity else 0.0
     }
 
     private fun levenshtein(a: String, b: String): Double {
@@ -130,19 +202,77 @@ object GameSearchEngine {
         return dp[m][n].toDouble()
     }
 
-    // ── IDF ──────────────────────────────────────────────────────────────────
+    private fun findBestMatch(entry: GameIndex, rawQuery: String, queryTokens: List<String>): Pair<String, String> {
+        val nameLower = entry.game.gameName.lowercase()
+        if (nameLower.contains(rawQuery)) return "name" to entry.game.gameName
 
-    private fun buildIdf(docs: List<GameIndex>): Map<String, Double> {
-        val n = docs.size.toDouble()
-        val docFreq = mutableMapOf<String, Int>()
-        for (doc in docs) {
-            val allTokens = (doc.nameTokens + doc.descTokens + doc.devTokens).toSet()
-            for (t in allTokens) docFreq[t] = (docFreq[t] ?: 0) + 1
+        val devLower = entry.game.developerName.lowercase()
+        if (devLower.contains(rawQuery)) return "developer" to entry.game.developerName
+
+        val descLower = entry.game.description.lowercase()
+        if (descLower.contains(rawQuery)) {
+            val idx = descLower.indexOf(rawQuery)
+            val start = maxOf(0, idx - 30)
+            val end = min(descLower.length, idx + rawQuery.length + 30)
+            return "description" to "...${entry.game.description.substring(start, end)}..."
         }
-        return docFreq.mapValues { (_, df) -> ln(n / (1.0 + df)) + 1.0 }
+
+        for (qt in queryTokens) {
+            for (nt in entry.nameTokens) {
+                if (nt.startsWith(qt) || fuzzyScore(qt, nt) >= FUZZY_THRESHOLD) {
+                    return "name" to entry.game.gameName
+                }
+            }
+        }
+
+        return "name" to entry.game.gameName
     }
 
-    // ── Tokenizer ─────────────────────────────────────────────────────────────
+    private fun buildDocFreq(docs: List<GameIndex>): Map<String, Int> {
+        val df = mutableMapOf<String, Int>()
+        for (doc in docs) {
+            val allTokens = (doc.nameTokens + doc.descTokens + doc.devTokens).toSet()
+            for (t in allTokens) df[t] = (df[t] ?: 0) + 1
+        }
+        return df
+    }
+
+    private fun extractTrigrams(text: String): Set<String> {
+        val t = "  $text ".lowercase()
+        return t.windowed(NGRAM_SIZE).toSet()
+    }
+
+    private fun soundexEncode(text: String): String {
+        val s = text.lowercase().replace(Regex("[^a-z]"), "")
+        if (s.isEmpty()) return ""
+        val first = s[0]
+        val encoded = buildString {
+            append(first.uppercase())
+            var prev = encodeSoundexDigit(first)
+            for (c in s.drop(1)) {
+                val digit = encodeSoundexDigit(c)
+                if (digit != prev && digit != '0') {
+                    append(digit)
+                    if (length >= 4) return@buildString
+                }
+                prev = digit
+            }
+            while (length < 4) append('0')
+        }
+        return encoded
+    }
+
+    private fun encodeSoundexDigit(c: Char): Char {
+        return when (c) {
+            'b', 'f', 'p', 'v' -> '1'
+            'c', 'g', 'j', 'k', 'q', 's', 'x', 'z' -> '2'
+            'd', 't' -> '3'
+            'l' -> '4'
+            'm', 'n' -> '5'
+            'r' -> '6'
+            else -> '0'
+        }
+    }
 
     private fun tokenize(text: String): List<String> {
         return text.lowercase()
