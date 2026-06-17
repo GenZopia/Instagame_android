@@ -72,6 +72,8 @@ fun HomeGamesSection(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     onLoadMore: () -> Unit = {},
+    selectedGameFromDeepLink: HomeGameItem? = null,
+    onDeepLinkGameDismissed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = isSystemInDarkTheme()
@@ -80,6 +82,13 @@ fun HomeGamesSection(
     val subColor = if (isDark) Color(0xFF9E9E9E) else Color(0xFF757575)
 
     var selectedGame by remember { mutableStateOf<HomeGameItem?>(null) }
+
+    // Handle deep link game selection
+    LaunchedEffect(selectedGameFromDeepLink) {
+        if (selectedGameFromDeepLink != null) {
+            selectedGame = selectedGameFromDeepLink
+        }
+    }
 
     if (isLoading && games.isEmpty()) {
         Box(modifier = modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -242,7 +251,7 @@ fun HomeGamesSection(
             com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailSheetOpened(
                 gameId = game.gameId,
                 gameName = game.gameName,
-                source = "home_card"
+                source = if (game == selectedGameFromDeepLink) "deep_link" else "home_card"
             )
         }
         GameDetailSheet(
@@ -254,6 +263,9 @@ fun HomeGamesSection(
                     didPlay = didPlay
                 )
                 selectedGame = null
+                if (game == selectedGameFromDeepLink) {
+                    onDeepLinkGameDismissed()
+                }
             }
         )
     }
@@ -457,8 +469,12 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
     val subColor = if (isDark) Color(0xFF9E9E9E) else Color(0xFF757575)
     val rowBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFF5F5F5)
 
+    // Full screen bottom sheet state
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = { onDismiss(false) },
+        sheetState = sheetState,
         containerColor = sheetBg,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {

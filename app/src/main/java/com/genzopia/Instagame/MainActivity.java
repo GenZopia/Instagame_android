@@ -29,6 +29,13 @@ public class MainActivity extends BaseActivity {
 
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        
+        // Check if we have a game deeplink BEFORE setting up navigation
+        // This prevents default navigation to dashboard (ReelView)
+        Intent intent = getIntent();
+        boolean hasGameDeeplink = intent != null && 
+            intent.getStringExtra("deep_link_game_id") != null &&
+            !intent.getStringExtra("deep_link_game_id").isEmpty();
 
         // Apply window insets: bottom nav consumes navigation bar height,
         // nav host fragment gets the remaining space (status bar is drawn behind).
@@ -64,6 +71,7 @@ public class MainActivity extends BaseActivity {
                     R.id.navigation_home, R.id.navigation_dashboard, R.id.navigation_notifications,R.id.navigation_profile)
                     .build();
             NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_main);
+            
             NavigationUI.setupWithNavController(navView, navController);
 
             // Track bottom nav taps
@@ -99,58 +107,45 @@ public class MainActivity extends BaseActivity {
             });
             
             Log.d(TAG, "BottomNavigationView setup completed");
+            
+            // If we have a game deeplink, navigate to home AFTER setting up bottom nav
+            // Only do this on initial creation, not on config changes
+            if (hasGameDeeplink && savedInstanceState == null) {
+                navView.post(() -> {
+                    try {
+                        // Just set the selected item, the listener will handle navigation
+                        navView.setSelectedItemId(R.id.navigation_home);
+                        Log.d(TAG, "Selected home tab for deeplink");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error selecting home for deeplink: " + e.getMessage());
+                    }
+                });
+            }
         } else {
             Log.e(TAG, "BottomNavigationView not found!");
         }
         
-        // Check if we need to navigate to dashboard
-        checkForDashboardNavigation();
+        // Process game deeplink if present
+        processGameDeeplink();
     }
     
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        checkForDashboardNavigation();
+        processGameDeeplink();
     }
     
-    private void checkForDashboardNavigation() {
+    private void processGameDeeplink() {
         Intent intent = getIntent();
         if (intent != null) {
-            boolean shouldNavigateToDashboard = intent.getBooleanExtra("navigate_to_dashboard", false);
-            String videoIdToPlay = intent.getStringExtra("play_video_id");
-
-            // Handle deep link video ID forwarded from SplashActivity
-            String deepLinkVideoId = intent.getStringExtra("deep_link_video_id");
-            if (deepLinkVideoId != null && !deepLinkVideoId.isEmpty()) {
-                intent.removeExtra("deep_link_video_id");
-                com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
-                    .setPendingVideoId(deepLinkVideoId);
-                com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
-                    .setShouldPlayInReelView(true);
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    navigateToDashboard();
-                }, 1000);
-                return;
-            }
-
-            if (shouldNavigateToDashboard) {
-                // Clear the flags
-                intent.removeExtra("navigate_to_dashboard");
-                intent.removeExtra("play_video_id");
-                
-                // Set the video to play in VideoNavigationManager
-                if (videoIdToPlay != null) {
-                    com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
-                        .setPendingVideoId(videoIdToPlay);
-                    com.genzopia.Instagame.utils.VideoNavigationManager.getInstance()
-                        .setShouldPlayInReelView(true);
-                }
-                
-                // Navigate to dashboard after a short delay to ensure activity is ready
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    navigateToDashboard();
-                }, 1000);
+            // Handle deep link game ID forwarded from SplashActivity
+            String deepLinkGameId = intent.getStringExtra("deep_link_game_id");
+            if (deepLinkGameId != null && !deepLinkGameId.isEmpty()) {
+                intent.removeExtra("deep_link_game_id");
+                // Store the game ID to be picked up by HomeFragmentCompose
+                com.genzopia.Instagame.utils.GameNavigationManager.getInstance()
+                    .setPendingGameId(deepLinkGameId);
             }
         }
     }
@@ -170,6 +165,24 @@ public class MainActivity extends BaseActivity {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error navigating to dashboard: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Navigate to home fragment (for game deep links)
+     */
+    public void navigateToHome() {
+        try {
+            NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_main);
+            navController.navigate(R.id.navigation_home);
+            
+            // Update bottom navigation selection
+            BottomNavigationView navView = findViewById(R.id.nav_view);
+            if (navView != null) {
+                navView.setSelectedItemId(R.id.navigation_home);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error navigating to home: " + e.getMessage());
         }
     }
     

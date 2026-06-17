@@ -23,6 +23,9 @@ android {
 
         val amplitudeApiKey: String = (project.findProperty("amplitude_api_key") as String?) ?: ""
         buildConfigField("String", "AMPLITUDE_API_KEY", "\"$amplitudeApiKey\"")
+
+        // Base domain for deep linking - change this to update deep links everywhere
+        buildConfigField("String", "BASE_DOMAIN", "\"www.genzopia.com\"")
     }
 
     buildFeatures {
@@ -57,6 +60,9 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all {
+                it.useJUnitPlatform()
+            }
         }
     }
 
@@ -156,7 +162,13 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
-    testImplementation("org.jetbrains.kotlin:kotlin-test:2.4.0")
+    
+    // jqwik for property-based testing
+    testImplementation("net.jqwik:jqwik:1.9.3")
+    testImplementation("net.jqwik:jqwik-kotlin:1.9.3")
+    
+    // JUnit 5 Platform for running jqwik tests
+    testImplementation("org.junit.platform:junit-platform-launcher:1.11.4")
 
 
 

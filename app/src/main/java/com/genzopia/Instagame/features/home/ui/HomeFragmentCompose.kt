@@ -45,4 +45,14 @@ class HomeFragmentCompose : Fragment() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Check for pending game deep link
+        val gameId = com.genzopia.Instagame.utils.GameNavigationManager.getInstance()
+            .consumePendingGameId()
+        if (gameId != null && gameId.isNotEmpty()) {
+            viewModel.openGameByIdFromDeepLink(gameId)
+        }
+    }
 }

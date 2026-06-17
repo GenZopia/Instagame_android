@@ -27,6 +27,7 @@ public class SplashActivity extends BaseActivity {
     private boolean hasNavigated = false;
     private boolean animationComplete = false;
     private boolean dataLoaded = false;
+    private boolean isDeepLink = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // Perf tracking
@@ -42,7 +43,7 @@ public class SplashActivity extends BaseActivity {
 
         // Track app open — detect source
         android.net.Uri deepLinkData = getIntent().getData();
-        boolean isDeepLink = deepLinkData != null;
+        isDeepLink = deepLinkData != null;
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackAppOpened(
                 isDeepLink ? "deep_link" : "cold_start",
                 isDeepLink ? deepLinkData.getLastPathSegment() : null
@@ -61,17 +62,43 @@ public class SplashActivity extends BaseActivity {
             }
         }, MAX_WAIT_MS);
 
-        setupLottie();
+        if (isDeepLink) {
+            // Show static logo from drawable when opened via deeplink (no animation)
+            LottieAnimationView lottieView = findViewById(R.id.lottieView);
+            lottieView.setVisibility(View.GONE);
+            
+            android.widget.ImageView staticLogoView = findViewById(R.id.staticLogoView);
+            staticLogoView.setImageResource(R.drawable.playstore4);
+            staticLogoView.setVisibility(View.VISIBLE);
+            
+            // Skip animation, mark as complete immediately
+            animationComplete = true;
+            Log.d(TAG, "Deeplink detected - showing static logo");
+        } else {
+            // Show logo animation for normal app launch
+            setupLottie();
+        }
     }
 
     private void setupLottie() {
+        // Hide static logo FIRST for normal launch
+        android.widget.ImageView staticLogoView = findViewById(R.id.staticLogoView);
+        if (staticLogoView != null) {
+            staticLogoView.setVisibility(View.GONE);
+            Log.d(TAG, "Static logo hidden for normal launch");
+        }
+        
         int nightModeFlags = getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
         boolean isNight = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         int rawId = isNight ? R.raw.game_logo_dark_theme : R.raw.game_logo_white_theme;
 
         LottieAnimationView lottieView = findViewById(R.id.lottieView);
-        lottieView.enableMergePathsForKitKatAndAbove(true);
+        if (lottieView != null) {
+            lottieView.setVisibility(View.VISIBLE);
+            lottieView.enableMergePathsForKitKatAndAbove(true);
+            Log.d(TAG, "Lottie view shown for normal launch");
+        }
 
         lottieView.addAnimatorListener(new android.animation.AnimatorListenerAdapter() {
             @Override
@@ -148,18 +175,33 @@ public class SplashActivity extends BaseActivity {
 
         android.net.Uri data = getIntent().getData();
         if (data != null) {
-            String videoId = null;
+            String gameId = null;
             String scheme = data.getScheme();
             String host = data.getHost();
 
-            if ("https".equals(scheme) && "instagame.genzopia.com".equals(host)) {
-                videoId = data.getLastPathSegment();
-            } else if ("instagame".equals(scheme) && "video".equals(host)) {
-                videoId = data.getLastPathSegment();
+            // Handle game deep links: genzopia.com/games/{gameId}, www.genzopia.com/games/{gameId}, 
+            // genzopia.com/{gameId}, www.genzopia.com/{gameId}, or genzopia://game/{gameId}
+            if (("https".equals(scheme) || "http".equals(scheme)) && 
+                    ("www.genzopia.com".equals(host) || "genzopia.com".equals(host))) {
+                String path = data.getPath();
+                if (path != null && !path.isEmpty() && !"/".equals(path)) {
+                    // Handle /games/{gameId} pattern
+                    if (path.startsWith("/games/")) {
+                        gameId = path.substring("/games/".length());
+                    } 
+                    // Handle legacy /{gameId} pattern
+                    else {
+                        gameId = path.startsWith("/") ? path.substring(1) : path;
+                    }
+                }
+            }
+            // Custom URI scheme: genzopia://game/{gameId}
+            else if ("genzopia".equals(scheme) && "game".equals(host)) {
+                gameId = data.getLastPathSegment();
             }
 
-            if (videoId != null && !videoId.isEmpty()) {
-                intent.putExtra("deep_link_video_id", videoId);
+            if (gameId != null && !gameId.isEmpty()) {
+                intent.putExtra("deep_link_game_id", gameId);
             }
         }
 

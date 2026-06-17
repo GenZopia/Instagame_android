@@ -29,6 +29,7 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
     val loadingMore by viewModel.loadingMore.collectAsState()
     val allLoaded by viewModel.allLoaded.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedGameFromDeepLink by viewModel.selectedGameFromDeepLink.collectAsState()
 
     LazyColumn(
         modifier = modifier
@@ -49,7 +50,9 @@ fun HomeScreen(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
                 allLoaded = allLoaded,
                 searchQuery = searchQuery,
                 onSearchQueryChange = { viewModel.searchQuery.value = it },
-                onLoadMore = { viewModel.loadMoreGames() }
+                onLoadMore = { viewModel.loadMoreGames() },
+                selectedGameFromDeepLink = selectedGameFromDeepLink,
+                onDeepLinkGameDismissed = { viewModel.clearSelectedGameFromDeepLink() }
             )
         }
         item {
