@@ -44,4 +44,7 @@
     <string name="email_verified">Email verified</string>
     <string name="verify">Verify</string>
 
+    <!-- FCM Notification Channel -->
+    <string name="default_notification_channel_id">fcm_default_channel</string>
+
 </resources>

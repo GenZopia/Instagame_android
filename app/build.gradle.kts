@@ -125,6 +125,8 @@ dependencies {
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.config)
 
     // Lifecycle
     implementation(libs.lifecycle.livedata.ktx)
