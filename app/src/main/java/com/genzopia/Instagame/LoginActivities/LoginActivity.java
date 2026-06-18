@@ -23,7 +23,10 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.MainActivity;
-import com.genzopia.Instagame.R;import com.genzopia.Instagame.databinding.ActivityLoginBinding;
+import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.databinding.ActivityLoginBinding;
+import com.genzopia.Instagame.utils.FCMTokenManager;
+import com.genzopia.Instagame.utils.NotificationPermissionManager;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 
@@ -56,6 +59,8 @@ public class LoginActivity extends BaseActivity {
     private FirebaseAuth mAuth;
     private FirebaseDatabase database;
 
+    private NotificationPermissionManager notificationPermissionManager;
+
     // Retrieve and pre-fill login information
     private String sharedPrefFile = "LoginPrefs";
     private String savedEmail;
@@ -68,6 +73,8 @@ public class LoginActivity extends BaseActivity {
         binding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         FirebaseApp.initializeApp(this);
+
+        notificationPermissionManager = new NotificationPermissionManager(this);
 
         // Analytics
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLoginScreenViewed();
@@ -371,6 +378,13 @@ public class LoginActivity extends BaseActivity {
                             startActivity(new Intent(LoginActivity.this, ProfileCompletionActivity.class));
                             finish();
                         } else {
+                            // Request notification permission if eligible (Android 13+)
+                            if (notificationPermissionManager.shouldRequestPermission()) {
+                                notificationPermissionManager.requestPermission(
+                                        LoginActivity.this,
+                                        NotificationPermissionManager.REQUEST_CODE_NOTIFICATION_PERMISSION
+                                );
+                            }
                             // Show privacy policy once; skip if already accepted
                             if (PrivacyPolicyActivity.hasAccepted(LoginActivity.this)) {
                                 startActivity(new Intent(LoginActivity.this, MainActivity.class));
@@ -389,6 +403,27 @@ public class LoginActivity extends BaseActivity {
     public static String replacePeriods(String input) {
         // Replace all occurrences of '.' with ','
         return input.replace('.', ',');
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @androidx.annotation.NonNull String[] permissions,
+                                           @androidx.annotation.NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NotificationPermissionManager.REQUEST_CODE_NOTIFICATION_PERMISSION) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            notificationPermissionManager.handlePermissionResult(granted);
+            if (!granted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // Check for permanent denial
+                if (!androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                        this, android.Manifest.permission.POST_NOTIFICATIONS)) {
+                    notificationPermissionManager.markPermanentlyDenied();
+                }
+            }
+            if (granted) {
+                FCMTokenManager.INSTANCE.registerToken(this);
+            }
+        }
     }
 
     @Override

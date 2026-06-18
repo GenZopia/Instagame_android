@@ -150,7 +150,6 @@ class NotificationPermissionManagerPropertyTest {
         val manager = NotificationPermissionManager(context)
         manager.clearRejectionTimestamp()
         
-        // Set rejection timestamp to exactly 30 days ago
         val currentTime = System.currentTimeMillis()
         val exactlyThirtyDaysAgo = currentTime - (30L * 24 * 60 * 60 * 1000)
         
@@ -159,18 +158,108 @@ class NotificationPermissionManagerPropertyTest {
             .putLong("last_rejection_timestamp", exactlyThirtyDaysAgo)
             .apply()
         
-        // Verify permission should be requestable at exactly 30 days
         assertTrue(
             "Permission should be requestable at exactly 30 days",
             manager.shouldRequestPermission()
         )
-        
-        // Verify getDaysUntilNextRetry returns 0
         assertEquals(
             "Days until next retry should be 0 at exactly 30 days",
             0,
             manager.getDaysUntilNextRetry()
         )
+    }
+
+    /**
+     * Property 10: Rejection timestamp storage
+     * **Validates: Requirements 3.3**
+     *
+     * When the user rejects notification permission, the system SHALL store the current
+     * timestamp in SharedPreferences. This property verifies that:
+     * - handlePermissionResult(false) stores a timestamp close to current time
+     * - The stored timestamp is retrievable via getLastRejectionTimestamp()
+     * - The timestamp is within a reasonable delta of System.currentTimeMillis()
+     */
+    @Test
+    fun `property 10 - rejection stores timestamp in cache`() {
+        val manager = NotificationPermissionManager(context)
+        manager.clearRejectionTimestamp()
+
+        val before = System.currentTimeMillis()
+        manager.handlePermissionResult(granted = false)
+        val after = System.currentTimeMillis()
+
+        val stored = manager.getLastRejectionTimestamp()
+        assertTrue("Timestamp should be stored on rejection", stored > 0L)
+        assertTrue("Stored timestamp should be >= before call", stored >= before)
+        assertTrue("Stored timestamp should be <= after call", stored <= after)
+    }
+
+    @Test
+    fun `property 10 - grant clears rejection timestamp`() {
+        val manager = NotificationPermissionManager(context)
+        // First reject
+        manager.handlePermissionResult(granted = false)
+        assertTrue("Timestamp stored after rejection", manager.getLastRejectionTimestamp() > 0L)
+
+        // Then grant
+        manager.handlePermissionResult(granted = true)
+        assertEquals("Timestamp cleared after grant", 0L, manager.getLastRejectionTimestamp())
+    }
+
+    /**
+     * Property 12: Timestamp update on retry rejection
+     * **Validates: Requirements 3.5**
+     *
+     * When the user rejects permission after the 30-day interval has passed and we retry,
+     * the system SHALL update the rejection timestamp (not keep the old one).
+     * This ensures the next retry is calculated from the most recent rejection.
+     */
+    @Test
+    fun `property 12 - timestamp updated on second rejection after 30-day interval`() {
+        val manager = NotificationPermissionManager(context)
+        manager.clearRejectionTimestamp()
+
+        // Simulate first rejection 31 days ago
+        val thirtyOneDaysAgo = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(31)
+        val prefs = context.getSharedPreferences("notification_permission_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putLong("last_rejection_timestamp", thirtyOneDaysAgo).apply()
+
+        // Verify permission is re-requestable after 30 days
+        assertTrue("Should be requestable after 31 days", manager.shouldRequestPermission())
+
+        // User rejects again — timestamp must be updated to now
+        val beforeSecondRejection = System.currentTimeMillis()
+        manager.handlePermissionResult(granted = false)
+        val afterSecondRejection = System.currentTimeMillis()
+
+        val updatedTimestamp = manager.getLastRejectionTimestamp()
+        assertTrue("Timestamp should be updated to recent time", updatedTimestamp >= beforeSecondRejection)
+        assertTrue("Timestamp should be updated to recent time", updatedTimestamp <= afterSecondRejection)
+
+        // Immediately after second rejection, should NOT be requestable (30-day clock restarted)
+        assertFalse(
+            "Should NOT be requestable immediately after second rejection",
+            manager.shouldRequestPermission()
+        )
+    }
+
+    @Test
+    fun `property 12 - days until retry resets to 30 after second rejection`() {
+        val manager = NotificationPermissionManager(context)
+        manager.clearRejectionTimestamp()
+
+        // 31 days since first rejection — interval elapsed
+        val thirtyOneDaysAgo = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(31)
+        val prefs = context.getSharedPreferences("notification_permission_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putLong("last_rejection_timestamp", thirtyOneDaysAgo).apply()
+
+        // Second rejection
+        manager.handlePermissionResult(granted = false)
+
+        val daysRemaining = manager.getDaysUntilNextRetry()
+        // Should be close to 30 days (allow 1 day rounding tolerance)
+        assertTrue("Days remaining should be ~30 after fresh rejection, got $daysRemaining",
+            daysRemaining in 29..30)
     }
 }
 

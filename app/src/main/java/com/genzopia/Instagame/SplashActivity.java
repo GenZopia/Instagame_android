@@ -16,6 +16,7 @@ import com.airbnb.lottie.LottieCompositionFactory;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
 import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.utils.DataPrefetchService;
+import com.genzopia.Instagame.utils.RemoteConfigManager;
 import com.genzopia.Instagame.webgl_gameloading.MyApplication;
 import com.google.firebase.auth.FirebaseAuth;
 
@@ -27,8 +28,10 @@ public class SplashActivity extends BaseActivity {
     private boolean hasNavigated = false;
     private boolean animationComplete = false;
     private boolean dataLoaded = false;
+    private boolean configFetched = false;
     private boolean isDeepLink = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private RemoteConfigManager remoteConfigManager;
 
     // Perf tracking
     private long splashStartMs;
@@ -40,6 +43,15 @@ public class SplashActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
         splashStartMs = System.currentTimeMillis();
+
+        remoteConfigManager = new RemoteConfigManager();
+        // Req 10.1: fetch config async — doesn't block animation or prefetch
+        remoteConfigManager.fetchConfig(success -> {
+            Log.d(TAG, "Remote Config fetch complete, success=" + success);
+            configFetched = true;
+            checkAndNavigate();
+            return kotlin.Unit.INSTANCE;
+        });
 
         // Track app open — detect source
         android.net.Uri deepLinkData = getIntent().getData();
@@ -58,6 +70,7 @@ public class SplashActivity extends BaseActivity {
             if (!hasNavigated) {
                 Log.w(TAG, "Timeout reached — navigating without full prefetch");
                 dataLoaded = true;
+                configFetched = true; // Req 2.5: on failure, allow app to continue
                 checkAndNavigate();
             }
         }, MAX_WAIT_MS);
@@ -151,7 +164,7 @@ public class SplashActivity extends BaseActivity {
 
     private void checkAndNavigate() {
         if (hasNavigated) return;
-        if (animationComplete && dataLoaded) {
+        if (animationComplete && dataLoaded && configFetched) {
             hasNavigated = true;
             long now = System.currentTimeMillis();
             long animDuration = animationEndMs > 0 ? animationEndMs - splashStartMs : 0;
@@ -163,7 +176,15 @@ public class SplashActivity extends BaseActivity {
             com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashCompleted(
                     totalDuration, dataLoaded
             );
-            navigateToNextScreen();
+            // Req 10.2/10.3: check version before navigating
+            if (remoteConfigManager.isUpdateRequired()) {
+                String minVersion = String.valueOf(remoteConfigManager.getMinVersionCode());
+                ForceUpdateDialog dialog = ForceUpdateDialog.newInstance(minVersion);
+                dialog.show(getSupportFragmentManager(), ForceUpdateDialog.TAG);
+                // Don't navigate — block here until user updates
+            } else {
+                navigateToNextScreen();
+            }
         }
     }
 

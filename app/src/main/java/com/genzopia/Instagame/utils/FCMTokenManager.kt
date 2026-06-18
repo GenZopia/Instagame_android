@@ -1,0 +1,100 @@
+package com.genzopia.Instagame.utils
+
+import android.content.Context
+import android.util.Log
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.messaging.FirebaseMessaging
+
+/**
+ * Manages FCM token registration and synchronization with Firebase Realtime Database.
+ * Requirements: 4.1, 4.2, 4.5, 7.1
+ */
+object FCMTokenManager {
+
+    private const val TAG = "FCMTokenManager"
+    private const val PREFS_NAME = "fcm_token_prefs"
+    private const val KEY_FCM_TOKEN = "fcm_token"
+
+    /**
+     * Retrieves the current FCM token and registers it with the database if a user is signed in.
+     * Only registers if notification permission is granted.
+     * Requirements: 4.1, 4.5
+     */
+    fun registerToken(context: Context) {
+        val permissionManager = NotificationPermissionManager(context)
+        if (!permissionManager.isPermissionGranted()) {
+            Log.d(TAG, "Notification permission not granted — skipping FCM token registration")
+            return
+        }
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                cacheToken(context, token)
+                updateTokenInDatabase(token, context)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to get FCM token: ${e.message}", e)
+            }
+    }
+
+    /**
+     * Updates the FCM token in Firebase Realtime Database for the current user.
+     * On failure, schedules a WorkManager retry. Requirements: 4.2, 7.1
+     */
+    fun updateTokenInDatabase(token: String, context: Context? = null) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+            Log.d(TAG, "No signed-in user — skipping token DB update")
+            return
+        }
+        FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(uid)
+            .child("fcm_token")
+            .setValue(token)
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to update FCM token in DB for uid=$uid: ${e.message}", e)
+                // Req 7.1: queue retry when network is available
+                context?.let { scheduleTokenSync(it) }
+            }
+    }
+
+    /** Schedules a WorkManager job to retry token sync when network is available. */
+    private fun scheduleTokenSync(context: Context) {
+        val request = OneTimeWorkRequestBuilder<TokenSyncWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(context).enqueue(request)
+    }
+
+    fun cacheToken(context: Context, token: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_FCM_TOKEN, token).apply()
+    }
+
+    fun getCachedToken(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_FCM_TOKEN, null)
+}
+
+/** WorkManager Worker that retries FCM token registration when network is available. */
+class TokenSyncWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun doWork(): Result {
+        return try {
+            FCMTokenManager.registerToken(applicationContext)
+            Result.success()
+        } catch (e: Exception) {
+            Log.e("TokenSyncWorker", "Token sync failed: ${e.message}", e)
+            Result.retry()
+        }
+    }
+}
