@@ -1,13 +1,13 @@
 # Implementation Plan
 
-- [ ] 1. Add Firebase dependencies and update manifest
+- [x] 1. Add Firebase dependencies and update manifest
   - Add Firebase Messaging and Remote Config dependencies to build.gradle.kts
   - Declare InstagameFCMService in AndroidManifest.xml
   - Add default notification channel metadata to manifest
   - _Requirements: 4.1, 4.2_
 
 - [ ] 2. Implement NotificationPermissionManager
-  - [ ] 2.1 Create NotificationPermissionManager class with SharedPreferences
+  - [x] 2.1 Create NotificationPermissionManager class with SharedPreferences
     - Implement permission state checking across Android versions
     - Add methods for checking if permission should be requested
     - Add methods for storing rejection timestamps
@@ -18,17 +18,17 @@
     - **Property 11: 30-day retry interval**
     - **Validates: Requirements 3.4**
   
-  - [ ] 2.3 Write property test for timestamp update on rejection
+  - [-] 2.3 Write property test for timestamp update on rejection
     - **Property 12: Timestamp update on retry rejection**
     - **Validates: Requirements 3.5**
   
-  - [ ] 2.4 Implement permission request methods
+  - [~] 2.4 Implement permission request methods
     - Add requestPermission() with Activity parameter
     - Add handlePermissionResult() callback
     - Add permanently denied flag handling
     - _Requirements: 3.1, 3.2, 3.3_
   
-  - [ ] 2.5 Write property test for permission state tracking
+  - [~] 2.5 Write property test for permission state tracking
     - **Property 10: Rejection timestamp storage**
     - **Validates: Requirements 3.3**
 

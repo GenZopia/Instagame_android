@@ -61,7 +61,8 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
-                it.useJUnitPlatform()
+                // Comment out for JUnit 4 tests
+                // it.useJUnitPlatform()
             }
         }
     }
@@ -164,6 +165,13 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
+    
+    // JUnit 5 (Jupiter) for property-based testing with jqwik
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.4")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
+    
+    // Robolectric JUnit 5 extension
+    testImplementation("tech.apter.junit5.jupiter:robolectric-extension:0.8.0")
     
     // jqwik for property-based testing
     testImplementation("net.jqwik:jqwik:1.9.3")
