@@ -865,17 +865,11 @@ fun ReelOverlay(
                 onClick = {
                     // Deep link: opens the app directly if installed,
                     // falls back to Play Store if not installed
-                    val deepLink = "https://instagame.genzopia.com/video/${reel.videoId}"
-                    val customSchemeLink = "instagame://video/${reel.videoId}"
-                    val playStoreUrl = "https://play.google.com/store/apps/details?id=com.genzopia.Instagame"
-                    val shareText = buildString {
-                        append("🎮 Check out \"${reel.title}\" on Instagame!\n\n")
-                        append(deepLink)
-                        append("\n\nOpen in app: ")
-                        append(customSchemeLink)
-                        append("\n\nDon't have the app? Download it here:\n")
-                        append(playStoreUrl)
-                    }
+                    val gameLink = if (reel.gameId.isNotBlank())
+                        "https://www.genzopia.com/games/${reel.gameId}"
+                    else
+                        "https://www.genzopia.com"
+                    val shareText = "Hey! Checkout this game 🎮\n$gameLink"
                     val shareIntent = Intent().apply {
                         action = Intent.ACTION_SEND
                         putExtra(Intent.EXTRA_TEXT, shareText)

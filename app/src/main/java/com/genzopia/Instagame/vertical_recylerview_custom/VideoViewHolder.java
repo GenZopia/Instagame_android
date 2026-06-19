@@ -467,8 +467,11 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
         Intent shareIntent = new Intent(Intent.ACTION_SEND);
         shareIntent.setType("text/plain");
         
-        // Create share text with video ID
-        String shareText = "Check out this amazing video: " + videoTitle + "\n\nVideo ID: " + videoId + "\n\nShared from Instagame";
+        // Create share text with game link
+        String gameLink = (currentItem.gameId != null && !currentItem.gameId.isEmpty())
+                ? "https://www.genzopia.com/games/" + currentItem.gameId
+                : "https://www.genzopia.com";
+        String shareText = "Hey! Checkout this game 🎮\n" + gameLink;
         
         shareIntent.putExtra(Intent.EXTRA_TEXT, shareText);
         shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Amazing video from Instagame");
