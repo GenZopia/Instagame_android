@@ -20,7 +20,7 @@ class RemoteConfigManager {
         private const val TAG = "RemoteConfigManager"
         const val KEY_FORCE_MIN_VERSION  = "force_popup_minimum_version"
         const val KEY_SMOOTH_MIN_VERSION = "smooth_popup_minimum_version"
-        private const val CACHE_EXPIRATION_SECONDS = 3600L
+        private const val CACHE_EXPIRATION_SECONDS = 600L
 
         private val DEFAULTS = mapOf(
             KEY_FORCE_MIN_VERSION  to "0",
