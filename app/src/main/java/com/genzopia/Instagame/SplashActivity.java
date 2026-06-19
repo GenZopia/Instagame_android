@@ -183,12 +183,13 @@ public class SplashActivity extends BaseActivity {
                 dialog.show(getSupportFragmentManager(), ForceUpdateDialog.TAG);
                 // Don't navigate — block here until user updates
             } else {
-                // Show smooth update nudge once every 5 app opens
-                if (remoteConfigManager.isSmoothUpdateAvailable() && shouldShowSmoothUpdate()) {
-                    String minVersion = remoteConfigManager.getSmoothMinVersionString();
-                    SmoothUpdateDialog smoothDialog = SmoothUpdateDialog.newInstance(minVersion);
-                    smoothDialog.show(getSupportFragmentManager(), SmoothUpdateDialog.TAG);
-                }
+                // Store smooth update flag for HomeFragment to show (once every 5 opens)
+                boolean showSmooth = remoteConfigManager.isSmoothUpdateAvailable() && shouldShowSmoothUpdate();
+                getSharedPreferences("update_prefs", MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("pending_smooth_update", showSmooth)
+                        .putString("smooth_min_version", remoteConfigManager.getSmoothMinVersionString())
+                        .apply();
                 navigateToNextScreen();
             }
         }
