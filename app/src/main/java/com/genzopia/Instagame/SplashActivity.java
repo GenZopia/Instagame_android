@@ -245,8 +245,8 @@ public class SplashActivity extends BaseActivity {
     private boolean shouldShowSmoothUpdate() {
         android.content.SharedPreferences prefs = getSharedPreferences("update_prefs", MODE_PRIVATE);
         int count = prefs.getInt("app_open_count", 0) + 1;
-        prefs.edit().putInt("app_open_count", count % 5).apply();
-        return count % 5 == 0;
+        prefs.edit().putInt("app_open_count", count % 3).apply();
+        return count % 3 == 0;
     }
 
     @Override
