@@ -176,13 +176,19 @@ public class SplashActivity extends BaseActivity {
             com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashCompleted(
                     totalDuration, dataLoaded
             );
-            // Req 10.2/10.3: check version before navigating
-            if (remoteConfigManager.isUpdateRequired()) {
-                String minVersion = String.valueOf(remoteConfigManager.getMinVersionCode());
+            // Check force update first (non-dismissible)
+            if (remoteConfigManager.isForceUpdateRequired()) {
+                String minVersion = remoteConfigManager.getForceMinVersionString();
                 ForceUpdateDialog dialog = ForceUpdateDialog.newInstance(minVersion);
                 dialog.show(getSupportFragmentManager(), ForceUpdateDialog.TAG);
                 // Don't navigate — block here until user updates
             } else {
+                // Show smooth update nudge once every 5 app opens
+                if (remoteConfigManager.isSmoothUpdateAvailable() && shouldShowSmoothUpdate()) {
+                    String minVersion = remoteConfigManager.getSmoothMinVersionString();
+                    SmoothUpdateDialog smoothDialog = SmoothUpdateDialog.newInstance(minVersion);
+                    smoothDialog.show(getSupportFragmentManager(), SmoothUpdateDialog.TAG);
+                }
                 navigateToNextScreen();
             }
         }
@@ -229,6 +235,17 @@ public class SplashActivity extends BaseActivity {
         startActivity(intent);
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         finish();
+    }
+
+    /**
+     * Increments the app-open counter and returns true only on every 5th open.
+     * Counter is stored in SharedPreferences and resets after reaching 5.
+     */
+    private boolean shouldShowSmoothUpdate() {
+        android.content.SharedPreferences prefs = getSharedPreferences("update_prefs", MODE_PRIVATE);
+        int count = prefs.getInt("app_open_count", 0) + 1;
+        prefs.edit().putInt("app_open_count", count % 5).apply();
+        return count % 5 == 0;
     }
 
     @Override
