@@ -33,10 +33,20 @@ object FCMTokenManager {
             Log.d(TAG, "Notification permission not granted — skipping FCM token registration")
             return
         }
+        // Subscribe to broadcast topic so all-user notifications are received
+        FirebaseMessaging.getInstance().subscribeToTopic("all_users")
+            .addOnFailureListener { e -> Log.e(TAG, "Topic subscription failed: ${e.message}") }
+
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
                 cacheToken(context, token)
                 updateTokenInDatabase(token, context)
+                // Subscribe to per-user topic for targeted notifications
+                val uid = FirebaseAuth.getInstance().currentUser?.uid
+                if (uid != null) {
+                    FirebaseMessaging.getInstance().subscribeToTopic("uid_$uid")
+                        .addOnFailureListener { e -> Log.e(TAG, "User topic subscription failed: ${e.message}") }
+                }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to get FCM token: ${e.message}", e)
