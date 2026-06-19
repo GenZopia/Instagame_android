@@ -8,6 +8,11 @@ import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 /**
  * Manages Firebase Remote Config for force-update version checking.
  * Requirements: 2.1, 2.2, 2.5, 5.1, 5.2, 5.3, 5.4, 5.5, 7.3
+ *
+ * Version gating is based on versionCode (a plain monotonically increasing
+ * integer set in build.gradle), NOT versionName. The Remote Config value
+ * for KEY_MIN_ANDROID_VERSION must be a plain integer string (e.g. "6"),
+ * matching BuildConfig.VERSION_CODE — not a dotted "x.y" string.
  */
 class RemoteConfigManager {
 
@@ -28,7 +33,7 @@ class RemoteConfigManager {
 
     init {
         val settings = FirebaseRemoteConfigSettings.Builder()
-            .setMinimumFetchIntervalInSeconds(CACHE_EXPIRATION_SECONDS)
+            .setMinimumFetchIntervalInSeconds(CACHE_EXPIRATION_SECONDS) // 3600 = 1 hour
             .build()
         remoteConfig.setConfigSettingsAsync(settings)
         remoteConfig.setDefaultsAsync(DEFAULTS)
@@ -70,29 +75,30 @@ class RemoteConfigManager {
         remoteConfig.getBoolean(KEY_FORCE_UPDATE_ENABLED)
 
     /**
-     * Returns the minimum required version code parsed from the Remote Config string.
+     * Returns the minimum required versionCode parsed from the Remote Config string.
+     * Expects a plain integer string (e.g. "6"), matching BuildConfig.VERSION_CODE.
      * On invalid/missing value returns 0 (no update required). Req 5.5
      */
     fun getMinVersionCode(): Int =
-        parseVersionString(remoteConfig.getString(KEY_MIN_ANDROID_VERSION))
+        parseVersionCode(remoteConfig.getString(KEY_MIN_ANDROID_VERSION))
 
     /**
-     * Parses a version string like "5.0", "10.2.1" into a comparable integer.
-     * Strategy: major * 1_000_000 + minor * 1_000 + patch
-     * "5.0"     → 5_000_000
-     * "10.2.1"  → 10_002_001
-     * Returns 0 on parse failure so missing/invalid config never forces an update. Req 5.5
+     * Returns the raw, unparsed min-version string from Remote Config — for display
+     * purposes only (e.g. in the force-update dialog message). Do NOT use this for
+     * comparisons; use getMinVersionCode() instead.
      */
-    fun parseVersionString(version: String): Int {
-        if (version.isBlank()) return 0
-        return try {
-            val parts = version.trim().split(".").map { it.toInt() }
-            val major = parts.getOrElse(0) { 0 }
-            val minor = parts.getOrElse(1) { 0 }
-            val patch = parts.getOrElse(2) { 0 }
-            major * 1_000_000 + minor * 1_000 + patch
-        } catch (e: NumberFormatException) {
-            Log.w(TAG, "Invalid version string '$version' — treating as no update required")
+    fun getMinVersionString(): String =
+        remoteConfig.getString(KEY_MIN_ANDROID_VERSION)
+
+    /**
+     * Parses a plain integer versionCode string, e.g. "6" -> 6.
+     * Returns 0 on parse failure (missing/invalid config never forces an update). Req 5.5
+     */
+    private fun parseVersionCode(value: String): Int {
+        if (value.isBlank()) return 0
+        val intPart = value.trim().substringBefore(".")
+        return intPart.toIntOrNull() ?: run {
+            Log.w(TAG, "Invalid min_android_version '$value' — could not parse versionCode, treating as no update required")
             0
         }
     }

@@ -45,7 +45,9 @@ class ForceUpdateDialog : DialogFragment() {
     override fun onResume() {
         super.onResume()
         // Req 2.3: block back button
-        dialog?.setOnKeyListener { _, keyCode, _ -> keyCode == KeyEvent.KEYCODE_BACK }
+        dialog?.setOnKeyListener { _, keyCode, _ -> keyCode == KeyEvent.KEYCODE_BACK
+
+        }
     }
 
     /** Opens Play Store; falls back to browser if not installed. Req 2.4 */
@@ -61,5 +63,6 @@ class ForceUpdateDialog : DialogFragment() {
                 data = Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
             })
         }
+        activity?.finishAffinity()
     }
 }
