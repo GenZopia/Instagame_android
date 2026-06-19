@@ -16,10 +16,10 @@ import androidx.fragment.app.DialogFragment
 class ForceUpdateDialog : DialogFragment() {
 
     companion object {
-        const val TAG = "ForceUpdateDialog"
+        @JvmField val TAG = "ForceUpdateDialog"
         private const val ARG_MIN_VERSION = "min_version"
 
-        fun newInstance(minVersion: String): ForceUpdateDialog =
+        @JvmStatic fun newInstance(minVersion: String): ForceUpdateDialog =
             ForceUpdateDialog().apply {
                 arguments = Bundle().apply { putString(ARG_MIN_VERSION, minVersion) }
             }
