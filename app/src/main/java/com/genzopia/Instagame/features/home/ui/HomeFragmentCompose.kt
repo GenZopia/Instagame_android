@@ -55,14 +55,6 @@ class HomeFragmentCompose : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // Show smooth update dialog if flagged by SplashActivity
-        val prefs = requireContext().getSharedPreferences("update_prefs", android.content.Context.MODE_PRIVATE)
-        if (prefs.getBoolean("pending_smooth_update", false)) {
-            prefs.edit().putBoolean("pending_smooth_update", false).apply()
-            val minVersion = prefs.getString("smooth_min_version", "") ?: ""
-            com.genzopia.Instagame.SmoothUpdateDialog.newInstance(minVersion)
-                .show(parentFragmentManager, com.genzopia.Instagame.SmoothUpdateDialog.TAG)
-        }
         // Check for pending game deep link
         val gameId = com.genzopia.Instagame.utils.GameNavigationManager.getInstance()
             .consumePendingGameId()

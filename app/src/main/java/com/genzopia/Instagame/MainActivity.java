@@ -247,8 +247,16 @@ public class MainActivity extends BaseActivity {
         super.onResume();
         isAppInForeground = true;
         Log.d(TAG, "App resumed - videos should resume");
-        // Broadcast resume event to fragments
         sendBroadcast(new Intent("com.genzopia.Instagame.ACTION_RESUME_VIDEOS"));
+
+        // Show smooth update dialog if flagged by SplashActivity (once every 5 opens)
+        android.content.SharedPreferences prefs = getSharedPreferences("update_prefs", MODE_PRIVATE);
+        if (prefs.getBoolean("pending_smooth_update", false)) {
+            prefs.edit().putBoolean("pending_smooth_update", false).apply();
+            String minVersion = prefs.getString("smooth_min_version", "");
+            SmoothUpdateDialog.newInstance(minVersion != null ? minVersion : "")
+                    .show(getSupportFragmentManager(), SmoothUpdateDialog.TAG);
+        }
     }
     
     public static boolean isAppInForeground() {
