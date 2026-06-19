@@ -20,7 +20,7 @@ class RemoteConfigManager {
         private const val TAG = "RemoteConfigManager"
         private const val KEY_MIN_ANDROID_VERSION = "min_android_version"
         private const val KEY_FORCE_UPDATE_ENABLED = "force_update_enabled"
-        private const val CACHE_EXPIRATION_SECONDS = 3600L // 1 hour
+        private const val CACHE_EXPIRATION_SECONDS = 60L // 1 hour
 
         /** Default minimum version matches current build — no forced update by default. */
         private val DEFAULTS = mapOf(
