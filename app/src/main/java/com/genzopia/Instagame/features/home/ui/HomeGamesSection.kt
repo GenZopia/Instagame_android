@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Size
 import com.genzopia.Instagame.channel_view.ChannelActivity
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
 
@@ -402,6 +403,7 @@ private fun GameCard(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(game.imageUrl.ifEmpty { null })
+                        .size(Size.ORIGINAL)
                         .crossfade(true)
                         .build(),
                     contentDescription = game.gameName,
@@ -517,6 +519,7 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
                         model = remember(game.imageUrl) {
                             ImageRequest.Builder(context)
                                 .data(game.imageUrl.ifEmpty { null })
+                                .size(Size.ORIGINAL)
                                 .crossfade(true)
                                 .build()
                         },
