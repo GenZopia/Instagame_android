@@ -661,7 +661,7 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                     .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Share button
+                // Share button — fixed square, big icon inside
                 OutlinedButton(
                     onClick = {
                         val shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/${game.gameId}"
@@ -671,25 +671,24 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                         }
                         context.startActivity(Intent.createChooser(shareIntent, "Share game via"))
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp),
+                    modifier = Modifier.size(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
-                    border = BorderStroke(1.5.dp, Orange)
+                    border = BorderStroke(1.5.dp, Orange),
+                    contentPadding = PaddingValues(0.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Share,
                         contentDescription = "Share",
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
-                // Play Now button
+                // Play Now button — fills remaining space
                 Button(
                     onClick = { launchGame() },
                     modifier = Modifier
-                        .weight(2f)
+                        .weight(1f)
                         .height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                     shape = RoundedCornerShape(14.dp)
