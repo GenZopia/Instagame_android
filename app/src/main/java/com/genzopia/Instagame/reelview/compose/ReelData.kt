@@ -15,6 +15,7 @@ data class ReelData(
     val developerPhotoUrl: String? = null,
     val gameId: String = "",
     val gameName: String = "",
+    val gameImageUrl: String = "",
     val isLiked: Boolean = false,
     val isFollowing: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()

@@ -897,7 +897,7 @@ fun ReelOverlay(
                     gameId = reel.gameId,
                     gameName = reel.gameName.ifEmpty { reel.title },
                     description = reel.description,
-                    imageUrl = "",
+                    imageUrl = reel.gameImageUrl,
                     developerId = reel.developerId,
                     developerName = reel.developerName,
                     developerPhotoUrl = reel.developerPhotoUrl ?: ""

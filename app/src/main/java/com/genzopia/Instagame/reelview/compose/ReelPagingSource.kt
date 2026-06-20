@@ -208,11 +208,11 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             Pair("Unknown", null)
         }
         
-        // Fetch game name if gameId exists
-        val gameName = if (gameId.isNotEmpty()) {
-            fetchGameName(gameId)
+        // Fetch game name and image if gameId exists
+        val (gameName, gameImageUrl) = if (gameId.isNotEmpty()) {
+            fetchGameInfo(gameId)
         } else {
-            ""
+            Pair("", "")
         }
         
         // Check if current user is following this developer
@@ -235,6 +235,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
             developerPhotoUrl = developerPhotoUrl,
             gameId = gameId,
             gameName = gameName,
+            gameImageUrl = gameImageUrl,
             isFollowing = isFollowing,
             isLiked = isLiked
         )
@@ -260,18 +261,27 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
         }
     }
     
-    private suspend fun fetchGameName(gameId: String): String {
+    private suspend fun fetchGameInfo(gameId: String): Pair<String, String> {
         return try {
             val gameSnapshot = database.reference.child("games").child(gameId).get().await()
-            val gameName = gameSnapshot.child("name").getValue(String::class.java) 
-                ?: gameSnapshot.child("game_name").getValue(String::class.java)
-                ?: ""
-            
-            Log.d(TAG, "Fetched game name for $gameId: $gameName")
-            gameName
+            val gameName = gameSnapshot.child("game_name").getValue(String::class.java)
+                ?: gameSnapshot.child("name").getValue(String::class.java) ?: ""
+            val photoId = gameSnapshot.child("photo_id").getValue(String::class.java) ?: ""
+            val imageUrl = if (photoId.isNotEmpty()) {
+                try {
+                    val photoSnap = database.reference.child("photos").child(photoId).get().await()
+                    val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
+                        ?: photoSnap.child("file_name").getValue(String::class.java)
+                            ?.substringAfterLast('.', "jpg") ?: "jpg"
+                    withContext(Dispatchers.IO) {
+                        com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: ""
+                    }
+                } catch (e: Exception) { "" }
+            } else ""
+            Pair(gameName, imageUrl)
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching game name for $gameId", e)
-            ""
+            Log.e(TAG, "Error fetching game info for $gameId", e)
+            Pair("", "")
         }
     }
     
