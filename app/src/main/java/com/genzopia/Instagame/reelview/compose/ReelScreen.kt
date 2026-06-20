@@ -926,7 +926,7 @@ fun ReelOverlay(
                                                         description.ifEmpty { reel.description }, imageUrl,
                                                         reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
                                                     )
-                                                    cont.resume(Unit)
+                                                    cont.resume(Unit) {}
                                                 }
                                             }
                                             override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
@@ -934,7 +934,7 @@ fun ReelOverlay(
                                                     reel.gameId, reel.gameName.ifEmpty { reel.title }, reel.description, "",
                                                     reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
                                                 )
-                                                cont.resume(Unit)
+                                                cont.resume(Unit) {}
                                             }
                                         })
                                 } else {
@@ -943,7 +943,7 @@ fun ReelOverlay(
                                         description.ifEmpty { reel.description }, "",
                                         reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
                                     )
-                                    cont.resume(Unit)
+                                    cont.resume(Unit) {}
                                 }
                             }
                             override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
@@ -951,7 +951,7 @@ fun ReelOverlay(
                                     reel.gameId, reel.gameName.ifEmpty { reel.title }, reel.description, "",
                                     reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
                                 )
-                                cont.resume(Unit)
+                                cont.resume(Unit) {}
                             }
                         })
                 }
