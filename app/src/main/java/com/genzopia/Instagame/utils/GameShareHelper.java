@@ -17,7 +17,7 @@ public class GameShareHelper {
      * @param gameName The name of the game
      */
     public static void shareGame(Context context, String gameId, String gameName) {
-        String shareText = DeepLinkGenerator.generateGameShareText(gameId, gameName);
+        String shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/" + gameId;
         
         Intent shareIntent = new Intent(Intent.ACTION_SEND);
         shareIntent.setType("text/plain");

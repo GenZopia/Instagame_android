@@ -23,9 +23,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -468,138 +470,224 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
     val textColor = if (isDark) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
     val subColor = if (isDark) Color(0xFF9E9E9E) else Color(0xFF757575)
     val rowBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFF5F5F5)
+    val dividerColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFFEEEEEE)
 
-    // Full screen bottom sheet state
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun launchGame() {
+        com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
+            gameId = game.gameId,
+            gameName = game.gameName,
+            source = "home_card"
+        )
+        val intent = Intent(context, Game_mode::class.java)
+        intent.putExtra("game_id", game.gameId)
+        intent.putExtra("game_name", game.gameName)
+        intent.putExtra("launch_source", "home_card")
+        context.startActivity(intent)
+        onDismiss(true)
+    }
 
     ModalBottomSheet(
         onDismissRequest = { onDismiss(false) },
         sheetState = sheetState,
         containerColor = sheetBg,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        dragHandle = null
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 36.dp)
-        ) {
-            Box(
+        Column(modifier = Modifier.fillMaxWidth()) {
+
+            // ── Scrollable content ──────────────────────────────────────────
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
             ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(game.imageUrl.ifEmpty { null })
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = game.gameName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                // Hero image — tapping opens the game
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
-                            )
-                        )
-                )
-                Text(
-                    text = game.gameName,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(14.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            if (game.description.isNotEmpty()) {
-                Text(game.description, fontSize = 14.sp, color = subColor, lineHeight = 21.sp)
-                Spacer(Modifier.height(16.dp))
-            }
-
-            if (game.developerId.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(rowBg)
-                        .clickable {
-                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailDeveloperTapped(
-                                gameId = game.gameId,
-                                gameName = game.gameName,
-                                developerId = game.developerId,
-                                developerName = game.developerName
-                            )
-                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackChannelViewed(
-                                developerId = game.developerId,
-                                developerName = game.developerName,
-                                source = "home_game_card"
-                            )
-                            val intent = Intent(context, ChannelActivity::class.java)
-                            intent.putExtra("developer_id", game.developerId)
-                            intent.putExtra("channel_source", "home_game_card")
-                            context.startActivity(intent)
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .height(220.dp)
+                        .clickable { launchGame() }
                 ) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
-                            .data(game.developerPhotoUrl.ifEmpty { null })
+                            .data(game.imageUrl.ifEmpty { null })
                             .crossfade(true)
                             .build(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF3A3A3A) else Color(0xFFDDDDDD)),
+                        contentDescription = game.gameName,
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Developer", fontSize = 10.sp, color = subColor, letterSpacing = 0.5.sp)
-                        Text(game.developerName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = textColor)
+                    // Top rounded handle + dark gradient for readability
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                                )
+                            )
+                    )
+                    // Tap-to-play hint
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tap to Play", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
-                    Text("View →", fontSize = 12.sp, color = Orange, fontWeight = FontWeight.SemiBold)
+                    // Game name at bottom of image
+                    Text(
+                        text = game.gameName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 14.dp, end = 16.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Drag handle at top
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp)
+                            .width(36.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = 0.5f))
+                    )
                 }
+
+                // Description
+                if (game.description.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        game.description,
+                        fontSize = 14.sp,
+                        color = subColor,
+                        lineHeight = 21.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
+
+                // Developer row
+                if (game.developerId.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(rowBg)
+                            .clickable {
+                                com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameDetailDeveloperTapped(
+                                    gameId = game.gameId,
+                                    gameName = game.gameName,
+                                    developerId = game.developerId,
+                                    developerName = game.developerName
+                                )
+                                com.genzopia.Instagame.analytics.InstagameAnalytics.trackChannelViewed(
+                                    developerId = game.developerId,
+                                    developerName = game.developerName,
+                                    source = "home_game_card"
+                                )
+                                val intent = Intent(context, ChannelActivity::class.java)
+                                intent.putExtra("developer_id", game.developerId)
+                                intent.putExtra("channel_source", "home_game_card")
+                                context.startActivity(intent)
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(game.developerPhotoUrl.ifEmpty { null })
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF3A3A3A) else Color(0xFFDDDDDD)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Developer", fontSize = 10.sp, color = subColor, letterSpacing = 0.5.sp)
+                            Text(game.developerName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = textColor)
+                        }
+                        Text("View →", fontSize = 12.sp, color = Orange, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
                 Spacer(Modifier.height(16.dp))
             }
 
-            Button(
-                onClick = {
-                    com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
-                        gameId = game.gameId,
-                        gameName = game.gameName,
-                        source = "home_card"
-                    )
-                    val intent = Intent(context, Game_mode::class.java)
-                    intent.putExtra("game_id", game.gameId)
-                    intent.putExtra("game_name", game.gameName)
-                    intent.putExtra("launch_source", "home_card")
-                    context.startActivity(intent)
-                    onDismiss(true)
-                },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                shape = RoundedCornerShape(14.dp)
+            // ── Sticky bottom action bar ────────────────────────────────────
+            HorizontalDivider(color = dividerColor, thickness = 1.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(sheetBg)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Play Now", fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 0.5.sp)
+                // Share button
+                OutlinedButton(
+                    onClick = {
+                        val shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/${game.gameId}"
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share game via"))
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                    border = BorderStroke(1.5.dp, Orange)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "Share",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Share", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                }
+
+                // Play Now button
+                Button(
+                    onClick = { launchGame() },
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Play Now", fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 0.5.sp)
+                }
             }
         }
     }
