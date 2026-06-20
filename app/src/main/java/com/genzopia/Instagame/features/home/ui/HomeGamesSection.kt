@@ -508,7 +508,9 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                         .height(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { launchGame() }
                 ) {
                     AsyncImage(
