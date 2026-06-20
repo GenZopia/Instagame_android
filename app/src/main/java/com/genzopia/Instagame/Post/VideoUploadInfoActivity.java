@@ -153,27 +153,42 @@ public class VideoUploadInfoActivity extends BaseActivity {
         gameAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, gameNames);
         gameDropdown.setAdapter(gameAdapter);
 
-        // Fetch game names and ids from Firebase
-        DatabaseReference gamesRef = FirebaseDatabase.getInstance().getReference("games");
-        gamesRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        // Fetch only games uploaded by the current user
+        devid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        DatabaseReference userGamesRef = FirebaseDatabase.getInstance().getReference("users").child(devid).child("games");
+        userGamesRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 gameNames.clear();
                 gameNameToId.clear();
+                int[] pending = {0};
                 for (DataSnapshot gameSnap : snapshot.getChildren()) {
-                    String name = gameSnap.child("game_name").getValue(String.class);
-                    String id = gameSnap.getKey();
-                    if (name != null && id != null) {
-                        gameNames.add(name);
-                        gameNameToId.put(name, id);
+                    Boolean val = gameSnap.getValue(Boolean.class);
+                    if (Boolean.TRUE.equals(val)) {
+                        pending[0]++;
+                        String gameId = gameSnap.getKey();
+                        FirebaseDatabase.getInstance().getReference("games").child(gameId)
+                            .addListenerForSingleValueEvent(new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot gs) {
+                                    String name = gs.child("game_name").getValue(String.class);
+                                    if (name != null) {
+                                        gameNames.add(name);
+                                        gameNameToId.put(name, gameId);
+                                    }
+                                    if (--pending[0] == 0) {
+                                        java.util.Collections.sort(gameNames);
+                                        gameAdapter.notifyDataSetChanged();
+                                    }
+                                }
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {
+                                    if (--pending[0] == 0) gameAdapter.notifyDataSetChanged();
+                                }
+                            });
                     }
                 }
-                // Sort games alphabetically for better UX
-                java.util.Collections.sort(gameNames);
-                
-                // Set the current user's ID as the developer ID
-                devid = FirebaseAuth.getInstance().getCurrentUser().getUid();
-                gameAdapter.notifyDataSetChanged();
+                if (pending[0] == 0) gameAdapter.notifyDataSetChanged();
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {}
