@@ -62,6 +62,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
