@@ -125,6 +125,24 @@ fun ReelScreen(
     // Track when the current reel became active (for watch_time_ms in reel_viewed)
     val reelViewStartMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    // Loop back to first reel when the user swipes past the last one
+    LaunchedEffect(pagerState.isScrollInProgress, reels.itemCount) {
+        if (!pagerState.isScrollInProgress
+            && reels.itemCount > 1
+            && pagerState.currentPage == reels.itemCount - 1
+            && pagerState.currentPageOffsetFraction == 0f
+        ) {
+            // Wait a moment on last reel, then if still on last page, allow wrap on next swipe
+            // We detect a completed scroll TO the last page and immediately re-enable going to 0
+            // by snapping to 0 only when they attempt to swipe further (targetPage would exceed bounds).
+            // Instead: animate scroll to 0 after a brief pause so the loop feels intentional.
+            snapshotFlow { pagerState.isScrollInProgress }
+                .filter { it } // wait for user to start swiping again
+                .first()
+            pagerState.animateScrollToPage(0)
+        }
+    }
+
     // Hand the tutorial a stable lambda it can call to animate to the next page.
     // Re-registers whenever pagerState or itemCount changes (e.g. after first load).
     LaunchedEffect(pagerState, reels.itemCount) {
