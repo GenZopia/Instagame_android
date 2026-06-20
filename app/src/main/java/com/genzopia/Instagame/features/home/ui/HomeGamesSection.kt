@@ -472,11 +472,13 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
     val rowBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFF5F5F5)
     val dividerColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFFEEEEEE)
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    // Snap to expanded immediately — skips the slide-up animation for instant open
-    LaunchedEffect(Unit) {
-        sheetState.snapTo(androidx.compose.material3.SheetValue.Expanded)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val sheetState = remember {
+        androidx.compose.material3.SheetState(
+            skipPartiallyExpanded = true,
+            density = density,
+            animationSpec = androidx.compose.animation.core.tween(durationMillis = 180)
+        )
     }
 
     fun launchGame() {
