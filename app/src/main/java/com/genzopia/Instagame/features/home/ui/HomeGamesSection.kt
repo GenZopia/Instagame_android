@@ -463,7 +463,7 @@ private fun GameCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -> Unit) {
+internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -> Unit) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val sheetBg = if (isDark) Color(0xFF1C1C1E) else Color.White

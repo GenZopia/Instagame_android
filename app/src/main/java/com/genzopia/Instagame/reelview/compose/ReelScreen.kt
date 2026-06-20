@@ -882,171 +882,63 @@ fun ReelOverlay(
         }
     }
 
-    // Game details bottom sheet
-    if (showDetailsSheet) {
-        ReelGameDetailsSheet(reel = reel, likeCount = likeCount, onDismiss = { showDetailsSheet = false })
-    }
-}
+    // Fetch game data from Firebase and show the same sheet as HomeFragment
+    var detailsGame by remember { mutableStateOf<com.genzopia.Instagame.features.home.ui.HomeGameItem?>(null) }
+    LaunchedEffect(showDetailsSheet) {
+        if (showDetailsSheet && detailsGame == null && reel.gameId.isNotEmpty()) {
+            val db = com.google.firebase.database.FirebaseDatabase.getInstance()
+            db.getReference("games").child(reel.gameId)
+                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                    override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
+                        val gameName = snap.child("game_name").getValue(String::class.java) ?: reel.gameName
+                        val description = snap.child("description").getValue(String::class.java) ?: ""
+                        val devId = snap.child("user_id").getValue(String::class.java) ?: reel.developerId
+                        val photoId = snap.child("photo_id").getValue(String::class.java) ?: ""
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ReelGameDetailsSheet(reel: ReelData, likeCount: Int, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val Orange = Color(0xFFFF6B35)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color(0xFF1C1C1E),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        dragHandle = null
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Scrollable body
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            ) {
-                // Game thumbnail header
-                if (reel.videoUrl != null || reel.gameId.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(reel.videoUrl)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
-                                    )
-                                )
-                        )
-                        // Drag handle
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 8.dp)
-                                .width(36.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color.White.copy(alpha = 0.5f))
-                        )
-                        Text(
-                            text = reel.gameName.ifEmpty { reel.title },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 14.dp, bottom = 12.dp, end = 14.dp)
-                        )
-                    }
-                }
-
-                // Like count pill
-                Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(50.dp))
-                        .background(Color(0xFF2A2A2A))
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("${formatCount(likeCount)} likes", color = Color(0xFFE0E0E0), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                // Description
-                if (reel.description.isNotEmpty()) {
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        reel.description,
-                        fontSize = 14.sp,
-                        color = Color(0xFF9E9E9E),
-                        lineHeight = 21.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(16.dp))
-            }
-
-            // Sticky bottom: Play button
-            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 1.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1C1C1E))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .navigationBarsPadding(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Share square
-                OutlinedButton(
-                    onClick = {
-                        val shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/${reel.gameId}"
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, shareText)
-                        }, "Share game via"))
-                    },
-                    modifier = Modifier.size(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
-                    border = BorderStroke(1.5.dp, Orange),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(24.dp))
-                }
-
-                Button(
-                    onClick = {
-                        if (reel.gameId.isNotEmpty()) {
-                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
-                                gameId = reel.gameId,
-                                gameName = reel.gameName,
-                                source = "reel_details_sheet"
+                        fun buildItem(imageUrl: String, devName: String, devPhoto: String) {
+                            detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
+                                reel.gameId, gameName, description, imageUrl, devId, devName, devPhoto
                             )
-                            val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
-                            intent.putExtra("game_id", reel.gameId)
-                            intent.putExtra("game_name", reel.gameName)
-                            intent.putExtra("launch_source", "reel_details_sheet")
-                            context.startActivity(intent)
                         }
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Play Now", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
-            }
+                        fun fetchDev(imageUrl: String) {
+                            if (devId.isEmpty()) { buildItem(imageUrl, reel.developerName, reel.developerPhotoUrl ?: ""); return }
+                            db.getReference("users").child(devId)
+                                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                    override fun onDataChange(u: com.google.firebase.database.DataSnapshot) {
+                                        val devName = u.child("full_name").getValue(String::class.java)
+                                            ?: u.child("username").getValue(String::class.java) ?: reel.developerName
+                                        val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
+                                            u.child("profile_photo_url").getValue(String::class.java) ?: ""
+                                        ) ?: (reel.developerPhotoUrl ?: "")
+                                        buildItem(imageUrl, devName, devPhoto)
+                                    }
+                                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
+                                        buildItem(imageUrl, reel.developerName, reel.developerPhotoUrl ?: "")
+                                    }
+                                })
+                        }
+                        if (photoId.isNotEmpty()) {
+                            db.getReference("photos").child(photoId)
+                                .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+                                    override fun onDataChange(photoSnap: com.google.firebase.database.DataSnapshot) {
+                                        val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
+                                            ?: photoSnap.child("file_name").getValue(String::class.java)
+                                                ?.substringAfterLast('.', "jpg") ?: "jpg"
+                                        Thread { fetchDev(com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: "") }.start()
+                                    }
+                                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { fetchDev("") }
+                                })
+                        } else fetchDev("")
+                    }
+                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { showDetailsSheet = false }
+                })
         }
+    }
+    detailsGame?.let { game ->
+        com.genzopia.Instagame.features.home.ui.GameDetailSheet(
+            game = game,
+            onDismiss = { showDetailsSheet = false; detailsGame = null }
+        )
     }
 }
 
