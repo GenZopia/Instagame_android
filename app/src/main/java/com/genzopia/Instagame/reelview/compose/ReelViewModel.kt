@@ -154,6 +154,7 @@ class ReelViewModel : ViewModel() {
         if (preloaded != null && preloaded.playbackState != Player.STATE_IDLE) {
             com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
             com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            preloaded.repeatMode = ExoPlayer.REPEAT_MODE_ONE
             preloaded.volume = 0f
             preloaded.playWhenReady = false
             attachErrorRecovery(preloaded, videoId, videoUrl)

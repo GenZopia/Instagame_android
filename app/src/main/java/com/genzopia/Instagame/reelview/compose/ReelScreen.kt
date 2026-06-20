@@ -415,6 +415,11 @@ fun ReelItem(
                     androidx.media3.common.Player.STATE_IDLE,
                     androidx.media3.common.Player.STATE_ENDED -> {
                         isLoading = false
+                        // Safety net: if repeat mode somehow didn't fire, loop manually
+                        if (state == androidx.media3.common.Player.STATE_ENDED && isActive) {
+                            player.seekTo(0)
+                            player.playWhenReady = true
+                        }
                     }
                 }
             }
