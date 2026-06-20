@@ -8,8 +8,10 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -713,25 +715,23 @@ fun ReelOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    // The reel Box bottom edge sits exactly at the top of the BottomNavigationView.
-    // MainActivity already handles system nav bar insets on the bottom nav,
-    // so no extra padding is needed here.
+    var showDetailsSheet by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
-        // Seek bar — flush to the very bottom of the reel area
         if (player != null) {
             GlowingSeekBar(
                 player = player,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+
+        // Bottom-left: avatar + name + follow + title/desc
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                .fillMaxWidth(0.7f)
+                .padding(start = 16.dp, end = 72.dp, bottom = 16.dp)
         ) {
+            // Avatar + name + follow in one row — follow button no longer fights for space
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -748,17 +748,12 @@ fun ReelOverlay(
                             source = "reel_profile_photo"
                         )
                         try {
-                            val intent = Intent(
-                                context,
-                                com.genzopia.Instagame.channel_view.ChannelActivity::class.java
-                            )
+                            val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
                             intent.putExtra("developer_id", reel.developerId)
                             intent.putExtra("user_id", reel.developerId)
                             context.startActivity(intent)
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(
-                                context, "Error opening channel", android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                            android.widget.Toast.makeText(context, "Error opening channel", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
             ) {
@@ -771,40 +766,36 @@ fun ReelOverlay(
                         .build(),
                     contentDescription = "Profile",
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.Gray),
                     contentScale = ContentScale.Crop
                 )
-
                 Spacer(modifier = Modifier.width(8.dp))
-
                 Text(
                     text = reel.developerName.ifEmpty { "User" },
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Button(
-                    onClick = onFollowClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isFollowing) Color.Red else Color.Transparent
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isFollowing) Color.Red else Color.White
-                    ),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
+                Spacer(modifier = Modifier.width(10.dp))
+                // Follow button — intrinsic size, never truncated
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Transparent)
+                        .border(1.dp, if (isFollowing) Color.Red else Color.White, RoundedCornerShape(4.dp))
+                        .clickable(onClick = onFollowClick)
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = if (isFollowing) "Following" else "Follow",
-                        color = Color.White,
-                        fontSize = 14.sp
+                        color = if (isFollowing) Color.Red else Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -817,7 +808,6 @@ fun ReelOverlay(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-
             if (reel.description.isNotEmpty()) {
                 Text(
                     text = reel.description,
@@ -828,7 +818,6 @@ fun ReelOverlay(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-
             if (reel.gameName.isNotEmpty()) {
                 Text(
                     text = "@${reel.gameName}",
@@ -839,6 +828,7 @@ fun ReelOverlay(
             }
         }
 
+        // Bottom-right: action buttons
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -847,24 +837,20 @@ fun ReelOverlay(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             ActionButton(
-                icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                icon = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                 text = formatCount(likeCount),
                 tint = if (isLiked) Color.Red else Color.White,
                 onClick = onLikeClick
             )
-
             ActionButton(
-                icon = Icons.Outlined.Star,
+                icon = Icons.Outlined.ChatBubbleOutline,
                 text = "Comment",
                 onClick = onCommentClick
             )
-
             ActionButton(
                 icon = Icons.Filled.Share,
                 text = "Share",
                 onClick = {
-                    // Deep link: opens the app directly if installed,
-                    // falls back to Play Store if not installed
                     val gameLink = if (reel.gameId.isNotBlank())
                         "https://www.genzopia.com/games/${reel.gameId}"
                     else
@@ -876,26 +862,190 @@ fun ReelOverlay(
                         type = "text/plain"
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share video"))
-
-                    // Increment share count in Firebase
                     com.google.firebase.database.FirebaseDatabase.getInstance().reference
                         .child("videos").child(reel.videoId).child("share_count")
                         .runTransaction(object : com.google.firebase.database.Transaction.Handler {
-                            override fun doTransaction(
-                                currentData: com.google.firebase.database.MutableData
-                            ): com.google.firebase.database.Transaction.Result {
-                                val count = currentData.getValue(Int::class.java) ?: 0
-                                currentData.value = count + 1
+                            override fun doTransaction(currentData: com.google.firebase.database.MutableData): com.google.firebase.database.Transaction.Result {
+                                currentData.value = (currentData.getValue(Int::class.java) ?: 0) + 1
                                 return com.google.firebase.database.Transaction.success(currentData)
                             }
-                            override fun onComplete(
-                                error: com.google.firebase.database.DatabaseError?,
-                                committed: Boolean,
-                                snapshot: com.google.firebase.database.DataSnapshot?
-                            ) { /* no-op */ }
+                            override fun onComplete(error: com.google.firebase.database.DatabaseError?, committed: Boolean, snapshot: com.google.firebase.database.DataSnapshot?) {}
                         })
                 }
             )
+            // Details button
+            ActionButton(
+                icon = Icons.Outlined.Info,
+                text = "Details",
+                onClick = { showDetailsSheet = true }
+            )
+        }
+    }
+
+    // Game details bottom sheet
+    if (showDetailsSheet) {
+        ReelGameDetailsSheet(reel = reel, likeCount = likeCount, onDismiss = { showDetailsSheet = false })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReelGameDetailsSheet(reel: ReelData, likeCount: Int, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val Orange = Color(0xFFFF6B35)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1C1C1E),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        dragHandle = null
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Scrollable body
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
+                // Game thumbnail header
+                if (reel.videoUrl != null || reel.gameId.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(reel.videoUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                                    )
+                                )
+                        )
+                        // Drag handle
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.5f))
+                        )
+                        Text(
+                            text = reel.gameName.ifEmpty { reel.title },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 14.dp, bottom = 12.dp, end = 14.dp)
+                        )
+                    }
+                }
+
+                // Like count pill
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color(0xFF2A2A2A))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("${formatCount(likeCount)} likes", color = Color(0xFFE0E0E0), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                // Description
+                if (reel.description.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        reel.description,
+                        fontSize = 14.sp,
+                        color = Color(0xFF9E9E9E),
+                        lineHeight = 21.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // Sticky bottom: Play button
+            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 1.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1C1C1E))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Share square
+                OutlinedButton(
+                    onClick = {
+                        val shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/${reel.gameId}"
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }, "Share game via"))
+                    },
+                    modifier = Modifier.size(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                    border = BorderStroke(1.5.dp, Orange),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(24.dp))
+                }
+
+                Button(
+                    onClick = {
+                        if (reel.gameId.isNotEmpty()) {
+                            com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
+                                gameId = reel.gameId,
+                                gameName = reel.gameName,
+                                source = "reel_details_sheet"
+                            )
+                            val intent = Intent(context, com.genzopia.Instagame.webgl_gameloading.Game_mode::class.java)
+                            intent.putExtra("game_id", reel.gameId)
+                            intent.putExtra("game_name", reel.gameName)
+                            intent.putExtra("launch_source", "reel_details_sheet")
+                            context.startActivity(intent)
+                        }
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Play Now", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
         }
     }
 }
