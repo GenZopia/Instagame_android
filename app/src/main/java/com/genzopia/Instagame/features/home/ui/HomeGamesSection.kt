@@ -514,10 +514,12 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
                         .clickable { launchGame() }
                 ) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(game.imageUrl.ifEmpty { null })
-                            .crossfade(true)
-                            .build(),
+                        model = remember(game.imageUrl) {
+                            ImageRequest.Builder(context)
+                                .data(game.imageUrl.ifEmpty { null })
+                                .crossfade(true)
+                                .build()
+                        },
                         contentDescription = game.gameName,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

@@ -888,30 +888,29 @@ fun ReelOverlay(
         mutableStateOf<com.genzopia.Instagame.features.home.ui.HomeGameItem?>(null)
     }
 
-    // Build HomeGameItem — fetch image first so sheet opens with image already loaded
+    // Show sheet immediately with known data, fetch image in background if missing
     LaunchedEffect(showDetailsSheet) {
         if (showDetailsSheet && reel.gameId.isNotEmpty() && detailsGame == null) {
-            // If image already resolved at reel-load time, use it immediately
-            if (reel.gameImageUrl.isNotEmpty()) {
-                detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                    gameId = reel.gameId,
-                    gameName = reel.gameName.ifEmpty { reel.title },
-                    description = reel.description,
-                    imageUrl = reel.gameImageUrl,
-                    developerId = reel.developerId,
-                    developerName = reel.developerName,
-                    developerPhotoUrl = reel.developerPhotoUrl ?: ""
-                )
-            } else {
-                // Prefetch path: gameImageUrl wasn't resolved at load time — fetch now
+            // Always show instantly
+            detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
+                gameId = reel.gameId,
+                gameName = reel.gameName.ifEmpty { reel.title },
+                description = reel.description,
+                imageUrl = reel.gameImageUrl,
+                developerId = reel.developerId,
+                developerName = reel.developerName,
+                developerPhotoUrl = reel.developerPhotoUrl ?: ""
+            )
+            // If image not yet resolved, fetch it in background and update
+            if (reel.gameImageUrl.isEmpty()) {
                 val db = com.google.firebase.database.FirebaseDatabase.getInstance()
                 kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
                     db.getReference("games").child(reel.gameId)
                         .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                             override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
+                                val photoId = snap.child("photo_id").getValue(String::class.java) ?: ""
                                 val gameName = snap.child("game_name").getValue(String::class.java) ?: reel.gameName
                                 val description = snap.child("description").getValue(String::class.java) ?: reel.description
-                                val photoId = snap.child("photo_id").getValue(String::class.java) ?: ""
                                 if (photoId.isNotEmpty()) {
                                     db.getReference("photos").child(photoId)
                                         .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
@@ -921,38 +920,15 @@ fun ReelOverlay(
                                                         ?.substringAfterLast('.', "jpg") ?: "jpg"
                                                 kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                                     val imageUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: ""
-                                                    detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                                                        reel.gameId, gameName.ifEmpty { reel.gameName.ifEmpty { reel.title } },
-                                                        description.ifEmpty { reel.description }, imageUrl,
-                                                        reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
-                                                    )
+                                                    detailsGame = detailsGame?.copy(imageUrl = imageUrl, gameName = gameName, description = description)
                                                     cont.resume(Unit) {}
                                                 }
                                             }
-                                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
-                                                detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                                                    reel.gameId, reel.gameName.ifEmpty { reel.title }, reel.description, "",
-                                                    reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
-                                                )
-                                                cont.resume(Unit) {}
-                                            }
+                                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { cont.resume(Unit) {} }
                                         })
-                                } else {
-                                    detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                                        reel.gameId, gameName.ifEmpty { reel.gameName.ifEmpty { reel.title } },
-                                        description.ifEmpty { reel.description }, "",
-                                        reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
-                                    )
-                                    cont.resume(Unit) {}
-                                }
+                                } else { cont.resume(Unit) {} }
                             }
-                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
-                                detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
-                                    reel.gameId, reel.gameName.ifEmpty { reel.title }, reel.description, "",
-                                    reel.developerId, reel.developerName, reel.developerPhotoUrl ?: ""
-                                )
-                                cont.resume(Unit) {}
-                            }
+                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { cont.resume(Unit) {} }
                         })
                 }
             }
