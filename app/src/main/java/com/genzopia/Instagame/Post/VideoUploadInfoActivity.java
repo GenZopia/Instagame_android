@@ -65,6 +65,7 @@ public class VideoUploadInfoActivity extends BaseActivity {
     // Add mapping for game name to game id
     private java.util.Map<String, String> gameNameToId = new java.util.HashMap<>();
     private String devid="";
+    private boolean gamesLoading = true;
     
     // TextInputLayout references for error display
     private TextInputLayout titleInputLayout;
@@ -178,17 +179,24 @@ public class VideoUploadInfoActivity extends BaseActivity {
                                     }
                                     if (--pending[0] == 0) {
                                         java.util.Collections.sort(gameNames);
+                                        gamesLoading = false;
                                         gameAdapter.notifyDataSetChanged();
                                     }
                                 }
                                 @Override
                                 public void onCancelled(@NonNull DatabaseError error) {
-                                    if (--pending[0] == 0) gameAdapter.notifyDataSetChanged();
+                                    if (--pending[0] == 0) {
+                                        gamesLoading = false;
+                                        gameAdapter.notifyDataSetChanged();
+                                    }
                                 }
                             });
                     }
                 }
-                if (pending[0] == 0) gameAdapter.notifyDataSetChanged();
+                if (pending[0] == 0) {
+                    gamesLoading = false;
+                    gameAdapter.notifyDataSetChanged();
+                }
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {}
@@ -325,11 +333,46 @@ public class VideoUploadInfoActivity extends BaseActivity {
         android.widget.EditText searchEditText = dialogView.findViewById(R.id.searchEditText);
         android.widget.ListView gameListView = dialogView.findViewById(R.id.gameListView);
         TextView noGamesText = dialogView.findViewById(R.id.noGamesText);
-        
+        android.widget.ProgressBar loadingBar = dialogView.findViewById(R.id.gamesLoadingBar);
+
+        // Show loading state if games haven't loaded yet
+        if (gamesLoading) {
+            loadingBar.setVisibility(android.view.View.VISIBLE);
+            gameListView.setVisibility(android.view.View.GONE);
+            noGamesText.setVisibility(android.view.View.GONE);
+        } else if (gameNames.isEmpty()) {
+            loadingBar.setVisibility(android.view.View.GONE);
+            gameListView.setVisibility(android.view.View.GONE);
+            noGamesText.setText("No games found");
+            noGamesText.setVisibility(android.view.View.VISIBLE);
+        } else {
+            loadingBar.setVisibility(android.view.View.GONE);
+            gameListView.setVisibility(android.view.View.VISIBLE);
+            noGamesText.setVisibility(android.view.View.GONE);
+        }
+
         // Create adapter for the list
         ArrayAdapter<String> searchAdapter = new ArrayAdapter<>(this, 
             android.R.layout.simple_list_item_1, gameNames);
         gameListView.setAdapter(searchAdapter);
+
+        // If still loading, update UI once loading completes
+        if (gamesLoading) {
+            gameAdapter.registerDataSetObserver(new android.database.DataSetObserver() {
+                @Override
+                public void onChanged() {
+                    gameAdapter.unregisterDataSetObserver(this);
+                    loadingBar.setVisibility(android.view.View.GONE);
+                    searchAdapter.notifyDataSetChanged();
+                    if (gameNames.isEmpty()) {
+                        noGamesText.setText("No games found");
+                        noGamesText.setVisibility(android.view.View.VISIBLE);
+                    } else {
+                        gameListView.setVisibility(android.view.View.VISIBLE);
+                    }
+                }
+            });
+        }
         
         // Setup search functionality
         searchEditText.addTextChangedListener(new android.text.TextWatcher() {
@@ -357,6 +400,7 @@ public class VideoUploadInfoActivity extends BaseActivity {
                 
                 // Show/hide no results text
                 if (filteredGames.isEmpty() && !query.isEmpty()) {
+                    noGamesText.setText("No games found");
                     noGamesText.setVisibility(android.view.View.VISIBLE);
                     gameListView.setVisibility(android.view.View.GONE);
                 } else {

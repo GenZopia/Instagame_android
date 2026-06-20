@@ -23,6 +23,15 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Loading indicator -->
+    <ProgressBar
+        android:id="@+id/gamesLoadingBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:padding="32dp"
+        android:visibility="gone" />
+
     <!-- No Results Text -->
     <TextView
         android:id="@+id/noGamesText"
