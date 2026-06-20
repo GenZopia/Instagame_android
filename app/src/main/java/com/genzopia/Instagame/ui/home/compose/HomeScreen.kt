@@ -1,6 +1,6 @@
 package com.genzopia.Instagame.ui.home.compose
 
-import HomeViewModel
+import com.genzopia.Instagame.features.home.ui.HomeViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*

@@ -1,6 +1,6 @@
 package com.genzopia.Instagame.ui.home
 
-import HomeViewModel
+import com.genzopia.Instagame.features.home.ui.HomeViewModel
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build

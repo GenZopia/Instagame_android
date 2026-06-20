@@ -61,6 +61,7 @@ import com.google.firebase.database.Transaction
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PageSize
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
