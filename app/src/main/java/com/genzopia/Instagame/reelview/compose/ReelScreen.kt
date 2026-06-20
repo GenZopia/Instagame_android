@@ -882,26 +882,44 @@ fun ReelOverlay(
         }
     }
 
-    // Fetch game data from Firebase and show the same sheet as HomeFragment
-    var detailsGame by remember { mutableStateOf<com.genzopia.Instagame.features.home.ui.HomeGameItem?>(null) }
+    // Show sheet immediately with data already in ReelData (instant open).
+    // Firebase fetch runs in background to fill in the game image URL.
+    var detailsGame by remember {
+        mutableStateOf<com.genzopia.Instagame.features.home.ui.HomeGameItem?>(null)
+    }
+
+    // Build stub immediately when sheet is triggered — no Firebase wait
     LaunchedEffect(showDetailsSheet) {
-        if (showDetailsSheet && detailsGame == null && reel.gameId.isNotEmpty()) {
+        if (showDetailsSheet && reel.gameId.isNotEmpty()) {
+            // Stub: all reel data we already have, imageUrl empty for now
+            if (detailsGame == null) {
+                detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
+                    gameId = reel.gameId,
+                    gameName = reel.gameName.ifEmpty { reel.title },
+                    description = reel.description,
+                    imageUrl = "",
+                    developerId = reel.developerId,
+                    developerName = reel.developerName,
+                    developerPhotoUrl = reel.developerPhotoUrl ?: ""
+                )
+            }
+            // Background: fetch real game image from Firebase and update
             val db = com.google.firebase.database.FirebaseDatabase.getInstance()
             db.getReference("games").child(reel.gameId)
                 .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                     override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
                         val gameName = snap.child("game_name").getValue(String::class.java) ?: reel.gameName
-                        val description = snap.child("description").getValue(String::class.java) ?: ""
+                        val description = snap.child("description").getValue(String::class.java) ?: reel.description
                         val devId = snap.child("user_id").getValue(String::class.java) ?: reel.developerId
                         val photoId = snap.child("photo_id").getValue(String::class.java) ?: ""
 
-                        fun buildItem(imageUrl: String, devName: String, devPhoto: String) {
+                        fun update(imageUrl: String, devName: String, devPhoto: String) {
                             detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
                                 reel.gameId, gameName, description, imageUrl, devId, devName, devPhoto
                             )
                         }
                         fun fetchDev(imageUrl: String) {
-                            if (devId.isEmpty()) { buildItem(imageUrl, reel.developerName, reel.developerPhotoUrl ?: ""); return }
+                            if (devId.isEmpty()) { update(imageUrl, reel.developerName, reel.developerPhotoUrl ?: ""); return }
                             db.getReference("users").child(devId)
                                 .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                                     override fun onDataChange(u: com.google.firebase.database.DataSnapshot) {
@@ -910,10 +928,10 @@ fun ReelOverlay(
                                         val devPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
                                             u.child("profile_photo_url").getValue(String::class.java) ?: ""
                                         ) ?: (reel.developerPhotoUrl ?: "")
-                                        buildItem(imageUrl, devName, devPhoto)
+                                        update(imageUrl, devName, devPhoto)
                                     }
                                     override fun onCancelled(e: com.google.firebase.database.DatabaseError) {
-                                        buildItem(imageUrl, reel.developerName, reel.developerPhotoUrl ?: "")
+                                        update(imageUrl, reel.developerName, reel.developerPhotoUrl ?: "")
                                     }
                                 })
                         }
@@ -930,10 +948,11 @@ fun ReelOverlay(
                                 })
                         } else fetchDev("")
                     }
-                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) { showDetailsSheet = false }
+                    override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
                 })
         }
     }
+
     detailsGame?.let { game ->
         com.genzopia.Instagame.features.home.ui.GameDetailSheet(
             game = game,

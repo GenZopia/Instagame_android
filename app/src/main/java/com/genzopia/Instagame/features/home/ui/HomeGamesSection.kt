@@ -474,6 +474,11 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // Snap to expanded immediately — skips the slide-up animation for instant open
+    LaunchedEffect(Unit) {
+        sheetState.snapTo(androidx.compose.material3.SheetValue.Expanded)
+    }
+
     fun launchGame() {
         com.genzopia.Instagame.analytics.InstagameAnalytics.trackGameLaunchInitiated(
             gameId = game.gameId,
