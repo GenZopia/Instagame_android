@@ -576,13 +576,25 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
 
                 // Description
                 if (game.description.isNotEmpty()) {
+                    var expanded by remember { mutableStateOf(false) }
                     Spacer(Modifier.height(16.dp))
                     Text(
                         game.description,
                         fontSize = 14.sp,
                         color = subColor,
                         lineHeight = 21.sp,
+                        maxLines = if (expanded) Int.MAX_VALUE else 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                    Text(
+                        text = if (expanded) "View less" else "View more",
+                        fontSize = 13.sp,
+                        color = Orange,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                            .clickable { expanded = !expanded }
                     )
                 }
 
@@ -671,8 +683,6 @@ private fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) ->
                         contentDescription = "Share",
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Share", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 }
 
                 // Play Now button
