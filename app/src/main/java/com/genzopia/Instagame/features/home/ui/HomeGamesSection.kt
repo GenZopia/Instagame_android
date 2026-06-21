@@ -51,6 +51,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Size
 import com.genzopia.Instagame.channel_view.ChannelActivity
+import com.genzopia.Instagame.utils.GameShareHelper
 import com.genzopia.Instagame.webgl_gameloading.Game_mode
 
 private val Orange = Color(0xFFFF6B35)
@@ -671,12 +672,12 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
                 // Share button — fixed square, big icon inside
                 OutlinedButton(
                     onClick = {
-                        val shareText = "Hey! Checkout this game 🎮\nhttps://www.genzopia.com/games/${game.gameId}"
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, shareText)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share game via"))
+                        GameShareHelper.shareGame(
+                            context,
+                            game.gameId.ifBlank { "" },
+                            game.gameName,
+                            game.imageUrl
+                        )
                     },
                     modifier = Modifier.size(52.dp),
                     shape = RoundedCornerShape(14.dp),
