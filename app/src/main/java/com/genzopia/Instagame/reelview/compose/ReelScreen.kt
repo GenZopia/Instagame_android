@@ -62,6 +62,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.verticalScroll
+import com.genzopia.Instagame.utils.GameShareHelper
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -877,17 +878,12 @@ fun ReelOverlay(
                 icon = Icons.Filled.Share,
                 text = "Share",
                 onClick = {
-                    val gameLink = if (reel.gameId.isNotBlank())
-                        "https://www.genzopia.com/games/${reel.gameId}"
-                    else
-                        "https://www.genzopia.com"
-                    val shareText = "Hey! Checkout this game 🎮\n$gameLink"
-                    val shareIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        putExtra(Intent.EXTRA_TEXT, shareText)
-                        type = "text/plain"
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share video"))
+                    GameShareHelper.shareGame(
+                        context,
+                        reel.gameId.ifBlank { "" },
+                        reel.gameName,
+                        reel.gameImageUrl
+                    )
                     com.google.firebase.database.FirebaseDatabase.getInstance().reference
                         .child("videos").child(reel.videoId).child("share_count")
                         .runTransaction(object : com.google.firebase.database.Transaction.Handler {

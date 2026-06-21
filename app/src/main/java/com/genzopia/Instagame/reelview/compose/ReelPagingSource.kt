@@ -341,7 +341,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
 
         return withContext(Dispatchers.IO) {
             try {
-                val R2_PUBLIC = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+                val R2_PUBLIC = "https://cdn.genzopia.com"
                 val basePath = resolveVideoBasePath(videoId)
                 val hlsDir = "${basePath}_hls"
 
@@ -413,7 +413,7 @@ class ReelPagingSource : PagingSource<String, ReelData>() {
     /** Build a direct R2 MP4 URL without signing */
     private fun fetchSignerUrl(videoId: String): String {
         val base = resolveVideoBasePath(videoId)
-        return "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/$base.mp4"
+        return "https://cdn.genzopia.com/$base.mp4"
     }
     
     /**

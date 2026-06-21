@@ -236,7 +236,7 @@ object DataPrefetchService {
     private suspend fun fetchSignedUrl(videoId: String): String? {
         signedUrlCache[videoId]?.let { return it }
 
-        val R2 = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+        val R2 = "https://cdn.genzopia.com"
         val base = resolveBasePath(videoId)
         val hlsDir = "${base}_hls"
 

@@ -426,7 +426,7 @@ public class VideoDetailActivity extends BaseActivity {
     private void setupVideoPlayer() {
         // Build direct R2 URL — no signing needed
         String basePath = resolveVideoBasePath(videoId);
-        String videoUrl = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/" + basePath + ".mp4";
+        String videoUrl = "https://cdn.genzopia.com/" + basePath + ".mp4";
         Log.d("VideoDetailActivity", "Loading video directly: " + videoUrl);
 
         MediaItem mediaItem = MediaItem.fromUri(videoUrl);

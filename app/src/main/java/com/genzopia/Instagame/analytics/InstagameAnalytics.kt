@@ -102,7 +102,7 @@ object InstagameAnalytics {
     private fun toPublicR2Url(url: String?): String {
         if (url.isNullOrBlank()) return ""
         val workerBase = "https://file-upload-worker.genzopia.workers.dev/?key="
-        val publicBase = "https://pub-22db73b8d33244d1a53831aed22cd78b.r2.dev/"
+        val publicBase = "https://cdn.genzopia.com/"
         val key = when {
             url.startsWith(workerBase) -> url.removePrefix(workerBase)
             else -> return url  // Google photo or other public URL — use as-is

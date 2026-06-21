@@ -41,7 +41,7 @@ object ProfilePhotoUtils {
 object PhotoUrlResolver {
 
     private const val TAG = "PhotoUrlResolver"
-    private const val R2_BASE = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+    private const val R2_BASE = "https://cdn.genzopia.com"
 
     /**
      * Builds the direct URL for a game/photo thumbnail from file-upload-worker.

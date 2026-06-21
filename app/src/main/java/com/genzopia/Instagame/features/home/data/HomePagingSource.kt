@@ -411,7 +411,7 @@ class HomePagingSource(
 
         return withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val R2_PUBLIC = "https://pub-0caba249d019456b9181ce1575ef825e.r2.dev"
+                val R2_PUBLIC = "https://cdn.genzopia.com"
                 val basePath = resolveVideoBasePath(videoId)
                 val hlsDir = "${basePath}_hls"
 
