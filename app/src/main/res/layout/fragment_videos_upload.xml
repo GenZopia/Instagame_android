@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="@color/background_primary_dark">
 
-    <!-- Empty state: tap to pick a video -->
+    <!-- PICK STATE -->
     <LinearLayout
         android:id="@+id/layout_pick_video"
         android:layout_width="0dp"
@@ -19,13 +19,14 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Dashed border tap area -->
         <FrameLayout
             android:id="@+id/tap_area"
             android:layout_width="match_parent"
-            android:layout_height="200dp"
+            android:layout_height="220dp"
             android:background="@drawable/bg_dashed_border"
-            android:foreground="?attr/selectableItemBackground">
+            android:foreground="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -35,20 +36,19 @@
                 android:gravity="center">
 
                 <ImageView
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
                     android:src="@drawable/ic_video_upload"
-                    android:contentDescription="@null"
-                    android:alpha="0.8" />
+                    android:contentDescription="@null" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/tap_to_select_video"
                     android:textColor="@color/white"
-                    android:textSize="16sp"
+                    android:textSize="17sp"
                     android:textStyle="bold"
-                    android:layout_marginTop="12dp" />
+                    android:layout_marginTop="16dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -56,26 +56,14 @@
                     android:text="@string/video_picker_hint"
                     android:textColor="@color/text_secondary_dark"
                     android:textSize="13sp"
-                    android:layout_marginTop="4dp" />
+                    android:layout_marginTop="6dp" />
 
             </LinearLayout>
         </FrameLayout>
 
-        <Button
-            android:id="@+id/btn_pick_video"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="20dp"
-            android:text="@string/browse_videos"
-            android:textColor="@color/white"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:background="@drawable/rounded_button_bg"
-            android:backgroundTint="@color/button_primary" />
-
     </LinearLayout>
 
-    <!-- Selected state: thumbnail preview + next button -->
+    <!-- SELECTED STATE -->
     <LinearLayout
         android:id="@+id/layout_video_selected"
         android:layout_width="0dp"
@@ -91,7 +79,7 @@
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="220dp">
+            android:layout_height="240dp">
 
             <ImageView
                 android:id="@+id/iv_video_thumb"
@@ -101,22 +89,19 @@
                 android:background="@color/dark_surface"
                 android:contentDescription="@null" />
 
-            <!-- Play icon overlay -->
             <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_play_circle"
-                android:contentDescription="@null"
-                android:alpha="0.9" />
+                android:contentDescription="@null" />
 
-            <!-- Duration badge -->
             <TextView
                 android:id="@+id/tv_video_duration"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|end"
-                android:layout_margin="8dp"
+                android:layout_margin="10dp"
                 android:paddingHorizontal="8dp"
                 android:paddingVertical="3dp"
                 android:background="@drawable/bg_badge_dark"
@@ -130,8 +115,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:textColor="@color/white"
-            android:textSize="14sp"
+            android:textColor="@color/text_secondary_dark"
+            android:textSize="13sp"
             android:maxLines="1"
             android:ellipsize="middle"
             android:gravity="center" />
@@ -140,7 +125,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="24dp"
             android:weightSum="2">
 
             <Button
@@ -151,7 +136,6 @@
                 android:layout_marginEnd="8dp"
                 android:text="@string/change_video"
                 android:textColor="@color/button_primary"
-                android:textSize="14sp"
                 android:background="@drawable/rounded_button_outline"
                 android:backgroundTint="@color/transparent" />
 
@@ -163,7 +147,6 @@
                 android:layout_marginStart="8dp"
                 android:text="@string/next"
                 android:textColor="@color/white"
-                android:textSize="14sp"
                 android:textStyle="bold"
                 android:background="@drawable/rounded_button_bg"
                 android:backgroundTint="@color/button_primary" />

@@ -1,256 +1,189 @@
 package com.genzopia.Instagame.Post;
 
-import android.content.ContentValues;
 import android.content.Intent;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.MediaStore;
+import android.view.View;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.VideoView;
-import android.app.AlertDialog;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.widget.ArrayAdapter;
-import android.widget.AutoCompleteTextView;
-import com.google.android.material.textfield.TextInputEditText;
 
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
-import com.genzopia.Instagame.common.BaseActivity;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.common.BaseActivity;
 import com.google.android.material.button.MaterialButton;
 
-import java.io.File;
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public class VideoPreviewActivity extends BaseActivity {
 
-    private VideoView videoView;
-    private MaterialButton uploadBtn;
-    private MaterialButton saveToGalleryBtn;
-    private ImageButton playPauseButton;
-    private ImageButton closeButton;
+    private ExoPlayer player;
     private SeekBar seekBar;
-    private TextView currentTimeText;
-    private TextView totalTimeText;
-    
-    private Uri videoUri;
-    private boolean isRecordedVideo = false;
-    private boolean isPlaying = true;
-    private Handler handler = new Handler(Looper.getMainLooper());
-    private Runnable updateSeekBar;
+    private TextView tvCurrent, tvTotal;
+    private ImageView icPlayPause;
+    private View topBar, bottomBar, scrimTop, scrimBottom;
+    private ImageButton btnMute;
+
+    private boolean isMuted = false;
+    private boolean controlsVisible = true;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private final Runnable seekUpdater = new Runnable() {
+        @Override public void run() {
+            if (player != null) {
+                long pos = player.getCurrentPosition();
+                seekBar.setProgress((int) pos);
+                tvCurrent.setText(fmt(pos));
+            }
+            handler.postDelayed(this, 250);
+        }
+    };
+
+    private final Runnable autoHide = () -> setControlsVisible(false);
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
+        // Edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView())
+                .hide(WindowInsetsCompat.Type.systemBars());
+
         setContentView(R.layout.activity_video_preview);
 
-        // Initialize views
-        videoView = findViewById(R.id.video_view);
-        uploadBtn = findViewById(R.id.btn_upload);
-        saveToGalleryBtn = findViewById(R.id.btn_save_to_gallery);
-        playPauseButton = findViewById(R.id.playPauseButton);
-        closeButton = findViewById(R.id.closeButton);
-        seekBar = findViewById(R.id.seekBar);
-        currentTimeText = findViewById(R.id.currentTime);
-        totalTimeText = findViewById(R.id.totalTime);
+        String uriStr = getIntent().getStringExtra("video_uri");
+        if (uriStr == null) { finish(); return; }
 
-        // Get video URI from intent
-        String uriString = getIntent().getStringExtra("video_uri");
-        if (uriString == null) {
-            finish();
-            return;
-        }
-        videoUri = Uri.parse(uriString);
-        
-        // Check if this is a recorded video
-        isRecordedVideo = getIntent().getBooleanExtra("is_recorded_video", false);
-        if (isRecordedVideo) {
-            saveToGalleryBtn.setVisibility(android.view.View.VISIBLE);
-        }
+        seekBar     = findViewById(R.id.seek_bar);
+        tvCurrent   = findViewById(R.id.tv_current);
+        tvTotal     = findViewById(R.id.tv_total);
+        icPlayPause = findViewById(R.id.ic_play_pause);
+        topBar      = findViewById(R.id.top_bar);
+        bottomBar   = findViewById(R.id.bottom_bar);
+        scrimTop    = findViewById(R.id.scrim_top);
+        scrimBottom = findViewById(R.id.scrim_bottom);
+        btnMute     = findViewById(R.id.btn_mute);
 
-        setupVideoPlayer();
-        setupControls();
-    }
+        setupPlayer(Uri.parse(uriStr));
 
-    private void setupVideoPlayer() {
-        videoView.setVideoURI(videoUri);
-        
-        videoView.setOnPreparedListener(mp -> {
-            // Set up seek bar
-            seekBar.setMax(mp.getDuration());
-            totalTimeText.setText(formatTime(mp.getDuration()));
-            
-            // Start playing
-            mp.setLooping(true);
-            videoView.start();
-            isPlaying = true;
-            updatePlayPauseButton();
-            
-            // Start seek bar updates
-            startSeekBarUpdates();
-        });
-
-        videoView.setOnCompletionListener(mp -> {
-            isPlaying = false;
-            updatePlayPauseButton();
-        });
-    }
-
-    private void setupControls() {
-        // Play/Pause button
-        playPauseButton.setOnClickListener(v -> {
-            if (isPlaying) {
-                videoView.pause();
-                isPlaying = false;
+        // Tap overlay: if paused → resume; if playing + controls hidden → show controls;
+        // if playing + controls visible → pause
+        findViewById(R.id.tap_overlay).setOnClickListener(v -> {
+            if (!player.isPlaying()) {
+                player.play();
+                pulseIcon(R.drawable.ic_play_circle);
+                setControlsVisible(true);
+                scheduleAutoHide();
+            } else if (!controlsVisible) {
+                setControlsVisible(true);
+                scheduleAutoHide();
             } else {
-                videoView.start();
-                isPlaying = true;
+                player.pause();
+                pulseIcon(R.drawable.ic_play_circle);
+                handler.removeCallbacks(autoHide);
+                setControlsVisible(true);
             }
-            updatePlayPauseButton();
         });
 
-        // Close button
-        closeButton.setOnClickListener(v -> finish());
+        // Back
+        findViewById(R.id.btn_close).setOnClickListener(v -> finish());
 
-        // Seek bar
+        // Mute
+        btnMute.setOnClickListener(v -> {
+            isMuted = !isMuted;
+            player.setVolume(isMuted ? 0f : 1f);
+            btnMute.setImageResource(isMuted ? R.drawable.ic_volume_off : R.drawable.ic_volume_on);
+        });
+
+        // Seek
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    videoView.seekTo(progress);
-                    currentTimeText.setText(formatTime(progress));
-                }
+            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
+                if (user) { player.seekTo(p); tvCurrent.setText(fmt(p)); }
             }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStartTrackingTouch(SeekBar sb) { handler.removeCallbacks(autoHide); }
+            @Override public void onStopTrackingTouch(SeekBar sb) { scheduleAutoHide(); }
         });
 
-        // Upload button
-        uploadBtn.setOnClickListener(v -> {
-            Intent intent = new Intent(this, VideoUploadInfoActivity.class);
-            intent.putExtra("video_uri", videoUri.toString());
-            startActivity(intent);
+        // Next
+        ((MaterialButton) findViewById(R.id.btn_next)).setOnClickListener(v -> {
+            Intent i = new Intent(this, VideoUploadInfoActivity.class);
+            i.putExtra("video_uri", uriStr);
+            startActivity(i);
             finish();
         });
-
-        // Save to Gallery button
-        saveToGalleryBtn.setOnClickListener(v -> saveToGallery());
     }
 
-    private void updatePlayPauseButton() {
-        if (isPlaying) {
-            playPauseButton.setImageResource(android.R.drawable.ic_media_pause);
-        } else {
-            playPauseButton.setImageResource(android.R.drawable.ic_media_play);
-        }
-    }
+    private void setupPlayer(Uri uri) {
+        PlayerView playerView = findViewById(R.id.player_view);
+        player = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(player);
+        player.setMediaItem(MediaItem.fromUri(uri));
+        player.setRepeatMode(Player.REPEAT_MODE_ONE);
+        player.prepare();
+        player.play();
 
-    private void startSeekBarUpdates() {
-        updateSeekBar = new Runnable() {
-            @Override
-            public void run() {
-                if (videoView.isPlaying()) {
-                    int currentPosition = videoView.getCurrentPosition();
-                    seekBar.setProgress(currentPosition);
-                    currentTimeText.setText(formatTime(currentPosition));
+        player.addListener(new Player.Listener() {
+            @Override public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    long dur = player.getDuration();
+                    seekBar.setMax((int) dur);
+                    tvTotal.setText(fmt(dur));
+                    handler.post(seekUpdater);
+                    scheduleAutoHide();
                 }
-                handler.postDelayed(this, 100);
             }
-        };
-        handler.post(updateSeekBar);
+        });
     }
 
-    private String formatTime(int milliseconds) {
-        int seconds = (milliseconds / 1000) % 60;
-        int minutes = (milliseconds / (1000 * 60)) % 60;
-        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
+
+    private void setControlsVisible(boolean show) {
+        controlsVisible = show;
+        float alpha = show ? 1f : 0f;
+        topBar.animate().alpha(alpha).setDuration(200).start();
+        bottomBar.animate().alpha(alpha).setDuration(200).start();
+        scrimTop.animate().alpha(alpha).setDuration(200).start();
+        scrimBottom.animate().alpha(alpha).setDuration(200).start();
     }
 
-    private void saveToGallery() {
-        new Thread(() -> {
-            try {
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Video.Media.DISPLAY_NAME, "InstaGame_" + System.currentTimeMillis() + ".mp4");
-                values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
-                values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/InstaGame");
-
-                Uri contentUri = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
-                if (contentUri != null) {
-                    try (java.io.InputStream inputStream = getContentResolver().openInputStream(videoUri);
-                         java.io.OutputStream outputStream = getContentResolver().openOutputStream(contentUri)) {
-                        if (inputStream != null && outputStream != null) {
-                            byte[] buffer = new byte[8192];
-                            int bytesRead;
-                            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                                outputStream.write(buffer, 0, bytesRead);
-                            }
-                            runOnUiThread(() -> Toast.makeText(this, "Video saved to gallery", Toast.LENGTH_SHORT).show());
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "Failed to save video: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-            }
-        }).start();
+    private void pulseIcon(int resId) {
+        icPlayPause.setImageResource(resId);
+        icPlayPause.animate().cancel();
+        icPlayPause.setAlpha(1f);
+        icPlayPause.animate().alpha(0f).setStartDelay(600).setDuration(300).start();
     }
 
-    private void doUpload() {
-        new Thread(() -> {
-            File file = FileUtils.getFileFromUri(this, videoUri);
-            if (file == null) {
-                runOnUiThread(() -> Toast.makeText(this, "Unable to read file", Toast.LENGTH_SHORT).show());
-                return;
-            }
-            runOnUiThread(() -> {
-                uploadBtn.setEnabled(false);
-                uploadBtn.setText("Uploading...");
-            });
-            String videoId = UUID.randomUUID().toString();
-            FileUploader.uploadFileToWorker(
-                    file,
-                    "video",
-                    Map.of("video_id", videoId),
-                    (success, response) -> runOnUiThread(() -> {
-                        uploadBtn.setEnabled(true);
-                        uploadBtn.setText("Upload");
-                        if (success) {
-                            Toast.makeText(this, "Upload succeeded!", Toast.LENGTH_LONG).show();
-
-                            finish();
-                        } else {
-                            Toast.makeText(this, "Upload failed: " + response, Toast.LENGTH_LONG).show();
-                        }
-                    })
-            );
-        }).start();
+    private void scheduleAutoHide() {
+        handler.removeCallbacks(autoHide);
+        handler.postDelayed(autoHide, 3000);
     }
 
-    @Override
-    protected void onPause() {
+    private String fmt(long ms) {
+        long m = TimeUnit.MILLISECONDS.toMinutes(ms);
+        long s = TimeUnit.MILLISECONDS.toSeconds(ms) % 60;
+        return String.format(Locale.US, "%d:%02d", m, s);
+    }
+
+    @Override protected void onPause() {
         super.onPause();
-        if (videoView.isPlaying()) {
-            videoView.pause();
-            isPlaying = false;
-            updatePlayPauseButton();
-        }
+        player.pause();
     }
 
-    @Override
-    protected void onDestroy() {
+    @Override protected void onDestroy() {
         super.onDestroy();
-        if (updateSeekBar != null) {
-            handler.removeCallbacks(updateSeekBar);
-        }
+        handler.removeCallbacksAndMessages(null);
+        player.release();
     }
 }
