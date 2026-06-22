@@ -12,8 +12,8 @@ android {
         applicationId = "com.genzopia.Instagame"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "8.0"
+        versionCode = 10
+        versionName = "10.0"
 
         val fileUploadApiKey: String = (project.findProperty("file_upload_api_key") as String?) ?: ""
         buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"")
