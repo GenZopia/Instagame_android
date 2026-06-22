@@ -49,7 +49,6 @@ public class VideosFragment extends Fragment {
         tvDuration     = root.findViewById(R.id.tv_video_duration);
 
         root.findViewById(R.id.tap_area).setOnClickListener(v -> pickVideo.launch("video/*"));
-        root.findViewById(R.id.btn_pick_video).setOnClickListener(v -> pickVideo.launch("video/*"));
         root.findViewById(R.id.btn_change_video).setOnClickListener(v -> pickVideo.launch("video/*"));
         root.findViewById(R.id.btn_next).setOnClickListener(v -> openPreview());
 
