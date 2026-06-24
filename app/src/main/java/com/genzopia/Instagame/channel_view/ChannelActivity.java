@@ -145,6 +145,8 @@ public class ChannelActivity extends BaseActivity {
             if (currentUid == null) return;
             isFollowing = !isFollowing;
             updateFollowButton();
+            // Disable button during operation to prevent rapid clicks
+            followButton.setEnabled(false);
             // Track follow/unfollow with developer name from channelName TextView
             String devName = channelName != null ? channelName.getText().toString() : "";
             com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelFollowTapped(
@@ -157,22 +159,32 @@ public class ChannelActivity extends BaseActivity {
             DatabaseReference followersCountRef = FirebaseDatabase.getInstance().getReference("users")
                     .child(developerId).child("followers_count");
             if (isFollowing) {
-                followRef.setValue(true);
-                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override public void onDataChange(DataSnapshot s) {
-                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 0L;
-                        followersCountRef.setValue(count + 1);
+                followRef.setValue(true).addOnFailureListener(e -> followButton.setEnabled(true));
+                followersCountRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                    @Override
+                    public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                        long count = mutableData.getValue(Long.class) != null ? mutableData.getValue(Long.class) : 0L;
+                        mutableData.setValue(count + 1);
+                        return com.google.firebase.database.Transaction.success(mutableData);
                     }
-                    @Override public void onCancelled(DatabaseError e) {}
+                    @Override
+                    public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, com.google.firebase.database.DataSnapshot snapshot) {
+                        followButton.setEnabled(true);
+                    }
                 });
             } else {
-                followRef.removeValue();
-                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override public void onDataChange(DataSnapshot s) {
-                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 1L;
-                        followersCountRef.setValue(Math.max(0, count - 1));
+                followRef.removeValue().addOnFailureListener(e -> followButton.setEnabled(true));
+                followersCountRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+                    @Override
+                    public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
+                        long count = mutableData.getValue(Long.class) != null ? mutableData.getValue(Long.class) : 1L;
+                        mutableData.setValue(Math.max(0, count - 1));
+                        return com.google.firebase.database.Transaction.success(mutableData);
                     }
-                    @Override public void onCancelled(DatabaseError e) {}
+                    @Override
+                    public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, com.google.firebase.database.DataSnapshot snapshot) {
+                        followButton.setEnabled(true);
+                    }
                 });
             }
         });
