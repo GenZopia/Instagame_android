@@ -6,11 +6,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Property-based tests for SplashActivity deeplink parsing logic.
+ * Property-based tests for deeplink parsing logic (previously in SplashActivity, now in MainActivity).
  * Feature: fix-deeplink-navigation
- * 
+ *
  * These tests validate the URL parsing logic by replicating the exact parsing algorithm
- * from SplashActivity.navigateToNextScreen() without requiring Android dependencies.
+ * from MainActivity.resolveGameId() without requiring Android dependencies.
  */
 class SplashActivityDeeplinkTest {
 
@@ -164,8 +164,8 @@ class SplashActivityDeeplinkTest {
     }
 
     /**
-     * Extracts the game ID from a URL by replicating SplashActivity's parsing logic.
-     * This is a direct translation of the navigateToNextScreen() method's deeplink parsing.
+     * Extracts the game ID from a URL by replicating MainActivity's parsing logic.
+     * This is a direct translation of the resolveGameId() method's deeplink parsing.
      */
     private fun extractGameIdFromUrl(urlString: String): String? {
         val data = parseUri(urlString)

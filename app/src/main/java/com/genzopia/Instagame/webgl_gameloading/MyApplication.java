@@ -28,8 +28,7 @@ import okhttp3.OkHttpClient;
  * Application class.
  *
  * Kicks off DataPrefetchService and RemoteConfigManager as early as possible
- * (process start) so SplashActivity only needs to show the logo and route —
- * not wait on network work.
+ * (process start) so MainActivity only needs to wait briefly before showing the UI.
  */
 public class MyApplication extends Application {
 
