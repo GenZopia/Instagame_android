@@ -13,172 +13,72 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
+import com.genzopia.Instagame.gateway.ChannelGameDTO;
+import com.genzopia.Instagame.gateway.ChannelGamesResponse;
+import com.genzopia.Instagame.gateway.GatewayClient;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class GamesFragment extends Fragment {
 
     private RecyclerView rvGames;
     private GameAdapter adapter;
-    private static List<GameItem> sGameList;
-    private static String sDeveloperId;
-    private static boolean sIsDataLoaded = false;
+    // Instance-level list — no static cache so each ChannelActivity gets fresh data
+    private final List<GameItem> gameList = new ArrayList<>();
+    private String developerId;
+    private boolean dataLoaded = false;
 
     @Override
-    public View onCreateView(LayoutInflater inflater,
-                             ViewGroup container,
-                             Bundle savedInstanceState) {
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_games, container, false);
     }
 
     @Override
-    public void onViewCreated(@NonNull View view,
-                              @Nullable Bundle savedInstanceState) {
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-
-        // 1) Find RecyclerView
         rvGames = view.findViewById(R.id.rvGames);
-        Log.d("GamesFragment", "Fragment created");
-
-        // 2) Prepare data list if null
-        if (sGameList == null) {
-            sGameList = new ArrayList<>();
-        }
-
-        // 3) Create adapter
-        adapter = new GameAdapter(requireContext(), sGameList);
-
-        // 4) Set LayoutManager and Adapter
+        adapter = new GameAdapter(requireContext(), gameList);
         rvGames.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvGames.setAdapter(adapter);
-        
-        // 5) Load games only if not already loaded
-        if (sDeveloperId != null && !sIsDataLoaded) {
-            loadGamesFromFirebase();
-        }
+        if (developerId != null && !dataLoaded) loadGames();
     }
-    
+
     public void setDeveloperId(String developerId) {
-        sDeveloperId = developerId;
-        if (isAdded() && rvGames != null && !sIsDataLoaded) {
-            loadGamesFromFirebase();
+        // Reset if switching developer
+        if (!developerId.equals(this.developerId)) {
+            this.developerId = developerId;
+            dataLoaded = false;
+            gameList.clear();
         }
+        if (isAdded() && rvGames != null && !dataLoaded) loadGames();
     }
-    
-    private void loadGamesFromFirebase() {
-        if (sDeveloperId == null) {
-            Log.e("GamesFragment", "Developer ID is null");
-            return;
-        }
-        
-        Log.d("GamesFragment", "Loading games for developer: " + sDeveloperId);
-        
-        // First, get the developer's games list
-        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(sDeveloperId).child("games");
-        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                sGameList.clear();
-                sIsDataLoaded = true;
-                
-                Log.d("GamesFragment", "Games snapshot exists: " + snapshot.exists());
-                Log.d("GamesFragment", "Games snapshot children count: " + snapshot.getChildrenCount());
-                
-                if (snapshot.exists()) {
-                    // Iterate through the developer's games
-                    for (DataSnapshot gameSnapshot : snapshot.getChildren()) {
-                        String gameId = gameSnapshot.getKey();
-                        Log.d("GamesFragment", "Found game ID: " + gameId);
-                        if (gameId != null) {
-                            // Fetch game details from games collection
-                            loadGameDetails(gameId);
+
+    private void loadGames() {
+        if (developerId == null) return;
+        GatewayClient.INSTANCE.getCallApi().getChannelGames(developerId)
+                .enqueue(new Callback<ChannelGamesResponse>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ChannelGamesResponse> call,
+                                           @NonNull Response<ChannelGamesResponse> resp) {
+                        if (!isAdded() || !resp.isSuccessful() || resp.body() == null) return;
+                        dataLoaded = true;
+                        gameList.clear();
+                        for (ChannelGameDTO g : resp.body().getData()) {
+                            gameList.add(new GameItem(
+                                g.getGameId(), g.getGameName(), "", "", g.getGameImageUrl(), ""
+                            ));
                         }
+                        adapter.notifyDataSetChanged();
                     }
-                } else {
-
-                    adapter.notifyDataSetChanged();
-                }
-            }
-            
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("GamesFragment", "Error loading developer games: " + error.getMessage());
-            }
-        });
-    }
-    
-    private void loadGameDetails(String gameId) {
-        Log.d("GamesFragment", "Loading game details for game ID: " + gameId);
-        
-        DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
-        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (!snapshot.exists()) {
-                    Log.e("GamesFragment", "Game details not found for game ID: " + gameId);
-                    return;
-                }
-
-                String gameName = snapshot.child("game_name").getValue(String.class);
-                String description = snapshot.child("description").getValue(String.class);
-                String playStoreUrl = snapshot.child("play_store_url").getValue(String.class);
-                String photoId = snapshot.child("photo_id").getValue(String.class);
-
-                // Resolve thumbnail from /photos/{photo_id}
-                if (photoId != null && !photoId.isEmpty()) {
-                    FirebaseDatabase.getInstance().getReference("photos").child(photoId)
-                        .addListenerForSingleValueEvent(new ValueEventListener() {
-                            @Override
-                            public void onDataChange(@NonNull DataSnapshot photoSnap) {
-                                // Use video-signer worker (same as web version getSignedPhotoUrl)
-                                String ext = photoSnap.child("file_ext").getValue(String.class);
-                                if (ext == null || ext.isEmpty()) {
-                                    String fileName = photoSnap.child("file_name").getValue(String.class);
-                                    ext = (fileName != null && fileName.contains("."))
-                                        ? fileName.substring(fileName.lastIndexOf('.') + 1) : "jpg";
-                                }
-                                final String fileExt = ext;
-                                // Resolve signed URL on background thread
-                                new Thread(() -> {
-                                    String signedUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt);
-                                    final String url = signedUrl != null ? signedUrl : "";
-                                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
-                                        addGameItem(gameId, gameName, description, url, playStoreUrl));
-                                }).start();
-                            }
-                            @Override
-                            public void onCancelled(@NonNull DatabaseError error) {
-                                addGameItem(gameId, gameName, description, "", playStoreUrl);
-                            }
-                        });
-                } else {
-                    addGameItem(gameId, gameName, description, "", playStoreUrl);
-                }
-            }
-            
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("GamesFragment", "Error loading game details: " + error.getMessage());
-            }
-        });
-    }
-
-    private void addGameItem(String gameId, String gameName, String description, String imageUrl, String playStoreUrl) {
-        GameItem gameItem = new GameItem(
-            gameId != null ? gameId : "",
-            gameName != null ? gameName : "Unknown Game",
-            "Developer Game",
-            description != null ? description : "No description available",
-            imageUrl,
-            playStoreUrl != null ? playStoreUrl : ""
-        );
-        sGameList.add(gameItem);
-        if (isAdded()) adapter.notifyDataSetChanged();
+                    @Override
+                    public void onFailure(@NonNull Call<ChannelGamesResponse> call, @NonNull Throwable t) {
+                        Log.e("GamesFragment", "load failed: " + t.getMessage());
+                    }
+                });
     }
 }

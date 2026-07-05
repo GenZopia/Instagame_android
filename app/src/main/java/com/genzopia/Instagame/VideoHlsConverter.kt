@@ -1,31 +1,24 @@
 package com.genzopia.Instagame
 
 import android.util.Log
+import com.genzopia.Instagame.gateway.GatewayClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.*
 
+/**
+ * VideoHlsConverter — triggers and polls HLS conversion via the Gateway.
+ *
+ * The GCP Cloud Run URL and API key never reach the client; all calls are
+ * proxied through POST /videos/{videoId}/hls-convert and
+ * GET /videos/{videoId}/hls-status/{taskId}.
+ */
 class VideoHlsConverter {
 
     companion object {
-
         private const val TAG = "VideoHlsConverter"
-        private const val BASE_URL = "https://video-processor-531675723135.asia-south1.run.app/"
-        // Key is stored in gradle.properties (git-ignored) and injected via BuildConfig.
-        private val API_KEY get() = com.genzopia.Instagame.BuildConfig.VIDEO_PROCESSOR_API_KEY
-        private const val MAX_POLL_ATTEMPTS = 60 // 5 min max (60 * 5s)
-
-        private val api: VideoApi by lazy {
-            Retrofit.Builder()
-                .baseUrl(BASE_URL)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build()
-                .create(VideoApi::class.java)
-        }
+        private const val MAX_POLL_ATTEMPTS = 60 // 5 min max (60 × 5 s)
 
         /** Java-callable blocking wrapper — call from a background thread only. */
         @JvmStatic
@@ -34,57 +27,46 @@ class VideoHlsConverter {
         }
     }
 
-    interface VideoApi {
-
-        @POST("api/videos/process")
-        suspend fun processVideo(
-            @Header("X-API-Key") apiKey: String,
-            @Body body: ProcessRequest
-        ): ProcessResponse
-
-        @GET("api/videos/status/{taskId}")
-        suspend fun getStatus(
-            @Header("X-API-Key") apiKey: String,
-            @Path("taskId") taskId: String
-        ): StatusResponse
-    }
-
-    data class ProcessRequest(val r2ObjectKey: String)
-
-    data class ProcessResponse(val id: String, val status: String, val message: String)
-
-    data class StatusResponse(val status: String, val hlsManifestKey: String?)
-
     suspend fun convertToHls(videoId: String): String? = withContext(Dispatchers.IO) {
         try {
-            val r2ObjectKey = "video/$videoId.mp4"
-            Log.d(TAG, "Starting HLS conversion for $videoId")
+            Log.d(TAG, "Requesting HLS conversion for $videoId via gateway")
 
-            val response = api.processVideo(API_KEY, ProcessRequest(r2ObjectKey))
-            val taskId = response.id
-            Log.d(TAG, "Task created: $taskId")
+            val convertResp = GatewayClient.api.triggerHlsConversion(videoId)
+            if (!convertResp.isSuccessful || convertResp.body() == null) {
+                Log.e(TAG, "triggerHlsConversion failed: HTTP ${convertResp.code()}")
+                return@withContext null
+            }
+
+            val taskId = convertResp.body()!!.taskId
+            Log.d(TAG, "HLS task created: $taskId")
 
             repeat(MAX_POLL_ATTEMPTS) {
-                val status = api.getStatus(API_KEY, taskId)
-                Log.d(TAG, "Status = ${status.status}")
+                val statusResp = GatewayClient.api.getHlsStatus(videoId, taskId)
+                if (!statusResp.isSuccessful || statusResp.body() == null) {
+                    Log.e(TAG, "getHlsStatus failed: HTTP ${statusResp.code()}")
+                    return@withContext null
+                }
 
-                when (status.status) {
+                val body = statusResp.body()!!
+                Log.d(TAG, "HLS status = ${body.status}")
+
+                when (body.status) {
                     "COMPLETED" -> {
-                        Log.d(TAG, "HLS ready: ${status.hlsManifestKey}")
-                        return@withContext status.hlsManifestKey
+                        Log.d(TAG, "HLS ready: ${body.hlsManifestKey}")
+                        return@withContext body.hlsManifestKey
                     }
                     "FAILED" -> {
-                        Log.e(TAG, "Conversion failed for $videoId")
+                        Log.e(TAG, "HLS conversion failed for $videoId")
                         return@withContext null
                     }
                 }
-                delay(5000)
+                delay(5_000)
             }
 
-            Log.e(TAG, "Conversion timed out for $videoId")
+            Log.e(TAG, "HLS conversion timed out for $videoId")
             null
         } catch (e: Exception) {
-            Log.e(TAG, "Error converting $videoId", e)
+            Log.e(TAG, "Error during HLS conversion for $videoId", e)
             null
         }
     }

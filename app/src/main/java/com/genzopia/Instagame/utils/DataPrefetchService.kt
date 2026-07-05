@@ -7,38 +7,34 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import com.genzopia.Instagame.features.home.domain.FollowedUser
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
+import com.genzopia.Instagame.gateway.GatewayClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
+/**
+ * DataPrefetchService — prefetches video metadata and builds ExoPlayer pool.
+ *
+ * All data is now fetched via the Gateway (GET /videos/prefetch and GET /users/me/following).
+ * No direct Firebase Realtime Database or CDN calls remain here.
+ */
 @UnstableApi
 object DataPrefetchService {
 
     private const val TAG = "DataPrefetchService"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val httpClient = OkHttpClient()
-    private val database = FirebaseDatabase.getInstance()
 
-    private val videoCache = mutableMapOf<String, VideoMetadata>()
+    private val videoCache     = mutableMapOf<String, VideoMetadata>()
     private val signedUrlCache = mutableMapOf<String, String>()
     private var followedUsersCache: List<FollowedUser>? = null
 
-    // Pool of pre-created ExoPlayers (all prefetched videos)
-    private val playerPool = mutableMapOf<String, ExoPlayer>()
-    private var preloadedPlayer: ExoPlayer? = null
-    private var preloadedVideoId: String? = null
+    private val playerPool       = mutableMapOf<String, ExoPlayer>()
+    private var preloadedPlayer  : ExoPlayer? = null
+    private var preloadedVideoId : String?    = null
 
-    @Volatile
-    private var firstVideoReady = false
+    @Volatile private var firstVideoReady = false
 
     data class VideoMetadata(
         val videoId: String,
@@ -58,41 +54,22 @@ object DataPrefetchService {
     }
 
     fun getPreloadedVideoId(): String? = preloadedVideoId
+    fun clearPreloadedPlayer() { preloadedPlayer = null; preloadedVideoId = null }
+    fun removeFromPool(videoId: String) { playerPool.remove(videoId) }
 
-    fun clearPreloadedPlayer() {
-        preloadedPlayer = null
-        preloadedVideoId = null
-    }
+    // ── Public entry point ────────────────────────────────────────────────
 
-    fun removeFromPool(videoId: String) {
-        playerPool.remove(videoId)
-    }
-
-    // ── Public entry point ────────────────────────────────────────────────────
-
-    /**
-     * Starts prefetching data in the background.
-     *
-     * [onComplete] is called on the main thread only after video metadata (titles, names)
-     * has been fetched from Firebase — so the reel list is always populated before
-     * navigation. URL resolution continues in the background after navigation.
-     *
-     * On slow connections the metadata fetch itself may be slow, but the splash
-     * hard-timeout in SplashActivity still guarantees the user is never stuck forever.
-     */
     fun startPrefetch(context: Context, onComplete: (() -> Unit)? = null) {
         Log.d(TAG, "startPrefetch: firing background jobs")
         scope.launch {
-            // Run both in parallel; followedUsers is best-effort
             val followJob = launch {
-                try { prefetchFollowedUsers() } catch (e: Exception) { Log.e(TAG, "followedUsers failed", e) }
+                try { prefetchFollowedUsers() }
+                catch (e: Exception) { Log.e(TAG, "followedUsers prefetch failed", e) }
             }
-            // prefetchVideos now calls onComplete itself once metadata is ready
             try {
                 prefetchVideos(context, 30, onComplete)
             } catch (e: Exception) {
-                Log.e(TAG, "videos failed", e)
-                // Still notify so the splash doesn't hang if prefetch crashes
+                Log.e(TAG, "videos prefetch failed", e)
                 withContext(Dispatchers.Main) { onComplete?.invoke() }
             }
             followJob.join()
@@ -100,114 +77,62 @@ object DataPrefetchService {
         }
     }
 
-    // ── Video prefetch ────────────────────────────────────────────────────────
+    // ── Video prefetch via gateway ────────────────────────────────────────
 
-    /**
-     * Phase 1 – fetch video metadata + developer info from Firebase in parallel.
-     * Phase 2 – resolve signed URLs in parallel (network, can be slow).
-     * Phase 3 – create ExoPlayers on the main thread (CPU only).
-     *
-     * [onMetadataReady] is called after Phase 1 so the splash can navigate as soon
-     * as reel titles/names/photos are available, even if URLs are still resolving.
-     */
-    private suspend fun prefetchVideos(context: Context, count: Int, onMetadataReady: (() -> Unit)? = null) {
-        Log.d(TAG, "Querying Firebase for $count videos (will filter to verified only)")
-        val snapshot = database.reference.child("videos").orderByKey().limitToFirst(count).get().await()
-        Log.d(TAG, "Got ${snapshot.childrenCount} videos from Firebase")
+    private suspend fun prefetchVideos(
+        context: Context,
+        count: Int,
+        onMetadataReady: (() -> Unit)? = null
+    ) {
+        Log.d(TAG, "Fetching $count videos from gateway /videos/prefetch")
 
-        // Collect raw video data first (no network calls yet)
-        data class RawVideo(val index: Int, val videoId: String, val title: String, val userId: String, val gameId: String)
-        val rawVideos = snapshot.children.mapIndexedNotNull { index, snap ->
-            val videoId = snap.key ?: return@mapIndexedNotNull null
-            // Only prefetch verified videos
-            val isVerifiedRaw = snap.child("is_verified").value
-            val isVerified = when (isVerifiedRaw) {
-                is Boolean -> isVerifiedRaw
-                is String  -> isVerifiedRaw.equals("true", ignoreCase = true)
-                is Long    -> isVerifiedRaw == 1L
-                is Int     -> isVerifiedRaw == 1
-                else       -> false
-            }
-            if (!isVerified) {
-                Log.d(TAG, "Prefetch: skipping unverified video $videoId")
-                return@mapIndexedNotNull null
-            }
-            val title  = snap.child("video_title").getValue(String::class.java) ?: ""
-            val userId = snap.child("user_id").getValue(String::class.java) ?: ""
-            val gameId = snap.child("game_id").getValue(String::class.java) ?: ""
-            RawVideo(index, videoId, title, userId, gameId)
+        val response = withContext(Dispatchers.IO) {
+            GatewayClient.api.getPrefetch(limit = count)
         }
 
-        // Phase 1: fetch developer info for all videos in parallel
-        val entries: List<Triple<Int, String, VideoMetadata>> = coroutineScope {
-            rawVideos.map { raw ->
-                async {
-                    val (devName, devPhoto) = if (raw.userId.isNotEmpty()) {
-                        try {
-                            val userSnap = database.reference.child("users").child(raw.userId).get().await()
-                            val name = userSnap.child("full_name").getValue(String::class.java)
-                                ?: userSnap.child("name").getValue(String::class.java)
-                                ?: userSnap.child("username").getValue(String::class.java)
-                                ?: "User"
-                            val rawPhoto = userSnap.child("profile_photo_url").getValue(String::class.java)
-                                ?: userSnap.child("profile_image_url").getValue(String::class.java)
-                                ?: userSnap.child("photoUrl").getValue(String::class.java)
-                            val photo = ProfilePhotoUtils.sanitize(rawPhoto)
-                            Pair(name, photo)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "fetchDeveloperInfo failed for ${raw.userId}", e)
-                            Pair("User", null as String?)
-                        }
-                    } else {
-                        Pair("User", null as String?)
-                    }
-
-                    val meta = VideoMetadata(
-                        videoId = raw.videoId,
-                        title = raw.title,
-                        userId = raw.userId,
-                        gameId = raw.gameId,
-                        developerName = devName,
-                        developerPhotoUrl = devPhoto
-                    )
-                    videoCache[raw.videoId] = meta
-                    Triple(raw.index, raw.videoId, meta)
-                }
-            }.map { it.await() }
+        if (!response.isSuccessful || response.body() == null) {
+            Log.e(TAG, "Gateway prefetch failed: HTTP ${response.code()}")
+            withContext(Dispatchers.Main) { onMetadataReady?.invoke() }
+            return
         }
 
-        Log.d(TAG, "Phase 1 complete — ${entries.size} reels with developer info cached")
+        val items = response.body()!!.data
+        Log.d(TAG, "Got ${items.size} videos from gateway")
 
-        // ── Phase 1 done: metadata is ready → unblock the splash screen ──────
+        // Populate caches from the gateway response (metadata already enriched server-side)
+        items.forEachIndexed { index, item ->
+            val meta = VideoMetadata(
+                videoId           = item.videoId,
+                title             = item.title,
+                userId            = item.userId,
+                gameId            = item.gameId,
+                developerName     = item.developerName,
+                developerPhotoUrl = item.developerPhotoUrl,
+                signedUrl         = item.playbackUrl ?: item.hlsManifestUrl
+            )
+            videoCache[item.videoId] = meta
+            val url = item.hlsManifestUrl ?: item.playbackUrl
+            if (url != null) signedUrlCache[item.videoId] = url
+            Log.d(TAG, "[$index] cached ${item.videoId}")
+        }
+
+        Log.d(TAG, "Metadata ready — ${items.size} reels cached")
+
+        // Notify splash screen: metadata is ready → unblock navigation
         withContext(Dispatchers.Main) { onMetadataReady?.invoke() }
 
-        // ── Phase 2: resolve URLs in parallel (continues after navigation) ───
-        coroutineScope {
-            entries.map { (index, videoId, meta) ->
-                launch {
-                    try {
-                        val url = fetchSignedUrl(videoId)
-                        videoCache[videoId] = meta.copy(signedUrl = url)
-                        Log.d(TAG, "[$index] URL ready: $videoId")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "[$index] URL failed: $videoId", e)
-                    }
-                }
-            }.forEach { it.join() }
-        }
-
-        // ── Phase 3: create ExoPlayers on main thread ─────────────────────────
+        // Build ExoPlayer pool on main thread (CPU only, no network)
         withContext(Dispatchers.Main) {
             val appCtx = context.applicationContext
-            entries.forEach { (index, videoId, _) ->
-                val url = signedUrlCache[videoId] ?: return@forEach
+            items.forEachIndexed { index, item ->
+                val url = signedUrlCache[item.videoId] ?: return@forEachIndexed
                 try {
                     val player = buildPlayer(appCtx, url)
-                    playerPool[videoId] = player
-                    if (index == 0) { preloadedVideoId = videoId; preloadedPlayer = player }
-                    Log.d(TAG, "[$index] Player ready: $videoId")
+                    playerPool[item.videoId] = player
+                    if (index == 0) { preloadedVideoId = item.videoId; preloadedPlayer = player }
+                    Log.d(TAG, "[$index] Player ready: ${item.videoId}")
                 } catch (e: Exception) {
-                    Log.e(TAG, "[$index] Player failed: $videoId", e)
+                    Log.e(TAG, "[$index] Player failed: ${item.videoId}", e)
                 }
             }
             firstVideoReady = true
@@ -224,101 +149,41 @@ object DataPrefetchService {
             .build()
             .apply {
                 setMediaItem(MediaItem.fromUri(url))
-                repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                volume = 0f
+                repeatMode  = ExoPlayer.REPEAT_MODE_ONE
+                volume      = 0f
                 setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                 prepare()
             }
     }
 
-    // ── URL resolution (HLS-first, persistent cache, 3 retries) ─────────────
-
-    private suspend fun fetchSignedUrl(videoId: String): String? {
-        signedUrlCache[videoId]?.let { return it }
-
-        val R2 = "https://cdn.genzopia.com"
-        val base = resolveBasePath(videoId)
-        val hlsDir = "${base}_hls"
-
-        // Check persistent cache from ReelPagingSource — skip HEAD probing
-        val cachedType = com.genzopia.Instagame.reelview.compose.ReelPagingSource.getCachedUrl(videoId)
-        if (cachedType != null) {
-            signedUrlCache[videoId] = cachedType
-            return cachedType
-        }
-
-        repeat(3) { attempt ->
-            try {
-                checkHlsManifest(R2, hlsDir)?.let { name ->
-                    val url = "$R2/$hlsDir/$name"
-                    signedUrlCache[videoId] = url
-                    Log.d(TAG, "[$videoId] HLS: $url")
-                    return url
-                }
-                // Fall back to direct R2 MP4 URL
-                val url = "$R2/$base.mp4"
-                signedUrlCache[videoId] = url
-                Log.d(TAG, "[$videoId] MP4: $url")
-                return url
-            } catch (e: Exception) {
-                Log.e(TAG, "[$videoId] attempt ${attempt + 1} error: ${e.message}")
-            }
-            if (attempt < 2) kotlinx.coroutines.delay(3000)
-        }
-        Log.e(TAG, "[$videoId] all attempts failed")
-        return null
-    }
-
-    private fun resolveBasePath(id: String): String {
-        var v = id
-        if (v.startsWith("video/")) return v.replace(Regex("\\.[^.]+$"), "")
-        v = v.removeSuffix(".mp4").removeSuffix(".m3u8")
-        return if (v.startsWith("video_")) "video/$v" else "video/video_$v"
-    }
-
-    private fun checkHlsManifest(r2Base: String, hlsDir: String): String? {
-        for (name in listOf("master.m3u8", "1080p.m3u8", "playlist.m3u8", "index.m3u8")) {
-            try {
-                val resp = httpClient.newCall(
-                    Request.Builder().url("$r2Base/$hlsDir/$name").head().build()
-                ).execute()
-                resp.close()
-                if (resp.isSuccessful) return name
-            } catch (_: Exception) {}
-        }
-        return null
-    }
-
-    // ── Followed users prefetch ───────────────────────────────────────────────
+    // ── Followed users via gateway ────────────────────────────────────────
 
     private suspend fun prefetchFollowedUsers() {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        Log.d(TAG, "Fetching following list from gateway /users/me/following")
         try {
-            val snap = database.reference.child("users").child(uid).child("following_list").get().await()
-            val ids = snap.children.mapNotNull { it.key }
-            if (ids.isEmpty()) { followedUsersCache = emptyList(); return }
-
-            val users = mutableListOf<FollowedUser>()
-            for (userId in ids) {
-                try {
-                    val u = database.reference.child("users").child(userId).get().await()
-                    val name = u.child("full_name").getValue(String::class.java)
-                        ?: u.child("username").getValue(String::class.java) ?: "User"
-                    val photo = ProfilePhotoUtils.sanitize(
-                        u.child("profile_photo_url").getValue(String::class.java)
-                            ?: u.child("profile_image_url").getValue(String::class.java)
-                    )
-                    users.add(FollowedUser(userId, name, photo))
-                } catch (e: Exception) { Log.e(TAG, "user $userId failed", e) }
+            val response = withContext(Dispatchers.IO) {
+                GatewayClient.api.getFollowing()
             }
-            followedUsersCache = users
-            Log.d(TAG, "Prefetched ${users.size} followed users")
+            if (!response.isSuccessful || response.body() == null) {
+                Log.e(TAG, "getFollowing failed: HTTP ${response.code()}")
+                followedUsersCache = emptyList()
+                return
+            }
+            followedUsersCache = response.body()!!.map { dto ->
+                FollowedUser(
+                    userId          = dto.userId,
+                    fullName        = dto.full_name,
+                    profilePhotoUrl = dto.profile_photo_url
+                )
+            }
+            Log.d(TAG, "Prefetched ${followedUsersCache?.size} followed users")
         } catch (e: Exception) {
             Log.e(TAG, "prefetchFollowedUsers error", e)
+            followedUsersCache = emptyList()
         }
     }
 
-    // ── Public cache accessors ────────────────────────────────────────────────
+    // ── Public cache accessors ────────────────────────────────────────────
 
     fun getCachedVideo(videoId: String): VideoMetadata? = videoCache[videoId]
     fun getAllCachedVideos(): Map<String, VideoMetadata> = videoCache.toMap()
@@ -330,10 +195,10 @@ object DataPrefetchService {
         videoCache.clear()
         signedUrlCache.clear()
         followedUsersCache = null
-        firstVideoReady = false
+        firstVideoReady    = false
         playerPool.values.forEach { it.release() }
         playerPool.clear()
-        preloadedPlayer = null
+        preloadedPlayer  = null
         preloadedVideoId = null
         Log.d(TAG, "Cache cleared")
     }

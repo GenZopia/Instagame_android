@@ -17,14 +17,7 @@ import androidx.core.app.NotificationCompat;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.VideoHlsConverter;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -100,36 +93,61 @@ public class VideoUploadForegroundService extends Service {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     java.nio.file.Files.copy(originalFile.toPath(), renamedFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
-                // Upload to Cloudflare with real progress
-                FileUploader.uploadFileToWorker(renamedFile, "video", Map.of(
-                        "video_id", videoUniqueId,
-                        "title", title,
-                        "description", description,
-                        "game_id", gameId
-                ), (success, response) -> {
-                    if (success) {
-                        hlsExecutor.submit(() -> {
-                            new Handler(Looper.getMainLooper()).post(() ->
-                                Toast.makeText(this, "HLS conversion started for " + videoUniqueId, Toast.LENGTH_SHORT).show());
-                            String manifestKey = VideoHlsConverter.triggerConversion(videoUniqueId);
-                            new Handler(Looper.getMainLooper()).post(() -> {
-                                String msg = manifestKey != null
-                                    ? "HLS ready: " + manifestKey
-                                    : "HLS conversion failed for " + videoUniqueId;
-                                Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
-                            });
-                        });
-                        saveVideoMetadataToFirebase(title, description, gameId, renamedFile, fileExtension, videoUniqueId, devid);
-                        renamedFile.delete();
-                        showNotification(100, true);
-                        sendResult("success");
-                    } else {
+                // Upload the video bytes DIRECTLY to the Cloudflare worker (like the
+                // legacy app). The gateway can't proxy the file because Cloud Run
+                // rejects request bodies over ~32 MiB with HTTP 413. The object is
+                // stored under the video_id key, matching what HLS/playback expect.
+                java.util.Map<String, String> workerParams = new java.util.HashMap<>();
+                workerParams.put("video_id", videoUniqueId);
+                workerParams.put("title", title);
+                workerParams.put("description", description);
+                workerParams.put("game_id", gameId);
+                FileUploader.uploadVideoToWorkerDirect(renamedFile, workerParams, (uploadSuccess, uploadResponse) -> {
+                    if (!uploadSuccess) {
+                        android.util.Log.e("VideoUploadService", "Worker upload failed for " + videoUniqueId + ": " + uploadResponse);
                         renamedFile.delete();
                         showNotification(0, true);
                         sendResult("fail");
+                        stopForeground(true);
+                        stopSelf();
+                        return;
                     }
-                    stopForeground(true);
-                    stopSelf();
+
+                    // Bytes are stored — now register the metadata via the SECURED
+                    // gateway (small JSON, well under the 32 MiB limit). The gateway
+                    // performs the Firebase write that the locked-down rules forbid
+                    // the client from doing directly.
+                    java.util.Map<String, String> regMeta = new java.util.HashMap<>();
+                    regMeta.put("video_id", videoUniqueId);
+                    String workerKey = FileUploader.parseWorkerKey(uploadResponse);
+                    if (workerKey != null) regMeta.put("key", workerKey);
+                    regMeta.put("video_title", title);
+                    regMeta.put("game_id", gameId);
+                    FileUploader.registerVideoViaGateway(regMeta, (regSuccess, regResponse) -> {
+                        if (regSuccess) {
+                            hlsExecutor.submit(() -> {
+                                new Handler(Looper.getMainLooper()).post(() ->
+                                    Toast.makeText(this, "HLS conversion started for " + videoUniqueId, Toast.LENGTH_SHORT).show());
+                                String manifestKey = VideoHlsConverter.triggerConversion(videoUniqueId);
+                                new Handler(Looper.getMainLooper()).post(() -> {
+                                    String msg = manifestKey != null
+                                        ? "HLS ready: " + manifestKey
+                                        : "HLS conversion failed for " + videoUniqueId;
+                                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+                                });
+                            });
+                            renamedFile.delete();
+                            showNotification(100, true);
+                            sendResult("success");
+                        } else {
+                            android.util.Log.e("VideoUploadService", "Register failed for " + videoUniqueId + ": " + regResponse);
+                            renamedFile.delete();
+                            showNotification(0, true);
+                            sendResult("fail");
+                        }
+                        stopForeground(true);
+                        stopSelf();
+                    });
                 }, progress -> {
                     showNotification(progress, false);
                     sendProgress(progress);
@@ -188,38 +206,5 @@ public class VideoUploadForegroundService extends Service {
         Intent intent = new Intent(BROADCAST_PROGRESS);
         intent.putExtra(EXTRA_RESULT, result);
         sendBroadcast(intent);
-    }
-
-    private void saveVideoMetadataToFirebase(String title, String description, String gameId, File file, String fileExtension, String videoUniqueId,String devid) {
-        String now = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault()).format(new Date());
-        
-        // 1. Save detailed video information in the videos node
-        DatabaseReference videosRef = FirebaseDatabase.getInstance().getReference("videos").child(videoUniqueId);
-        Map<String, Object> videoData = new HashMap<>();
-        videoData.put("created_at", now);
-        videoData.put("description", description);
-        videoData.put("file_size", String.valueOf(file.length()));
-        videoData.put("game_id", gameId);
-        videoData.put("is_verified", false);
-        videoData.put("like_count", "0");
-        videoData.put("share_count", "0");
-        videoData.put("user_id", devid);
-        videoData.put("video_id", videoUniqueId);  // Store clean video ID without extension
-        videoData.put("video_title", title);
-        videoData.put("view_count", "0");
-        
-        // Save to videos node
-        videosRef.setValue(videoData).addOnSuccessListener(aVoid -> {
-            // 2. Save video association in user's videos node (video_id = true)
-            DatabaseReference userVideosRef = FirebaseDatabase.getInstance().getReference("users").child(devid).child("videos").child(videoUniqueId);
-            userVideosRef.setValue(true).addOnSuccessListener(aVoid2 -> {
-                // Both saves completed successfully
-                System.out.println("Video saved successfully in both locations: " + videoUniqueId);
-            }).addOnFailureListener(e -> {
-                System.err.println("Failed to save video association to user: " + e.getMessage());
-            });
-        }).addOnFailureListener(e -> {
-            System.err.println("Failed to save video metadata: " + e.getMessage());
-        });
     }
 } 

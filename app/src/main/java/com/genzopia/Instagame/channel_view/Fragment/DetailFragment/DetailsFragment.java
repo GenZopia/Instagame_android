@@ -13,21 +13,22 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.genzopia.Instagame.R;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
+import com.genzopia.Instagame.gateway.ChannelDTO;
+import com.genzopia.Instagame.gateway.GatewayClient;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class DetailsFragment extends Fragment {
 
     private RecyclerView recyclerView;
     private LinkAdapter adapter;
-    private static List<LinkItem> sLinkList;
-    private static String sDeveloperId;
-    private static boolean sIsDataLoaded = false;
+    private final List<LinkItem> linkList = new ArrayList<>();
+    private String developerId;
 
     private TextView tvBio, tvFollowersCount, tvVideosCount, tvGamesCount;
 
@@ -39,86 +40,51 @@ public class DetailsFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-
-
-
         recyclerView = view.findViewById(R.id.linksRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
-        if (sLinkList == null) {
-            sLinkList = new ArrayList<>();
-        }
-        adapter = new LinkAdapter(sLinkList);
+        adapter = new LinkAdapter(linkList);
         recyclerView.setAdapter(adapter);
 
-        if (sDeveloperId != null && !sIsDataLoaded) loadDeveloperDetails();
+        if (developerId != null) loadDetails();
     }
 
     public void setDeveloperId(String developerId) {
-        sDeveloperId = developerId;
-        if (isAdded() && recyclerView != null && !sIsDataLoaded) loadDeveloperDetails();
+        this.developerId = developerId;
+        linkList.clear();
+        if (isAdded() && recyclerView != null) loadDetails();
     }
 
-    private void loadDeveloperDetails() {
-        if (sDeveloperId == null) return;
-
-        FirebaseDatabase.getInstance().getReference("users").child(sDeveloperId)
-                .addListenerForSingleValueEvent(new ValueEventListener() {
+    private void loadDetails() {
+        if (developerId == null) return;
+        GatewayClient.INSTANCE.getCallApi().getChannel(developerId)
+                .enqueue(new Callback<ChannelDTO>() {
                     @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        if (!snapshot.exists()) return;
+                    public void onResponse(@NonNull Call<ChannelDTO> call,
+                                           @NonNull Response<ChannelDTO> resp) {
+                        if (!isAdded() || !resp.isSuccessful() || resp.body() == null) return;
+                        ChannelDTO ch = resp.body();
 
-                        sIsDataLoaded = true;
-
-                        // Bio
-                        String bio = snapshot.child("bio").getValue(String.class);
-                        if (bio == null || bio.isEmpty())
-                            bio = snapshot.child("description").getValue(String.class);
-                        if (tvBio != null)
+                        if (tvBio != null) {
+                            String bio = ch.getBio();
                             tvBio.setText(bio != null && !bio.isEmpty() ? bio : "No bio yet.");
-
-                        // Stats
-                        Long followersCount = snapshot.child("followers_count").getValue(Long.class);
-                        if (followersCount == null) {
-                            String fs = snapshot.child("followers").getValue(String.class);
-                            try { followersCount = fs != null ? Long.parseLong(fs) : 0L; }
-                            catch (NumberFormatException e) { followersCount = 0L; }
                         }
-                        int videoCount = snapshot.child("videos").exists()
-                                ? (int) snapshot.child("videos").getChildrenCount() : 0;
-                        int gameCount = snapshot.child("games").exists()
-                                ? (int) snapshot.child("games").getChildrenCount() : 0;
+                        if (tvFollowersCount != null)
+                            tvFollowersCount.setText(formatCount((int) ch.getFollowersCount()));
+                        if (tvVideosCount != null)
+                            tvVideosCount.setText(String.valueOf(ch.getVideoCount()));
+                        if (tvGamesCount != null)
+                            tvGamesCount.setText(String.valueOf(ch.getGameCount()));
 
-                        if (tvFollowersCount != null) tvFollowersCount.setText(formatCount(followersCount.intValue()));
-                        if (tvVideosCount != null) tvVideosCount.setText(String.valueOf(videoCount));
-                        if (tvGamesCount != null) tvGamesCount.setText(String.valueOf(gameCount));
-
-                        // Info rows
-                        sLinkList.clear();
-                        String email = snapshot.child("email").getValue(String.class);
-                        String username = snapshot.child("username").getValue(String.class);
-                        String dob = snapshot.child("date_of_birth").getValue(String.class);
-                        String website = snapshot.child("website").getValue(String.class);
-                        String location = snapshot.child("location").getValue(String.class);
-                        String story = snapshot.child("story").getValue(String.class);
-
-                        if (username != null && !username.isEmpty())
-                            sLinkList.add(new LinkItem("Username", "@" + username));
-                        if (email != null && !email.isEmpty())
-                            sLinkList.add(new LinkItem("Email", email));
-                        if (dob != null && !dob.isEmpty())
-                            sLinkList.add(new LinkItem("Birthday", dob));
-                        if (website != null && !website.isEmpty())
-                            sLinkList.add(new LinkItem("Website", website));
-                        if (location != null && !location.isEmpty())
-                            sLinkList.add(new LinkItem("Location", location));
-                        if (story != null && !story.isEmpty())
-                            sLinkList.add(new LinkItem("Story", story));
+                        linkList.clear();
+                        if (ch.getWebsite() != null && !ch.getWebsite().isEmpty())
+                            linkList.add(new LinkItem("Website", ch.getWebsite()));
+                        if (ch.getStory() != null && !ch.getStory().isEmpty())
+                            linkList.add(new LinkItem("Story", ch.getStory()));
 
                         adapter.notifyDataSetChanged();
                     }
-
                     @Override
-                    public void onCancelled(@NonNull DatabaseError error) {}
+                    public void onFailure(@NonNull Call<ChannelDTO> call, @NonNull Throwable t) {}
                 });
     }
 

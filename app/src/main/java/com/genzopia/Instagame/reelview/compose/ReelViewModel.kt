@@ -1,4 +1,8 @@
+package com.genzopia.Instagame.reelview.compose
+
 import android.content.Context
+import android.util.Log
+import androidx.annotation.OptIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -12,19 +16,16 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import com.genzopia.Instagame.reelview.compose.ReelData
-import com.genzopia.Instagame.reelview.compose.ReelPagingSource
+import com.genzopia.Instagame.utils.DataPrefetchService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.tasks.await
 
-@androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class)
 class ReelViewModel : ViewModel() {
 
     // Tracks how many videos in the prefetch cache now have a resolved URL.
@@ -56,14 +57,14 @@ class ReelViewModel : ViewModel() {
             // Poll every 500 ms for up to 60 s. Stop early once all cached
             // videos have URLs (signedUrlCache count stops growing).
             repeat(120) {
-                val allCached = com.genzopia.Instagame.utils.DataPrefetchService.getAllCachedVideos()
+                val allCached = DataPrefetchService.getAllCachedVideos()
                 val withUrl = allCached.keys.count { videoId ->
-                    com.genzopia.Instagame.utils.DataPrefetchService.getCachedSignedUrl(videoId) != null
+                    DataPrefetchService.getCachedSignedUrl(videoId) != null
                 }
                 if (withUrl > lastCount) {
                     lastCount = withUrl
                     _urlsReadyCount.value = withUrl
-                    android.util.Log.d("ReelViewModel", "URL resolution progress: $withUrl/${allCached.size}")
+                    Log.d("ReelViewModel", "URL resolution progress: $withUrl/${allCached.size}")
                 }
                 // Stop polling once all videos have URLs
                 if (allCached.isNotEmpty() && withUrl >= allCached.size) return@launch
@@ -114,32 +115,11 @@ class ReelViewModel : ViewModel() {
     }
 
     private fun prefillUserStates() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                ?: return@launch
-            try {
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance().reference
-
-                // Fetch following_list and liked_videos in parallel
-                val followSnap = async { db.child("users").child(uid).child("following_list").get().await() }
-                val likeSnap  = async { db.child("users").child(uid).child("liked_videos").get().await() }
-
-                followSnap.await().children.mapNotNull { it.key }.forEach { devId ->
-                    followStates[devId] = true
-                }
-                likeSnap.await().children.mapNotNull { it.key }.forEach { videoId ->
-                    // Preserve existing like count if already tracked, default to 0
-                    val existing = likeStates[videoId]
-                    if (existing == null) likeStates[videoId] = Pair(true, 0)
-                    else likeStates[videoId] = existing.copy(first = true)
-                }
-
-                android.util.Log.d("ReelViewModel",
-                    "Pre-filled: ${followStates.size} following, ${likeStates.size} liked videos")
-            } catch (e: Exception) {
-                android.util.Log.e("ReelViewModel", "prefillUserStates error", e)
-            }
-        }
+        // VideoMetadata (from DataPrefetchService) does not carry isFollowing / isLiked /
+        // likeCount — those are only available on ReelData once the paging source loads.
+        // States are seeded lazily via updateFollowState / updateLikeState as each reel
+        // is displayed, so no prefill is needed here.
+        Log.d("ReelViewModel", "prefillUserStates: states will be seeded on first render")
     }
 
     // Get or create player for a video — always returns the SAME instance for a videoId
@@ -150,24 +130,24 @@ class ReelViewModel : ViewModel() {
         playerPool[videoId]?.let { return it }
 
         // Take ownership from prefetch service if available
-        val preloaded = com.genzopia.Instagame.utils.DataPrefetchService.getPreloadedPlayer(videoId)
+        val preloaded = DataPrefetchService.getPreloadedPlayer(videoId)
         if (preloaded != null && preloaded.playbackState != Player.STATE_IDLE) {
-            com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
-            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            DataPrefetchService.removeFromPool(videoId)
+            DataPrefetchService.clearPreloadedPlayer()
             preloaded.repeatMode = ExoPlayer.REPEAT_MODE_ONE
             preloaded.volume = 0f
             preloaded.playWhenReady = false
             attachErrorRecovery(preloaded, videoId, videoUrl)
             playerPool[videoId] = preloaded
-            android.util.Log.d("ReelViewModel", "Took prefetched player for $videoId")
+            Log.d("ReelViewModel", "Took prefetched player for $videoId")
             return preloaded
         } else if (preloaded != null) {
             preloaded.release()
-            com.genzopia.Instagame.utils.DataPrefetchService.removeFromPool(videoId)
-            com.genzopia.Instagame.utils.DataPrefetchService.clearPreloadedPlayer()
+            DataPrefetchService.removeFromPool(videoId)
+            DataPrefetchService.clearPreloadedPlayer()
         }
 
-        android.util.Log.d("ReelViewModel", "Creating player for $videoId")
+        Log.d("ReelViewModel", "Creating player for $videoId")
         return createPlayer(videoId, videoUrl)
     }
 
@@ -191,7 +171,7 @@ class ReelViewModel : ViewModel() {
     private fun attachErrorRecovery(player: ExoPlayer, videoId: String, videoUrl: String) {
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                android.util.Log.e("ReelViewModel", "Player error $videoId: ${error.message}")
+                Log.e("ReelViewModel", "Player error $videoId: ${error.message}")
                 playerPool.remove(videoId)
                 player.removeListener(this)
                 player.release()

@@ -27,11 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.UUID;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
+
 import androidx.annotation.NonNull;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,9 +68,7 @@ public class VideoUploadInfoActivity extends BaseActivity {
     private TextInputLayout gameDropdownLayout;
     private TextInputLayout descInputLayout;
     
-    // Firebase references
-    private DatabaseReference userRef;
-    private ValueEventListener userListener;
+
     private androidx.appcompat.app.AlertDialog dialog; // Store dialog reference
     
     // Video upload variables
@@ -154,53 +148,33 @@ public class VideoUploadInfoActivity extends BaseActivity {
         gameAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, gameNames);
         gameDropdown.setAdapter(gameAdapter);
 
-        // Fetch only games uploaded by the current user
-        devid = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        DatabaseReference userGamesRef = FirebaseDatabase.getInstance().getReference("users").child(devid).child("games");
-        userGamesRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                gameNames.clear();
-                gameNameToId.clear();
-                int[] pending = {0};
-                for (DataSnapshot gameSnap : snapshot.getChildren()) {
-                    Boolean val = gameSnap.getValue(Boolean.class);
-                    if (Boolean.TRUE.equals(val)) {
-                        pending[0]++;
-                        String gameId = gameSnap.getKey();
-                        FirebaseDatabase.getInstance().getReference("games").child(gameId)
-                            .addListenerForSingleValueEvent(new ValueEventListener() {
-                                @Override
-                                public void onDataChange(@NonNull DataSnapshot gs) {
-                                    String name = gs.child("game_name").getValue(String.class);
-                                    if (name != null) {
-                                        gameNames.add(name);
-                                        gameNameToId.put(name, gameId);
-                                    }
-                                    if (--pending[0] == 0) {
-                                        java.util.Collections.sort(gameNames);
-                                        gamesLoading = false;
-                                        gameAdapter.notifyDataSetChanged();
-                                    }
-                                }
-                                @Override
-                                public void onCancelled(@NonNull DatabaseError error) {
-                                    if (--pending[0] == 0) {
-                                        gamesLoading = false;
-                                        gameAdapter.notifyDataSetChanged();
-                                    }
-                                }
-                            });
+        // Fetch games via gateway (only user's own games)
+        devid = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid();
+        com.genzopia.Instagame.gateway.GatewayClient.INSTANCE.getCallApi()
+                .getChannelGames(devid)
+                .enqueue(new retrofit2.Callback<com.genzopia.Instagame.gateway.ChannelGamesResponse>() {
+                    @Override
+                    public void onResponse(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.ChannelGamesResponse> call,
+                                           @NonNull retrofit2.Response<com.genzopia.Instagame.gateway.ChannelGamesResponse> resp) {
+                        gameNames.clear();
+                        gameNameToId.clear();
+                        if (resp.isSuccessful() && resp.body() != null) {
+                            for (com.genzopia.Instagame.gateway.ChannelGameDTO g : resp.body().getData()) {
+                                gameNames.add(g.getGameName());
+                                gameNameToId.put(g.getGameName(), g.getGameId());
+                            }
+                            java.util.Collections.sort(gameNames);
+                        }
+                        gamesLoading = false;
+                        gameAdapter.notifyDataSetChanged();
                     }
-                }
-                if (pending[0] == 0) {
-                    gamesLoading = false;
-                    gameAdapter.notifyDataSetChanged();
-                }
-            }
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
-        });
+                    @Override
+                    public void onFailure(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.ChannelGamesResponse> call,
+                                          @NonNull Throwable t) {
+                        gamesLoading = false;
+                        gameAdapter.notifyDataSetChanged();
+                    }
+                });
 
         // Set click listener to show search dialog
         gameDropdown.setOnClickListener(v -> showGameSearchDialog());
@@ -424,8 +398,7 @@ public class VideoUploadInfoActivity extends BaseActivity {
         });
         
         // Create and show dialog
-        androidx.appcompat.app.AlertDialog dialog = builder.create();
-        this.dialog = dialog; // Store reference for dismissal
+        dialog = builder.create();
         
         // Focus on search box when dialog opens
         dialog.setOnShowListener(dialogInterface -> {
@@ -441,49 +414,33 @@ public class VideoUploadInfoActivity extends BaseActivity {
     }
 
     private void fetchUserData() {
-        // Get current user ID from Firebase Auth
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        userRef = FirebaseDatabase.getInstance().getReference()
-                .child("users").child(userId);
-
-        userListener = new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (!dataSnapshot.exists()) return;
-
-                // Profile photo
-                String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
-                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
-                if (sanitizedPhotoUrl != null) {
-                    Glide.with(VideoUploadInfoActivity.this)
-                            .load(sanitizedPhotoUrl)
-                            .placeholder(R.drawable.profile)
-                            .error(R.drawable.profile)
-                            .into(userAvatar);
-                }
-
-                // Username and full name
-                String fullName = dataSnapshot.child("full_name").getValue(String.class);
-                String username = dataSnapshot.child("username").getValue(String.class);
-                
-                if (fullName != null && !fullName.isEmpty()) {
-                    userName.setText(fullName);
-                }
-                
-                if (username != null && !username.isEmpty()) {
-                    userUsername.setText("@" + username);
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(VideoUploadInfoActivity.this, "Failed to fetch user data", Toast.LENGTH_SHORT).show();
-            }
-        };
-        userRef.addValueEventListener(userListener);
+        com.genzopia.Instagame.gateway.GatewayClient.INSTANCE.getCallApi()
+                .getMyProfile()
+                .enqueue(new retrofit2.Callback<com.genzopia.Instagame.gateway.UserProfileDTO>() {
+                    @Override
+                    public void onResponse(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.UserProfileDTO> call,
+                                           @NonNull retrofit2.Response<com.genzopia.Instagame.gateway.UserProfileDTO> resp) {
+                        if (!resp.isSuccessful() || resp.body() == null) return;
+                        com.genzopia.Instagame.gateway.UserProfileDTO p = resp.body();
+                        String sanitized = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(p.getProfile_photo_url());
+                        if (sanitized != null) {
+                            Glide.with(VideoUploadInfoActivity.this)
+                                    .load(sanitized)
+                                    .placeholder(R.drawable.profile)
+                                    .error(R.drawable.profile)
+                                    .into(userAvatar);
+                        }
+                        if (p.getFull_name() != null && !p.getFull_name().isEmpty())
+                            userName.setText(p.getFull_name());
+                    }
+                    @Override
+                    public void onFailure(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.UserProfileDTO> call,
+                                          @NonNull Throwable t) {
+                        Toast.makeText(VideoUploadInfoActivity.this, "Failed to fetch user data", Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
-    
     private String getFileExtension(String fileName) {
         int lastDotIndex = fileName.lastIndexOf('.');
         if (lastDotIndex > 0) {
@@ -527,9 +484,6 @@ public class VideoUploadInfoActivity extends BaseActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (userListener != null && userRef != null) {
-            userRef.removeEventListener(userListener);
-        }
         if (uploadProgressReceiver != null && isReceiverRegistered) {
             try {
                 unregisterReceiver(uploadProgressReceiver);

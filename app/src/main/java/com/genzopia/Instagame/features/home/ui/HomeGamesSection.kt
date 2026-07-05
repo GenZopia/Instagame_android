@@ -630,6 +630,11 @@ internal fun GameDetailSheet(game: HomeGameItem, onDismiss: (didPlay: Boolean) -
                                 val intent = Intent(context, ChannelActivity::class.java)
                                 intent.putExtra("developer_id", game.developerId)
                                 intent.putExtra("channel_source", "home_game_card")
+                                // Forward the same avatar shown here so the channel
+                                // screen paints it instantly instead of a placeholder.
+                                if (game.developerPhotoUrl.isNotEmpty()) {
+                                    intent.putExtra("developer_photo_url", game.developerPhotoUrl)
+                                }
                                 context.startActivity(intent)
                             }
                             .padding(12.dp),

@@ -27,25 +27,18 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.genzopia.Instagame.databinding.ActivityGameModeBinding;
+import com.genzopia.Instagame.gateway.GatewayClient;
+import com.genzopia.Instagame.gateway.LaunchUrlResponse;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class Game_mode extends BaseActivity {
     private static final String TAG = "Game_mode";
@@ -77,7 +70,6 @@ public class Game_mode extends BaseActivity {
     private long gamePlayStartMs;          // when game page finishes loading (actual play start)
     private boolean exitedViaBack = false;
 
-    private OkHttpClient httpClient;
     private ExecutorService executorService;
 
     @Override
@@ -90,7 +82,6 @@ public class Game_mode extends BaseActivity {
         // Hide status bar and navigation bar for true immersive fullscreen gaming
         hideSystemBars();
 
-        httpClient = new OkHttpClient();
         executorService = Executors.newSingleThreadExecutor();
 
         currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
@@ -119,57 +110,11 @@ public class Game_mode extends BaseActivity {
             finish();
             return;
         }
-
-        DatabaseReference gameRef = FirebaseDatabase.getInstance().getReference("games").child(gameId);
-        gameRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (snapshot.exists()) {
-                    String gameUserId = snapshot.child("user_id").getValue(String.class);
-                    String orientation = snapshot.child("orientation").getValue(String.class);
-                    String gameLink = snapshot.child("game_link").getValue(String.class);
-                    gameName = snapshot.child("game_name").getValue(String.class) != null
-                            ? snapshot.child("game_name").getValue(String.class) : "";
-
-                    Log.d(TAG, "Game user_id: " + gameUserId);
-                    Log.d(TAG, "Orientation: " + orientation);
-                    Log.d(TAG, "Game link: " + gameLink);
-
-                    setScreenOrientation(orientation);
-
-                    if (gameLink != null && !gameLink.isEmpty()) {
-                        Log.d(TAG, "Using direct game_link: " + gameLink);
-                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
-                                .trackGameUrlFetchSuccess(gameId, gameName, 0, "direct");
-                        runOnUiThread(() -> {
-                            if (!isFinishing() && !isDestroyed()) {
-                                setupWebView(gameLink);
-                            }
-                        });
-                    } else if (gameUserId != null && !gameUserId.isEmpty()) {
-                        gameUrlFetchStartMs = System.currentTimeMillis();
-                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
-                                .trackGameUrlFetchStarted(gameId, gameName);
-                        getSignedGameUrl(gameUserId);
-                    } else {
-                        Log.e(TAG, "Game user_id is null or empty");
-                        Toast.makeText(Game_mode.this, "Game owner information not found", Toast.LENGTH_SHORT).show();
-                        finish();
-                    }
-                } else {
-                    Log.e(TAG, "Game not found: " + gameId);
-                    Toast.makeText(Game_mode.this, "Game not found", Toast.LENGTH_SHORT).show();
-                    finish();
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e(TAG, "Error fetching game data: " + error.getMessage());
-                Toast.makeText(Game_mode.this, "Error loading game data", Toast.LENGTH_SHORT).show();
-                finish();
-            }
-        });
+        // Gateway handles both direct game_link and signed URL — no direct Firebase read needed
+        gameUrlFetchStartMs = System.currentTimeMillis();
+        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                .trackGameUrlFetchStarted(gameId, gameName);
+        getSignedGameUrl();
     }
 
     private void setScreenOrientation(String orientation) {
@@ -190,74 +135,60 @@ public class Game_mode extends BaseActivity {
         }
     }
 
-    private void getSignedGameUrl(String gameUserId) {
-        String linkSignerUrl = "https://link-signer.genzopia.workers.dev/?userid=" + gameUserId + "&gameid=" + gameId;
-        Log.d(TAG, "Link-signer URL: " + linkSignerUrl);
-
-        Request request = new Request.Builder().url(linkSignerUrl).build();
-
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.e(TAG, "Network error: " + e.getMessage());
-                com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
-                        .trackGameUrlFetchFailed(gameId, gameName, e.getMessage() != null ? e.getMessage() : "network_error");
-                runOnUiThread(() -> {
-                    if (!isFinishing() && !isDestroyed()) {
-                        Toast.makeText(Game_mode.this, "Network error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        finish();
-                    }
-                });
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (response.isSuccessful()) {
-                    String responseBody = response.body().string();
-                    Log.d(TAG, "Link-signer response: " + responseBody);
-                    try {
-                        Gson gson = new Gson();
-                        JsonObject jsonResponse = gson.fromJson(responseBody, JsonObject.class);
-                        boolean success = jsonResponse.get("success").getAsBoolean();
-                        if (success) {
-                            String signedGameUrl = jsonResponse.get("url").getAsString();
-                            Log.d(TAG, "Signed game URL: " + signedGameUrl);
+    private void getSignedGameUrl() {
+        GatewayClient.INSTANCE.getCallApi().getGameLaunchUrl(gameId)
+                .enqueue(new Callback<LaunchUrlResponse>() {
+                    @Override
+                    public void onResponse(@NonNull Call<LaunchUrlResponse> call,
+                                           @NonNull Response<LaunchUrlResponse> resp) {
+                        if (resp.isSuccessful() && resp.body() != null) {
+                            String signedGameUrl = resp.body().resolvedUrl();
+                            if (signedGameUrl == null || signedGameUrl.isEmpty()) {
+                                Log.e(TAG, "Gateway returned empty launch URL");
+                                runOnUiThread(() -> {
+                                    if (!isFinishing() && !isDestroyed()) {
+                                        Toast.makeText(Game_mode.this, "Game URL not available", Toast.LENGTH_SHORT).show();
+                                        finish();
+                                    }
+                                });
+                                return;
+                            }
+                            // Apply orientation and game name from gateway response
+                            gameName = resp.body().getGameName() != null ? resp.body().getGameName() : "";
+                            setScreenOrientation(resp.body().getOrientation());
                             long fetchDuration = System.currentTimeMillis() - gameUrlFetchStartMs;
                             com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
                                     .trackGameUrlFetchSuccess(gameId, gameName, fetchDuration, "signed");
                             runOnUiThread(() -> {
-                                if (!isFinishing() && !isDestroyed()) {
-                                    setupWebView(signedGameUrl);
-                                }
+                                if (!isFinishing() && !isDestroyed()) setupWebView(signedGameUrl);
                             });
                         } else {
+                            Log.e(TAG, "Gateway launch-url error: " + resp.code());
                             runOnUiThread(() -> {
                                 if (!isFinishing() && !isDestroyed()) {
-                                    Toast.makeText(Game_mode.this, "Failed to get game URL", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(Game_mode.this, "Failed to get game URL",
+                                            Toast.LENGTH_SHORT).show();
                                     finish();
                                 }
                             });
                         }
-                    } catch (Exception e) {
-                        Log.e(TAG, "JSON parse error: " + e.getMessage());
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<LaunchUrlResponse> call, @NonNull Throwable t) {
+                        Log.e(TAG, "getSignedGameUrl failed: " + t.getMessage());
+                        com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
+                                .trackGameUrlFetchFailed(gameId, gameName,
+                                        t.getMessage() != null ? t.getMessage() : "network_error");
                         runOnUiThread(() -> {
                             if (!isFinishing() && !isDestroyed()) {
-                                Toast.makeText(Game_mode.this, "Error parsing response", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(Game_mode.this, "Network error: " + t.getMessage(),
+                                        Toast.LENGTH_SHORT).show();
                                 finish();
                             }
                         });
                     }
-                } else {
-                    Log.e(TAG, "HTTP error: " + response.code());
-                    runOnUiThread(() -> {
-                        if (!isFinishing() && !isDestroyed()) {
-                            Toast.makeText(Game_mode.this, "HTTP error: " + response.code(), Toast.LENGTH_SHORT).show();
-                            finish();
-                        }
-                    });
-                }
-            }
-        });
+                });
     }
 
     // ── Helper: check if a URL belongs to an ad domain ──────────────────────

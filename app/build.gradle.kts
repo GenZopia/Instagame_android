@@ -16,13 +16,23 @@ android {
         versionName = "10.0"
 
         val fileUploadApiKey: String = (project.findProperty("file_upload_api_key") as String?) ?: ""
-        buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"")
-
-        val videoProcessorApiKey: String = (project.findProperty("video_processor_api_key") as String?) ?: ""
-        buildConfigField("String", "VIDEO_PROCESSOR_API_KEY", "\"$videoProcessorApiKey\"")
+        buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"") // kept for legacy; no longer used in APK
 
         val amplitudeApiKey: String = (project.findProperty("amplitude_api_key") as String?) ?: ""
         buildConfigField("String", "AMPLITUDE_API_KEY", "\"$amplitudeApiKey\"")
+
+        val gatewayBaseUrl: String = (project.findProperty("gateway_base_url") as String?) ?: ""
+        buildConfigField("String", "GATEWAY_BASE_URL", "\"$gatewayBaseUrl\"")
+
+        val gatewayApiKey: String = (project.findProperty("gateway_api_key") as String?) ?: ""
+        buildConfigField("String", "GATEWAY_API_KEY", "\"$gatewayApiKey\"")
+
+        // Direct Cloudflare file-upload worker URL. Large videos are uploaded straight to
+        // this worker (which has no request-size limit) instead of through the gateway,
+        // because Cloud Run rejects any request body larger than 32 MiB with HTTP 413.
+        val workerUploadUrl: String = (project.findProperty("worker_upload_url") as String?)
+            ?: "https://file-uploader.genzopia.workers.dev"
+        buildConfigField("String", "WORKER_UPLOAD_URL", "\"$workerUploadUrl\"")
 
         // Base domain for deep linking - change this to update deep links everywhere
         buildConfigField("String", "BASE_DOMAIN", "\"www.genzopia.com\"")
@@ -124,10 +134,11 @@ dependencies {
 
     // Firebase (versions managed by Firebase BOM above)
     implementation(libs.firebase.auth.ktx)
-    implementation(libs.firebase.database)
-    implementation(libs.firebase.firestore)
     implementation(libs.firebase.messaging)
-    implementation(libs.firebase.config)
+    // firebase-config removed: app config now fetched via gateway /app-config endpoint
+
+    // Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Lifecycle
     implementation(libs.lifecycle.livedata.ktx)

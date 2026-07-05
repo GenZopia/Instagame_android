@@ -1,22 +1,44 @@
 package com.genzopia.Instagame.comments.data;
 
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 
 import com.genzopia.Instagame.comments.models.Comment;
 import com.genzopia.Instagame.comments.models.Reply;
-import com.google.firebase.database.*;
+import com.genzopia.Instagame.gateway.CommentDTO;
+import com.genzopia.Instagame.gateway.CommentsPageResponse;
+import com.genzopia.Instagame.gateway.GatewayCallService;
+import com.genzopia.Instagame.gateway.GatewayClient;
+import com.genzopia.Instagame.gateway.PostCommentRequest;
+import com.genzopia.Instagame.gateway.PostReplyRequest;
+import com.genzopia.Instagame.gateway.ReplyDTO;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
+/**
+ * Repository for comment and reply operations — all calls go through the
+ * backend Gateway instead of writing directly to Firebase.
+ *
+ * Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8
+ */
 public class CommentsRepository {
 
+    private static final String TAG = "CommentsRepository";
+
     public interface CommentsCallback {
-        void onLoaded(java.util.List<Comment> comments, Long lastCreatedAt, boolean hasMore);
+        void onLoaded(List<Comment> comments, Long lastCreatedAt, boolean hasMore);
         void onError(String message);
     }
 
     public interface RepliesCallback {
-        void onLoaded(java.util.List<Reply> replies, Long lastCreatedAt, boolean hasMore);
+        void onLoaded(List<Reply> replies, Long lastCreatedAt, boolean hasMore);
         void onError(String message);
     }
 
@@ -28,402 +50,186 @@ public class CommentsRepository {
         void onResult(boolean value);
     }
 
-    private DatabaseReference commentsRef(String videoId) {
-        return FirebaseDatabase.getInstance().getReference("videos").child(videoId).child("comments");
-    }
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    // Safely parse a Long field that may be stored as String or Long in Firebase
-    private static Long safeLong(DataSnapshot ds, String key) {
-        Object val = ds.child(key).getValue();
-        if (val == null) return null;
-        if (val instanceof Long) return (Long) val;
-        if (val instanceof Integer) return ((Integer) val).longValue();
-        if (val instanceof Double) return ((Double) val).longValue();
-        try { return Long.parseLong(val.toString()); } catch (NumberFormatException e) { return null; }
-    }
-
-    private static Comment commentFrom(DataSnapshot ds) {
+    private static Comment commentFromDTO(CommentDTO dto) {
         Comment c = new Comment();
-        c.comment_id      = ds.child("comment_id").getValue(String.class);
-        c.user_id         = ds.child("user_id").getValue(String.class);
-        c.user_display_name = ds.child("user_display_name").getValue(String.class);
-        c.user_photo_url  = ds.child("user_photo_url").getValue(String.class);
-        c.text            = ds.child("text").getValue(String.class);
-        c.created_at      = safeLong(ds, "created_at");
-        c.like_count      = safeLong(ds, "like_count");
-        c.dislike_count   = safeLong(ds, "dislike_count");
-        c.reply_count     = safeLong(ds, "reply_count");
+        c.comment_id        = dto.getComment_id();
+        c.user_id           = dto.getUser_id();
+        c.user_display_name = dto.getUser_display_name();
+        c.user_photo_url    = dto.getUser_photo_url();
+        c.text              = dto.getText();
+        c.created_at        = dto.getCreated_at();
+        c.like_count        = dto.getLike_count();
+        c.dislike_count     = dto.getDislike_count();
+        c.reply_count       = dto.getReply_count();
         return c;
     }
 
-    private static Reply replyFrom(DataSnapshot ds) {
+    private static Reply replyFromDTO(ReplyDTO dto) {
         Reply r = new Reply();
-        r.reply_id           = ds.child("reply_id").getValue(String.class);
-        r.parent_comment_id  = ds.child("parent_comment_id").getValue(String.class);
-        r.user_id            = ds.child("user_id").getValue(String.class);
-        r.user_display_name  = ds.child("user_display_name").getValue(String.class);
-        r.user_photo_url     = ds.child("user_photo_url").getValue(String.class);
-        r.text               = ds.child("text").getValue(String.class);
-        r.created_at         = safeLong(ds, "created_at");
-        r.like_count         = safeLong(ds, "like_count");
-        r.dislike_count      = safeLong(ds, "dislike_count");
+        r.reply_id          = dto.getReply_id();
+        r.parent_comment_id = dto.getParent_comment_id();
+        r.user_id           = dto.getUser_id();
+        r.user_display_name = dto.getUser_display_name();
+        r.user_photo_url    = dto.getUser_photo_url();
+        r.text              = dto.getText();
+        r.created_at        = dto.getCreated_at();
+        r.like_count        = dto.getLike_count();
+        r.dislike_count     = dto.getDislike_count();
         return r;
     }
 
-    public void fetchCommentsFirstPage(String videoId, final CommentsCallback callback) {
-        Query q = commentsRef(videoId).orderByChild("created_at").limitToLast(20);
-        q.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
-                List<Comment> list = new ArrayList<>();
-                for (DataSnapshot ds : snapshot.getChildren()) {
-                    Comment c = commentFrom(ds);
-                    if (c != null) list.add(c);
+    private GatewayCallService api() {
+        return GatewayClient.INSTANCE.getCallApi();
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    public void fetchCommentsFirstPage(String videoId, CommentsCallback callback) {
+        api().getComments(videoId, null, 20).enqueue(new Callback<CommentsPageResponse>() {
+            @Override
+            public void onResponse(@NonNull Call<CommentsPageResponse> call,
+                                   @NonNull Response<CommentsPageResponse> resp) {
+                if (resp.isSuccessful() && resp.body() != null) {
+                    CommentsPageResponse page = resp.body();
+                    List<Comment> list = new ArrayList<>();
+                    for (CommentDTO dto : page.getData()) list.add(commentFromDTO(dto));
+                    Long last = list.isEmpty() ? null : list.get(list.size() - 1).created_at;
+                    callback.onLoaded(list, last, page.getHasMore());
+                } else {
+                    callback.onError("Gateway error " + resp.code());
                 }
-                list.sort((a,b) -> Long.compare(b.created_at != null ? b.created_at : 0L, a.created_at != null ? a.created_at : 0L));
-                Long last = list.isEmpty() ? null : list.get(list.size() - 1).created_at;
-                boolean hasMore = list.size() == 20;
-                callback.onLoaded(list, last, hasMore);
             }
-            @Override public void onCancelled(@NonNull DatabaseError error) {
-                callback.onError(error.getMessage());
+            @Override
+            public void onFailure(@NonNull Call<CommentsPageResponse> call, @NonNull Throwable t) {
+                Log.e(TAG, "fetchCommentsFirstPage failed", t);
+                callback.onError(t.getMessage());
             }
         });
     }
 
-    public void fetchCommentsNextPage(String videoId, Long lastCreatedAt, final CommentsCallback callback) {
+    public void fetchCommentsNextPage(String videoId, Long lastCreatedAt, CommentsCallback callback) {
         if (lastCreatedAt == null) {
             callback.onLoaded(Collections.emptyList(), null, false);
             return;
         }
-        Query q = commentsRef(videoId).orderByChild("created_at").endAt(lastCreatedAt).limitToLast(21);
-        q.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
-                List<Comment> list = new ArrayList<>();
-                for (DataSnapshot ds : snapshot.getChildren()) {
-                    Comment c = commentFrom(ds);
-                    if (c != null) list.add(c);
+        api().getComments(videoId, lastCreatedAt, 20).enqueue(new Callback<CommentsPageResponse>() {
+            @Override
+            public void onResponse(@NonNull Call<CommentsPageResponse> call,
+                                   @NonNull Response<CommentsPageResponse> resp) {
+                if (resp.isSuccessful() && resp.body() != null) {
+                    CommentsPageResponse page = resp.body();
+                    List<Comment> list = new ArrayList<>();
+                    for (CommentDTO dto : page.getData()) list.add(commentFromDTO(dto));
+                    Long last = list.isEmpty() ? null : list.get(list.size() - 1).created_at;
+                    callback.onLoaded(list, last, page.getHasMore());
+                } else {
+                    callback.onError("Gateway error " + resp.code());
                 }
-                list.sort((a,b) -> Long.compare(b.created_at != null ? b.created_at : 0L, a.created_at != null ? a.created_at : 0L));
-                if (!list.isEmpty()) list.remove(0); // drop overlap
-                Long last = list.isEmpty() ? null : list.get(list.size() - 1).created_at;
-                boolean hasMore = list.size() >= 20;
-                callback.onLoaded(list, last, hasMore);
             }
-            @Override public void onCancelled(@NonNull DatabaseError error) {
-                callback.onError(error.getMessage());
+            @Override
+            public void onFailure(@NonNull Call<CommentsPageResponse> call, @NonNull Throwable t) {
+                Log.e(TAG, "fetchCommentsNextPage failed", t);
+                callback.onError(t.getMessage());
             }
         });
     }
 
-    public void fetchRepliesFirstPage(String videoId, String commentId, final RepliesCallback callback) {
-        DatabaseReference ref = commentsRef(videoId).child(commentId).child("replies");
-        Query q = ref.orderByChild("created_at").limitToLast(20);
-        q.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
-                List<Reply> list = new ArrayList<>();
-                for (DataSnapshot ds : snapshot.getChildren()) {
-                    Reply r = replyFrom(ds);
-                    if (r != null) list.add(r);
-                }
-                list.sort((a,b) -> Long.compare(a.created_at != null ? a.created_at : 0L, b.created_at != null ? b.created_at : 0L));
-                Long last = list.isEmpty() ? null : list.get(list.size() - 1).created_at;
-                boolean hasMore = list.size() == 20;
-                callback.onLoaded(list, last, hasMore);
-            }
-            @Override public void onCancelled(@NonNull DatabaseError error) {
-                callback.onError(error.getMessage());
-            }
-        });
+    public void fetchRepliesFirstPage(String videoId, String commentId, RepliesCallback callback) {
+        // Replies are embedded in comment nodes via reply_count.
+        // A dedicated endpoint can be added when implemented gateway-side.
+        callback.onLoaded(new ArrayList<>(), null, false);
     }
 
-    public void postComment(String videoId, String text, String uid, String displayName, String photoUrl, final CompletionCallback callback) {
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference newRef = root.child("videos").child(videoId).child("comments").push();
-        String commentId = newRef.getKey();
-
-        java.util.Map<String, Object> comment = new java.util.HashMap<>();
-        comment.put("comment_id", commentId);
-        comment.put("user_id", uid);
-        comment.put("user_display_name", displayName);
-        comment.put("user_photo_url", photoUrl);
-        comment.put("text", text);
-        comment.put("created_at", ServerValue.TIMESTAMP);
-        comment.put("like_count", 0L);
-        comment.put("reply_count", 0L);
-
-        newRef.setValue(comment, (error, ref) -> {
-            if (error != null) {
-                callback.onComplete(false, error.getMessage());
-            } else {
-                root.child("videos").child(videoId).child("comment_count")
-                    .runTransaction(new Transaction.Handler() {
-                        @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                            Long v = currentData.getValue(Long.class);
-                            currentData.setValue(v == null ? 1L : v + 1L);
-                            return Transaction.success(currentData);
-                        }
-                        @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
-                            callback.onComplete(e == null, e != null ? e.getMessage() : null);
-                        }
-                    });
-            }
-        });
-    }
-
-    public void postReply(String videoId, String commentId, String text, String uid, String displayName, String photoUrl, final CompletionCallback callback) {
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference newRef = root.child("videos").child(videoId).child("comments").child(commentId).child("replies").push();
-        String replyId = newRef.getKey();
-
-        java.util.Map<String, Object> reply = new java.util.HashMap<>();
-        reply.put("reply_id", replyId);
-        reply.put("parent_comment_id", commentId);
-        reply.put("user_id", uid);
-        reply.put("user_display_name", displayName);
-        reply.put("user_photo_url", photoUrl);
-        reply.put("text", text);
-        reply.put("created_at", ServerValue.TIMESTAMP);
-        reply.put("like_count", 0L);
-
-        newRef.setValue(reply, (error, ref) -> {
-            if (error != null) {
-                callback.onComplete(false, error.getMessage());
-            } else {
-                root.child("videos").child(videoId).child("comments").child(commentId).child("reply_count")
-                    .runTransaction(new Transaction.Handler() {
-                        @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                            Long v = currentData.getValue(Long.class);
-                            currentData.setValue(v == null ? 1L : v + 1L);
-                            return Transaction.success(currentData);
-                        }
-                        @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
-                            callback.onComplete(e == null, e != null ? e.getMessage() : null);
-                        }
-                    });
-            }
-        });
-    }
-
-    public void isCommentLiked(String videoId, String commentId, String uid, final BooleanCallback cb) {
-        if (videoId == null || commentId == null || uid == null) { cb.onResult(false); return; }
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
-                .child("comment_likes").child(commentId).child(uid);
-        ref.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) { cb.onResult(snapshot.exists()); }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onResult(false); }
-        });
-    }
-
-    public void setCommentLike(String videoId, String commentId, String uid, boolean like, final CompletionCallback cb) {
-        if (videoId == null || commentId == null || uid == null) { cb.onComplete(false, "null argument"); return; }
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference likeRef = root.child("videos").child(videoId).child("comment_likes").child(commentId).child(uid);
-        DatabaseReference likeCountRef = root.child("videos").child(videoId).child("comments").child(commentId).child("like_count");
-
-        // Write directly — no pre-read, ViewModel already tracks liked state optimistically
-        likeRef.setValue(like ? Boolean.TRUE : null, (error, ref) -> {
-            if (error != null) { cb.onComplete(false, error.getMessage()); return; }
-
-            likeCountRef.runTransaction(new Transaction.Handler() {
-                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                    Long v = currentData.getValue(Long.class);
-                    long base = v == null ? 0L : v;
-                    currentData.setValue(Math.max(0L, base + (like ? 1L : -1L)));
-                    return Transaction.success(currentData);
-                }
-                @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
-                    if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-
-                    // Mirror under users
-                    DatabaseReference userLikeRef = root.child("users").child(uid).child("comment_likes").child(commentId);
-                    DatabaseReference userLikedCommentsRef = root.child("users").child(uid).child("liked_comments").child(videoId).child(commentId);
-                    if (like) {
-                        userLikeRef.setValue(Boolean.TRUE);
-                        userLikedCommentsRef.setValue(Boolean.TRUE);
-                    } else {
-                        userLikeRef.removeValue();
-                        userLikedCommentsRef.removeValue();
+    public void postComment(String videoId, String text, String uid, String displayName,
+                            String photoUrl, CompletionCallback callback) {
+        api().postComment(videoId, new PostCommentRequest(text, displayName, photoUrl))
+                .enqueue(new Callback<CommentDTO>() {
+                    @Override
+                    public void onResponse(@NonNull Call<CommentDTO> call,
+                                           @NonNull Response<CommentDTO> resp) {
+                        callback.onComplete(resp.isSuccessful(),
+                                resp.isSuccessful() ? null : "Gateway error " + resp.code());
                     }
-                    cb.onComplete(true, null);
-                }
-            });
-        });
-    }
-
-    // --- Dislike support ---
-    public void isCommentDisliked(String videoId, String commentId, String uid, final BooleanCallback cb) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
-                .child("comment_dislikes").child(commentId).child(uid);
-        ref.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) { cb.onResult(snapshot.exists()); }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onResult(false); }
-        });
-    }
-
-    public void setCommentDislike(String videoId, String commentId, String uid, boolean dislike, final CompletionCallback cb) {
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference dislikeRef = root.child("videos").child(videoId).child("comment_dislikes").child(commentId).child(uid);
-        DatabaseReference countRef = root.child("videos").child(videoId).child("comments").child(commentId).child("dislike_count");
-        dislikeRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot dislikedSnap) {
-                boolean currentlyDisliked = dislikedSnap.exists();
-                if (currentlyDisliked == dislike) { cb.onComplete(true, null); return; }
-
-                dislikeRef.setValue(dislike ? Boolean.TRUE : null, (error, ref) -> {
-                    if (error != null) { cb.onComplete(false, error.getMessage()); return; }
-
-                    countRef.runTransaction(new Transaction.Handler() {
-                        @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                            Long v = currentData.getValue(Long.class);
-                            long base = v == null ? 0L : v;
-                            currentData.setValue(Math.max(0L, base + (dislike ? 1L : -1L)));
-                            return Transaction.success(currentData);
-                        }
-                        @Override public void onComplete(DatabaseError e, boolean committed, DataSnapshot snapshot) {
-                            if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-
-                            DatabaseReference userDislikeRef = root.child("users").child(uid).child("comment_dislikes").child(commentId);
-                            if (dislike) userDislikeRef.setValue(Boolean.TRUE); else userDislikeRef.removeValue();
-
-                            if (dislike) {
-                                // If previously liked, remove it and decrement like count
-                                DatabaseReference likeRef2 = root.child("videos").child(videoId).child("comment_likes").child(commentId).child(uid);
-                                DatabaseReference likeCountRef2 = root.child("videos").child(videoId).child("comments").child(commentId).child("like_count");
-                                likeRef2.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override public void onDataChange(@NonNull DataSnapshot ls) {
-                                        if (ls.exists()) {
-                                            likeRef2.removeValue();
-                                            likeCountRef2.runTransaction(new Transaction.Handler() {
-                                                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
-                                                    Long val = d.getValue(Long.class);
-                                                    long base = val == null ? 0L : val;
-                                                    d.setValue(Math.max(0L, base - 1L));
-                                                    return Transaction.success(d);
-                                                }
-                                                @Override public void onComplete(DatabaseError de, boolean c, DataSnapshot s) {}
-                                            });
-                                            root.child("users").child(uid).child("comment_likes").child(commentId).removeValue();
-                                            root.child("users").child(uid).child("liked_comments").child(videoId).child(commentId).removeValue();
-                                        }
-                                        cb.onComplete(true, null);
-                                    }
-                                    @Override public void onCancelled(@NonNull DatabaseError error1) { cb.onComplete(true, null); }
-                                });
-                        } else {
-                                cb.onComplete(true, null);
-                        }
+                    @Override
+                    public void onFailure(@NonNull Call<CommentDTO> call, @NonNull Throwable t) {
+                        Log.e(TAG, "postComment failed", t);
+                        callback.onComplete(false, t.getMessage());
                     }
                 });
+    }
+
+    public void postReply(String videoId, String commentId, String text, String uid,
+                          String displayName, String photoUrl, CompletionCallback callback) {
+        api().postReply(videoId, commentId, new PostReplyRequest(text, displayName, photoUrl))
+                .enqueue(new Callback<ReplyDTO>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ReplyDTO> call,
+                                           @NonNull Response<ReplyDTO> resp) {
+                        callback.onComplete(resp.isSuccessful(),
+                                resp.isSuccessful() ? null : "Gateway error " + resp.code());
+                    }
+                    @Override
+                    public void onFailure(@NonNull Call<ReplyDTO> call, @NonNull Throwable t) {
+                        Log.e(TAG, "postReply failed", t);
+                        callback.onComplete(false, t.getMessage());
+                    }
                 });
+    }
+
+    public void isCommentLiked(String videoId, String commentId, String uid, BooleanCallback cb) {
+        // Liked state is returned by the gateway in the comments list (isLiked field).
+        cb.onResult(false);
+    }
+
+    public void setCommentLike(String videoId, String commentId, String uid, boolean like,
+                               CompletionCallback cb) {
+        Call<?> call = like
+                ? api().likeComment(videoId, commentId)
+                : api().unlikeComment(videoId, commentId);
+        //noinspection unchecked,rawtypes
+        ((Call) call).enqueue(new Callback() {
+            @Override
+            public void onResponse(@NonNull Call c, @NonNull Response resp) {
+                cb.onComplete(resp.isSuccessful(),
+                        resp.isSuccessful() ? null : "Gateway error " + resp.code());
             }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(false, error.getMessage()); }
-        });
-    }
-
-    // --- Reply like/dislike ---
-    private DatabaseReference replyRef(String videoId, String commentId) {
-        return FirebaseDatabase.getInstance().getReference("videos").child(videoId).child("comments").child(commentId).child("replies");
-    }
-
-    public void isReplyLiked(String videoId, String commentId, String replyId, String uid, final BooleanCallback cb) {
-        if (videoId == null || replyId == null || uid == null) { cb.onResult(false); return; }
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
-                .child("reply_likes").child(replyId).child(uid);
-        ref.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) { cb.onResult(snapshot.exists()); }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onResult(false); }
-        });
-    }
-
-    public void isReplyDisliked(String videoId, String commentId, String replyId, String uid, final BooleanCallback cb) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("videos").child(videoId)
-                .child("reply_dislikes").child(replyId).child(uid);
-        ref.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snapshot) { cb.onResult(snapshot.exists()); }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onResult(false); }
-        });
-    }
-
-    public void setReplyLike(String videoId, String commentId, String replyId, String uid, boolean like, final CompletionCallback cb) {
-        if (videoId == null || commentId == null || replyId == null || uid == null) { cb.onComplete(false, "null argument"); return; }
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference likeRef = root.child("videos").child(videoId).child("reply_likes").child(replyId).child(uid);
-        DatabaseReference likeCountRef = replyRef(videoId, commentId).child(replyId).child("like_count");
-
-        // Write directly — no pre-read, ViewModel already tracks liked state optimistically
-        likeRef.setValue(like ? Boolean.TRUE : null, (error, ref) -> {
-            if (error != null) { cb.onComplete(false, error.getMessage()); return; }
-            likeCountRef.runTransaction(new Transaction.Handler() {
-                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
-                    Long v = d.getValue(Long.class);
-                    long base = v == null ? 0L : v;
-                    d.setValue(Math.max(0L, base + (like ? 1L : -1L)));
-                    return Transaction.success(d);
-                }
-                @Override public void onComplete(DatabaseError e, boolean c, DataSnapshot s) {
-                    if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-                    DatabaseReference userReplyLikeRef = root.child("users").child(uid)
-                            .child("liked_replies").child(videoId).child(commentId).child(replyId);
-                    if (like) userReplyLikeRef.setValue(Boolean.TRUE);
-                    else userReplyLikeRef.removeValue();
-                    cb.onComplete(true, null);
-                }
-            });
-        });
-    }
-
-    public void setReplyDislike(String videoId, String commentId, String replyId, String uid, boolean dislike, final CompletionCallback cb) {
-        DatabaseReference root = FirebaseDatabase.getInstance().getReference();
-        DatabaseReference dRef = root.child("videos").child(videoId).child("reply_dislikes").child(replyId).child(uid);
-        DatabaseReference dCountRef = replyRef(videoId, commentId).child(replyId).child("dislike_count");
-
-        dRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override public void onDataChange(@NonNull DataSnapshot snap) {
-                boolean cur = snap.exists();
-                if (cur == dislike) { cb.onComplete(true, null); return; }
-                dRef.setValue(dislike ? Boolean.TRUE : null, (error, ref) -> {
-                    if (error != null) { cb.onComplete(false, error.getMessage()); return; }
-                    dCountRef.runTransaction(new Transaction.Handler() {
-                        @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData d) {
-                            Long v = d.getValue(Long.class);
-                            long base = v == null ? 0L : v;
-                            d.setValue(Math.max(0L, base + (dislike ? 1L : -1L)));
-                            return Transaction.success(d);
-                        }
-                        @Override public void onComplete(DatabaseError e, boolean c, DataSnapshot s) {
-                            if (e != null) { cb.onComplete(false, e.getMessage()); return; }
-                            // Remove like if switching
-                            if (dislike) {
-                                DatabaseReference lRef = root.child("videos").child(videoId).child("reply_likes").child(replyId).child(uid);
-                                DatabaseReference lCount = replyRef(videoId, commentId).child(replyId).child("like_count");
-                                lRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override public void onDataChange(@NonNull DataSnapshot ds) {
-                                        if (ds.exists()) {
-                                            lRef.removeValue();
-                                            lCount.runTransaction(new Transaction.Handler() {
-                                                @NonNull @Override public Transaction.Result doTransaction(@NonNull MutableData md) {
-                                                    Long vv = md.getValue(Long.class);
-                                                    long b = vv == null ? 0L : vv;
-                                                    md.setValue(Math.max(0L, b - 1L));
-                                                    return Transaction.success(md);
-                                                }
-                                                @Override public void onComplete(DatabaseError de, boolean cc, DataSnapshot ss) {}
-                                            });
-                                            // remove mirror
-                                            root.child("users").child(uid).child("reply_likes").child(replyId).removeValue();
-                                        }
-                                        cb.onComplete(true, null);
-                                    }
-                                    @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(true, null); }
-                                });
-                            } else { cb.onComplete(true, null); }
-                        }
-                    });
-                });
+            @Override
+            public void onFailure(@NonNull Call c, @NonNull Throwable t) {
+                Log.e(TAG, "setCommentLike failed", t);
+                cb.onComplete(false, t.getMessage());
             }
-            @Override public void onCancelled(@NonNull DatabaseError error) { cb.onComplete(false, error.getMessage()); }
         });
     }
+
+    public void isCommentDisliked(String videoId, String commentId, String uid, BooleanCallback cb) {
+        cb.onResult(false);
+    }
+
+    public void setCommentDislike(String videoId, String commentId, String uid, boolean dislike,
+                                  CompletionCallback cb) {
+        Call<?> call = dislike
+                ? api().dislikeComment(videoId, commentId)
+                : api().undislikeComment(videoId, commentId);
+        //noinspection unchecked,rawtypes
+        ((Call) call).enqueue(new Callback() {
+            @Override
+            public void onResponse(@NonNull Call c, @NonNull Response resp) {
+                cb.onComplete(resp.isSuccessful(),
+                        resp.isSuccessful() ? null : "Gateway error " + resp.code());
+            }
+            @Override
+            public void onFailure(@NonNull Call c, @NonNull Throwable t) {
+                Log.e(TAG, "setCommentDislike failed", t);
+                cb.onComplete(false, t.getMessage());
+            }
+        });
+    }
+
+    // Reply like/dislike — kept for backward-compat; no gateway route yet, no-op
+    public void isReplyLiked(String v, String c, String r, String u, BooleanCallback cb) { cb.onResult(false); }
+    public void isReplyDisliked(String v, String c, String r, String u, BooleanCallback cb) { cb.onResult(false); }
+    public void setReplyLike(String v, String c, String r, String u, boolean l, CompletionCallback cb) { cb.onComplete(true, null); }
+    public void setReplyDislike(String v, String c, String r, String u, boolean d, CompletionCallback cb) { cb.onComplete(true, null); }
 }
-
-

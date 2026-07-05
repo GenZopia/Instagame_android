@@ -26,9 +26,7 @@ import com.genzopia.Instagame.channel_view.ChannelActivity;
 import com.genzopia.Instagame.comments.models.Comment;
 import com.genzopia.Instagame.comments.models.Reply;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ServerValue;
+
 
 import java.util.HashMap;
 import java.util.List;
@@ -327,36 +325,35 @@ public class CommentsBottomSheetFragment extends BottomSheetDialogFragment {
     }
 
     private void submitReport(@NonNull Comment comment, @NonNull String reason) {
-        String reporterId = FirebaseAuth.getInstance().getCurrentUser() != null
-                ? FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
-
+        String reporterId = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser() != null
+                ? com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getUid() : null;
         if (reporterId == null) {
             Toast.makeText(requireContext(), "You must be logged in to report", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        String reportedUserId = comment.user_id != null ? comment.user_id : "unknown";
-        String reportKey = reporterId + "_" + comment.comment_id + "_" + System.currentTimeMillis();
-
-        Map<String, Object> report = new HashMap<>();
-        report.put("reporter_user_id", reporterId);
-        report.put("reported_user_id", reportedUserId);
-        report.put("comment_id", comment.comment_id);
-        report.put("comment_text", comment.text != null ? comment.text : "");
-        report.put("reason", reason);
-        report.put("timestamp", ServerValue.TIMESTAMP);
-
-        FirebaseDatabase.getInstance()
-                .getReference("reports/comments_report")
-                .child(reportKey)
-                .setValue(report)
-                .addOnSuccessListener(unused ->
-                        Toast.makeText(requireContext(),
-                                "Report submitted. Thank you for keeping the community safe.",
-                                Toast.LENGTH_LONG).show())
-                .addOnFailureListener(e ->
-                        Toast.makeText(requireContext(),
-                                "Failed to submit report. Please try again.",
-                                Toast.LENGTH_SHORT).show());
+        String videoId = getArguments() != null ? getArguments().getString("videoId", "") : "";
+        java.util.Map<String, String> body = new java.util.HashMap<>();
+        body.put("reason", reason);
+        com.genzopia.Instagame.gateway.GatewayClient.INSTANCE.getCallApi()
+                .reportComment(videoId, comment.comment_id, body)
+                .enqueue(new retrofit2.Callback<Void>() {
+                    @Override
+                    public void onResponse(@androidx.annotation.NonNull retrofit2.Call<Void> call,
+                                           @androidx.annotation.NonNull retrofit2.Response<Void> resp) {
+                        if (isAdded()) {
+                            Toast.makeText(requireContext(),
+                                    resp.isSuccessful()
+                                            ? "Report submitted. Thank you for keeping the community safe."
+                                            : "Failed to submit report. Please try again.",
+                                    resp.isSuccessful() ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                    @Override
+                    public void onFailure(@androidx.annotation.NonNull retrofit2.Call<Void> call,
+                                          @androidx.annotation.NonNull Throwable t) {
+                        if (isAdded())
+                            Toast.makeText(requireContext(), "Failed to submit report.", Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 }

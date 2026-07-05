@@ -13,6 +13,8 @@ public class VideoItem {
     public String description; // Add description field
     public String developerId; // Add developer ID for follow tracking
     public String gameId; // Add game ID for play button functionality
+    public boolean isLiked;
+    public boolean isFollowing;
     public boolean isPlaying;
 
 

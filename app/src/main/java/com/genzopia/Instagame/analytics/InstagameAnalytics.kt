@@ -89,24 +89,27 @@ object InstagameAnalytics {
 
     /**
      * Builds the avatar URL to pass to Amplitude's $avatar property.
+     * Uses the public CDN URL since Amplitude fetches it externally (no auth headers).
      *
-     * Profile photos are uploaded to R2 at path: instagame/{uid}/{photoId}.{ext}
-     * The worker URL format: https://file-upload-worker.genzopia.workers.dev/?key=instagame/uid/file.jpg
-     *
-     * We pass the worker URL directly — Amplitude will attempt to load it.
-     * If the worker requires auth and blocks it, fall back to the public R2 CDN.
-     *
-     * Public R2 CDN (no auth needed):
-     *   https://pub-0caba249d019456b9181ce1575ef825e.r2.dev/instagame/uid/file.jpg
+     * Handles all stored URL formats:
+     *  - Gateway proxy URL  → extract key → build CDN URL
+     *  - Worker URL         → extract key → build CDN URL
+     *  - Already a CDN URL  → use as-is
+     *  - Google photo       → use as-is
      */
     private fun toPublicR2Url(url: String?): String {
         if (url.isNullOrBlank()) return ""
-        val workerBase = "https://file-upload-worker.genzopia.workers.dev/?key="
-        val publicBase = "https://cdn.genzopia.com/"
-        val key = when {
+        val workerBase  = "https://file-upload-worker.genzopia.workers.dev/?key="
+        val publicBase  = "https://cdn.genzopia.com/"
+        val gatewayMedia = "/media/file?key="
+
+        val key: String = when {
+            url.contains(gatewayMedia) -> url.substringAfter(gatewayMedia)
             url.startsWith(workerBase) -> url.removePrefix(workerBase)
-            else -> return url  // Google photo or other public URL — use as-is
+            url.startsWith(publicBase) -> return url  // already public CDN
+            else -> return url                         // Google photo or other external URL
         }
+
         // Fix duplicate filename segment: "a/b/file.jpg/file.jpg" → "a/b/file.jpg"
         val parts = key.split("/")
         val cleanKey = if (parts.size >= 2 && parts.last() == parts[parts.size - 2]) {

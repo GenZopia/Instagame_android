@@ -1,7 +1,7 @@
 package com.genzopia.Instagame.webgl_gameloading;
 
 import android.app.Application;
-import android.content.Context;
+import android.os.Bundle;
 import android.util.Log;
 
 import androidx.lifecycle.DefaultLifecycleObserver;
@@ -14,97 +14,172 @@ import coil.ImageLoader;
 import com.airbnb.lottie.LottieComposition;
 import com.airbnb.lottie.LottieCompositionFactory;
 import com.genzopia.Instagame.BuildConfig;
+import com.genzopia.Instagame.ForceUpdateDialog;
 import com.genzopia.Instagame.R;
+import com.genzopia.Instagame.utils.DataPrefetchService;
+import com.genzopia.Instagame.utils.RemoteConfigManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import okhttp3.OkHttpClient;
-import okhttp3.Response;
 
 /**
  * Application class.
  *
- * Sets up a custom Coil ImageLoader with an OkHttp interceptor that injects
- * the x-api-key header for any request to file-upload-worker.genzopia.workers.dev.
- * This is required because profile photos are served from that worker which
- * requires authentication.
+ * Kicks off DataPrefetchService and RemoteConfigManager as early as possible
+ * (process start) so SplashActivity only needs to show the logo and route —
+ * not wait on network work.
  */
 public class MyApplication extends Application {
 
+    // ── App-level prefetch state ──────────────────────────────────────────
+    private static volatile boolean prefetchDone = false;
+    private static volatile boolean configDone = false;
+    private static volatile RemoteConfigManager remoteConfigManager;
+    private static final List<Runnable> readyCallbacks = new ArrayList<>();
+    private static final Object lock = new Object();
+
+    public static boolean isPrefetchDone() { return prefetchDone; }
+    public static boolean isConfigDone() { return configDone; }
+    public static boolean isAppDataReady() { return configDone; }
+
+    public static RemoteConfigManager getRemoteConfigManager() { return remoteConfigManager; }
+
+    /** Invoked on main thread as soon as remote config is done — prefetch continues in background. */
+    public static void whenReady(Runnable callback) {
+        synchronized (lock) {
+            if (configDone) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(callback);
+            } else {
+                readyCallbacks.add(callback);
+            }
+        }
+    }
+
+    private static void notifyIfReady() {
+        synchronized (lock) {
+            if (!configDone) return;
+            android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+            for (Runnable cb : readyCallbacks) main.post(cb);
+            readyCallbacks.clear();
+        }
+    }
 
     @Override
     public void onCreate() {
         super.onCreate();
         setupCoil();
         prewarmLottie();
-        // Init Amplitude — must be first so all subsequent events are captured
+
+        // Init analytics first so all subsequent events are captured
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.init(this);
-        // Start session tracking
         com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppCreated();
-        // Re-identify returning user so they are never shown as Anonymous
         reIdentifyReturningUser();
-        // Register process-level lifecycle observer — fires only on true
-        // app foreground/background, NOT on Activity-to-Activity transitions.
+
+        // ── Start prefetch + config fetch as early as possible ───────────
+        startAppPrefetch();
+
+        // ── Enforce force-update globally on any foreground activity ─────
+        registerForceUpdateEnforcer();
+
         ProcessLifecycleOwner.get().getLifecycle().addObserver(new DefaultLifecycleObserver() {
             @Override
             public void onStart(LifecycleOwner owner) {
-                // App came to foreground (from home screen / recents / lock screen)
                 com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppForegrounded();
             }
 
             @Override
             public void onStop(LifecycleOwner owner) {
-                // App went to background — track it and flush immediately
                 com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onAppBackgrounded();
-                // Flush queued events so Amplitude receives them before the process dies
                 com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.flushEvents();
             }
         });
     }
 
     /**
-     * If a user is already logged in (returning session), re-attach their
-     * identity to Amplitude immediately so no events fire as Anonymous.
-     *
-     * Step 1: set userId synchronously from FirebaseAuth (no network call) —
-     *         this runs before SplashActivity fires app_opened, so that event
-     *         is already attributed to the real user.
-     * Step 2: fetch name/email/photo from Realtime DB async and call identifyUser()
-     *         to populate the user profile properties including $avatar.
+     * Registers an ActivityLifecycleCallbacks that watches for the first resumed
+     * FragmentActivity after config is loaded. If a force-update is required it shows
+     * ForceUpdateDialog on that activity — regardless of which activity was launched
+     * (splash, deep link, notification, etc.).
      */
+    private void registerForceUpdateEnforcer() {
+        registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
+            @Override
+            public void onActivityResumed(android.app.Activity activity) {
+                if (!(activity instanceof androidx.fragment.app.FragmentActivity)) return;
+                if (!configDone) return;
+                RemoteConfigManager rcm = remoteConfigManager;
+                if (rcm == null || !rcm.isForceUpdateRequired()) return;
+
+                androidx.fragment.app.FragmentActivity fa = (androidx.fragment.app.FragmentActivity) activity;
+                // Don't stack duplicate dialogs
+                if (fa.getSupportFragmentManager().findFragmentByTag(ForceUpdateDialog.TAG) != null) return;
+
+                String minVersion = rcm.getForceMinVersionString();
+                ForceUpdateDialog.newInstance(minVersion)
+                        .show(fa.getSupportFragmentManager(), ForceUpdateDialog.TAG);
+            }
+
+            @Override public void onActivityCreated(android.app.Activity a, Bundle b) {}
+            @Override public void onActivityStarted(android.app.Activity a) {}
+            @Override public void onActivityPaused(android.app.Activity a) {}
+            @Override public void onActivityStopped(android.app.Activity a) {}
+            @Override public void onActivitySaveInstanceState(android.app.Activity a, Bundle b) {}
+            @Override public void onActivityDestroyed(android.app.Activity a) {}
+        });
+    }
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    private void startAppPrefetch() {
+        // Remote config
+        remoteConfigManager = new RemoteConfigManager();
+        remoteConfigManager.fetchConfig(success -> {
+            Log.d("MyApplication", "Remote config done, success=" + success);
+            configDone = true;
+            notifyIfReady();
+            return kotlin.Unit.INSTANCE;
+        });
+
+        // Data + player pool prefetch
+        DataPrefetchService.INSTANCE.startPrefetch(this, () -> {
+            Log.d("MyApplication", "Data prefetch done");
+            prefetchDone = true;
+            notifyIfReady();
+            return kotlin.Unit.INSTANCE;
+        });
+    }
+
     private void reIdentifyReturningUser() {
         com.google.firebase.auth.FirebaseUser firebaseUser =
                 com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
         if (firebaseUser == null) return;
 
         String uid = firebaseUser.getUid();
-
-        // ── Step 1: set userId immediately (synchronous, no network) ──────────
-        // This ensures app_opened and all early events are attributed to the
-        // real user, not Anonymous.
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.setUserId(uid);
+        com.genzopia.Instagame.glide.GlideImageLoader.warmToken();
 
-        // ── Step 2: fetch full profile and set user properties async ──────────
-        com.google.firebase.database.FirebaseDatabase.getInstance()
-                .getReference("users").child(uid)
-                .get()
-                .addOnSuccessListener(snapshot -> {
-                    if (snapshot == null || !snapshot.exists()) {
-                        Log.w("AmplitudeDebug", "reIdentify: snapshot null or missing for uid=" + uid);
-                        return;
-                    }
-                    String name = snapshot.child("full_name").getValue(String.class);
-                    String email = snapshot.child("email").getValue(String.class);
-                    String rawPhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
-                    String photoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhotoUrl);
-                    Log.d("AmplitudeDebug", "reIdentify → name='" + name + "' rawPhoto='" + rawPhotoUrl + "' sanitized='" + photoUrl + "'");
+        new Thread(() -> {
+            try {
+                retrofit2.Response<com.genzopia.Instagame.gateway.UserProfileDTO> resp =
+                        com.genzopia.Instagame.gateway.GatewayClient.INSTANCE.getCallApi()
+                                .getMyProfile()
+                                .execute();
+                if (resp.isSuccessful() && resp.body() != null) {
+                    com.genzopia.Instagame.gateway.UserProfileDTO p = resp.body();
+                    String photoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(p.getProfile_photo_url());
                     com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.identifyUser(
                             uid,
-                            name != null ? name : "",
-                            email != null ? email : "",
+                            p.getFull_name() != null ? p.getFull_name() : "",
+                            "",
                             photoUrl,
                             "returning"
                     );
-                })
-                .addOnFailureListener(e -> Log.e("AmplitudeDebug", "reIdentify DB fetch FAILED: " + e.getMessage()));
+                }
+            } catch (Exception e) {
+                Log.e("AmplitudeDebug", "reIdentify gateway fetch FAILED: " + e.getMessage());
+            }
+        }).start();
     }
 
     public static LottieComposition cachedComposition = null;
@@ -121,7 +196,6 @@ public class MyApplication extends Application {
                 ? R.raw.game_logo_dark_theme
                 : R.raw.game_logo_white_theme;
 
-        // ✅ Parse synchronously on a dedicated thread BEFORE SplashActivity opens
         new Thread(() -> {
             try {
                 java.io.InputStream stream = getResources().openRawResource(rawId);
@@ -136,22 +210,32 @@ public class MyApplication extends Application {
     }
 
     private void setupCoil() {
+        String gatewayBase = BuildConfig.GATEWAY_BASE_URL.replaceAll("/$", "");
+        String apiKey = BuildConfig.GATEWAY_API_KEY;
+
         OkHttpClient coilClient = new OkHttpClient.Builder()
             .addInterceptor(chain -> {
                 okhttp3.Request original = chain.request();
                 String url = original.url().toString();
-                okhttp3.Request request;
+
                 if (url.contains("file-upload-worker.genzopia.workers.dev")) {
-                    Log.d("profile_photo", "Coil → " + url);
-                    request = original.newBuilder()
-                        .header("x-api-key", BuildConfig.FILE_UPLOAD_API_KEY)
-                        .build();
-                } else {
-                    request = original;
+                    String key = original.url().queryParameter("key");
+                    if (key != null && !key.isEmpty()) {
+                        url = gatewayBase + "/media/file?key=" + key;
+                        original = original.newBuilder().url(url).build();
+                    }
                 }
-                Response response = chain.proceed(request);
-                Log.d("profile_photo", "Coil ← " + response.code() + " " + url);
-                return response;
+
+                if (!gatewayBase.isEmpty() && url.startsWith(gatewayBase) && url.contains("/media/file")) {
+                    Log.d("profile_photo", "Coil → gateway: " + url);
+                    okhttp3.Request.Builder reqBuilder = original.newBuilder()
+                        .header("x-api-key", apiKey);
+                    String token = com.genzopia.Instagame.glide.GlideImageLoader.getCachedToken();
+                    if (token != null) reqBuilder.header("Authorization", "Bearer " + token);
+                    return chain.proceed(reqBuilder.build());
+                }
+
+                return chain.proceed(original);
             })
             .build();
 
@@ -161,6 +245,4 @@ public class MyApplication extends Application {
                 .build()
         );
     }
-
-
 }

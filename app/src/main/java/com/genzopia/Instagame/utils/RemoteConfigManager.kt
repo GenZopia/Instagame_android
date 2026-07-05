@@ -2,77 +2,59 @@ package com.genzopia.Instagame.utils
 
 import android.util.Log
 import com.genzopia.Instagame.BuildConfig
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig
-import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
+import com.genzopia.Instagame.gateway.AppConfigResponse
+import com.genzopia.Instagame.gateway.GatewayClient
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 /**
- * Manages Firebase Remote Config for force and smooth update version checking.
- *
- * Remote Config keys (both are plain integer versionCode strings, e.g. "6"):
- *   force_popup_minimum_version  — if current versionCode < this, user MUST update (non-dismissible)
- *   smooth_popup_minimum_version — if current versionCode < this, user is nudged to update (dismissible)
- *
- * Set both to "0" (or leave unset) to disable the respective popup.
+ * Fetches app config (force/smooth update version thresholds) from the Gateway.
+ * Firebase Remote Config SDK is no longer used — the gateway reads it server-side.
  */
 class RemoteConfigManager {
 
     companion object {
         private const val TAG = "RemoteConfigManager"
-        const val KEY_FORCE_MIN_VERSION  = "force_popup_minimum_version"
-        const val KEY_SMOOTH_MIN_VERSION = "smooth_popup_minimum_version"
-        private const val CACHE_EXPIRATION_SECONDS = 3600L
-
-        private val DEFAULTS = mapOf(
-            KEY_FORCE_MIN_VERSION  to "0",
-            KEY_SMOOTH_MIN_VERSION to "0"
-        )
     }
 
-    private val remoteConfig: FirebaseRemoteConfig = FirebaseRemoteConfig.getInstance()
+    private var config: AppConfigResponse = AppConfigResponse()
 
-    init {
-        remoteConfig.setConfigSettingsAsync(
-            FirebaseRemoteConfigSettings.Builder()
-                .setMinimumFetchIntervalInSeconds(CACHE_EXPIRATION_SECONDS)
-                .build()
-        )
-        remoteConfig.setDefaultsAsync(DEFAULTS)
-    }
-
-    /** Fetches and activates latest config. Falls back to cached/defaults on failure. */
     fun fetchConfig(onComplete: (Boolean) -> Unit) {
-        remoteConfig.fetchAndActivate()
-            .addOnSuccessListener { updated ->
-                Log.d(TAG, "Remote Config fetched (updated=$updated)")
-                onComplete(true)
+        GatewayClient.callApi.getAppConfig().enqueue(object : Callback<AppConfigResponse> {
+            override fun onResponse(call: Call<AppConfigResponse>, response: Response<AppConfigResponse>) {
+                if (response.isSuccessful && response.body() != null) {
+                    config = response.body()!!
+                    Log.d(TAG, "App config fetched: force=${config.force_popup_minimum_version} smooth=${config.smooth_popup_minimum_version}")
+                    onComplete(true)
+                } else {
+                    Log.w(TAG, "App config fetch failed HTTP ${response.code()} — using defaults")
+                    onComplete(false)
+                }
             }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Remote Config fetch failed — using cached/default: ${e.message}")
+
+            override fun onFailure(call: Call<AppConfigResponse>, t: Throwable) {
+                Log.e(TAG, "App config fetch failed: ${t.message} — using defaults")
                 onComplete(false)
             }
+        })
     }
 
-    /** Returns true if a force update is required (user cannot skip). */
     fun isForceUpdateRequired(): Boolean {
-        val minVersion = parseVersionCode(remoteConfig.getString(KEY_FORCE_MIN_VERSION))
-        return minVersion > 0 && BuildConfig.VERSION_CODE < minVersion
+        val min = parseVersionCode(config.force_popup_minimum_version)
+        return min > 0 && BuildConfig.VERSION_CODE < min
     }
 
-    /** Returns true if a smooth (optional) update nudge should be shown. */
     fun isSmoothUpdateAvailable(): Boolean {
-        val minVersion = parseVersionCode(remoteConfig.getString(KEY_SMOOTH_MIN_VERSION))
-        return minVersion > 0 && BuildConfig.VERSION_CODE < minVersion
+        val min = parseVersionCode(config.smooth_popup_minimum_version)
+        return min > 0 && BuildConfig.VERSION_CODE < min
     }
 
-    /** Raw version string for display in dialogs. */
-    fun getForceMinVersionString(): String = remoteConfig.getString(KEY_FORCE_MIN_VERSION)
-    fun getSmoothMinVersionString(): String = remoteConfig.getString(KEY_SMOOTH_MIN_VERSION)
+    fun getForceMinVersionString(): String = config.force_popup_minimum_version
+    fun getSmoothMinVersionString(): String = config.smooth_popup_minimum_version
 
     private fun parseVersionCode(value: String): Int {
         if (value.isBlank()) return 0
-        return value.trim().substringBefore(".").toIntOrNull() ?: run {
-            Log.w(TAG, "Invalid version value '$value' — treating as no update required")
-            0
-        }
+        return value.trim().substringBefore(".").toIntOrNull() ?: 0
     }
 }

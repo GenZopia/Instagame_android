@@ -129,6 +129,9 @@ private fun StoryItem(user: FollowedUser, textColor: Color) {
                     val intent = Intent(context, ChannelActivity::class.java)
                     intent.putExtra("developer_id", user.userId)
                     intent.putExtra("channel_source", "home_following_bar")
+                    // Reuse the avatar already loaded in the following bar so
+                    // ChannelActivity paints it instantly from Glide's cache.
+                    intent.putExtra("developer_photo_url", user.profilePhotoUrl)
                     context.startActivity(intent)
                 } catch (e: Exception) {
                     Log.e("FollowerDesign", "Error opening channel", e)

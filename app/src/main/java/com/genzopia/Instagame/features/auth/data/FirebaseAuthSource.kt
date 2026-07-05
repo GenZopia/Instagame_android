@@ -2,200 +2,183 @@ package com.genzopia.Instagame.features.auth.data
 
 import com.genzopia.Instagame.common.models.DataError
 import com.genzopia.Instagame.features.auth.domain.User
+import com.genzopia.Instagame.gateway.GatewayClient
+import com.genzopia.Instagame.gateway.GoogleLoginRequest
+import com.genzopia.Instagame.gateway.LoginRequest
+import com.genzopia.Instagame.gateway.RegisterRequest
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
-/**
- * Data source for Firebase Authentication operations.
- * Handles all direct Firebase Auth and Realtime Database interactions.
- */
+
 class FirebaseAuthSource {
-    
+
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
-    private val database = FirebaseDatabase.getInstance().reference
-    
-    /**
-     * Get the current authenticated user ID
-     */
+
     fun getCurrentUserId(): String? = auth.currentUser?.uid
-    
-    /**
-     * Check if a user is currently authenticated
-     */
+
     fun isUserAuthenticated(): Boolean = auth.currentUser != null
-    
+
     /**
-     * Sign in with email and password
+     * Sign in with email and password via the Gateway.
+     * Returns the locally-signed-in user on success.
      */
     suspend fun signInWithEmail(email: String, password: String): Result<User> {
         return try {
-            val authResult = auth.signInWithEmailAndPassword(email, password).await()
-            val userId = authResult.user?.uid 
-                ?: return Result.failure(DataError.Unauthorized)
-            
-            // Fetch user data from database
-            fetchUserData(userId)
+            val response = GatewayClient.api.loginEmail(LoginRequest(email, password))
+            if (!response.isSuccessful || response.body() == null) {
+                return Result.failure(DataError.Firebase("auth_error", "Login failed: ${response.code()}"))
+            }
+            // Re-sign in locally so FirebaseAuth.currentUser is populated for token refreshes
+            auth.signInWithEmailAndPassword(email, password)
+            val body = response.body()!!
+            Result.success(
+                User(
+                    userId         = body.userId,
+                    email          = body.email,
+                    fullName       = body.fullName,
+                    dateOfBirth    = "",
+                    mobileNo       = "",
+                    profilePhotoUrl = body.profilePhotoUrl ?: "",
+                    followers      = "0"
+                )
+            )
         } catch (e: Exception) {
             Result.failure(DataError.Firebase("auth_error", e.message ?: "Authentication failed"))
         }
     }
-    
+
     /**
-     * Sign up with email and password
+     * Register with email and password via the Gateway.
      */
     suspend fun signUpWithEmail(
-        email: String, 
-        password: String, 
+        email: String,
+        password: String,
         fullName: String,
         dateOfBirth: String,
         mobileNo: String
     ): Result<User> {
         return try {
-            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val userId = authResult.user?.uid 
-                ?: return Result.failure(DataError.Unauthorized)
-            
-            // Create user profile
-            val user = User(
-                userId = userId,
-                email = email,
-                fullName = fullName,
-                dateOfBirth = dateOfBirth,
-                mobileNo = mobileNo,
-                profilePhotoUrl = "",
-                followers = "0"
+            val response = GatewayClient.api.register(
+                RegisterRequest(email, password, fullName, dateOfBirth, mobileNo)
             )
-            
-            // Save to database
-            database.child("users").child(userId).setValue(user.toLegacyUser()).await()
-            
-            Result.success(user)
+            if (!response.isSuccessful || response.body() == null) {
+                return Result.failure(DataError.Firebase("signup_error", "Registration failed: ${response.code()}"))
+            }
+            val body = response.body()!!
+            // Sign in locally so FirebaseAuth.currentUser is populated
+            auth.signInWithEmailAndPassword(email, password)
+            Result.success(
+                User(
+                    userId         = body.userId,
+                    email          = body.email,
+                    fullName       = body.fullName,
+                    dateOfBirth    = dateOfBirth,
+                    mobileNo       = mobileNo,
+                    profilePhotoUrl = body.profilePhotoUrl ?: "",
+                    followers      = "0"
+                )
+            )
         } catch (e: Exception) {
             Result.failure(DataError.Firebase("signup_error", e.message ?: "Sign up failed"))
         }
     }
-    
+
     /**
-     * Sign in with Google account
+     * Sign in with a Google account via the Gateway.
      */
     suspend fun signInWithGoogle(account: GoogleSignInAccount): Result<User> {
         return try {
-            val credential = GoogleAuthProvider.getCredential(account.idToken, null)
-            val authResult = auth.signInWithCredential(credential).await()
-            val userId = authResult.user?.uid 
-                ?: return Result.failure(DataError.Unauthorized)
-            
-            // Check if user exists
-            val userSnapshot = database.child("users").child(userId).get().await()
-            
-            if (!userSnapshot.exists()) {
-                // New user - create profile
-                val user = User(
-                    userId = userId,
-                    email = account.email ?: "",
-                    fullName = account.displayName ?: "",
-                    dateOfBirth = "",
-                    mobileNo = "",
-                    profilePhotoUrl = account.photoUrl?.toString() ?: "",
-                    followers = "0"
-                )
-                
-                database.child("users").child(userId).setValue(user.toLegacyUser()).await()
-                Result.success(user)
-            } else {
-                // Existing user - fetch data
-                fetchUserData(userId)
+            val idToken = account.idToken
+                ?: return Result.failure(DataError.Firebase("google_signin_error", "Missing Google ID token"))
+
+            val response = GatewayClient.api.loginGoogle(GoogleLoginRequest(idToken))
+            if (!response.isSuccessful || response.body() == null) {
+                return Result.failure(DataError.Firebase("google_signin_error", "Google login failed: ${response.code()}"))
             }
+            val body = response.body()!!
+            Result.success(
+                User(
+                    userId         = body.userId,
+                    email          = body.email,
+                    fullName       = body.fullName,
+                    dateOfBirth    = "",
+                    mobileNo       = "",
+                    profilePhotoUrl = body.profilePhotoUrl ?: account.photoUrl?.toString() ?: "",
+                    followers      = "0"
+                )
+            )
         } catch (e: Exception) {
             Result.failure(DataError.Firebase("google_signin_error", e.message ?: "Google sign in failed"))
         }
     }
-    
+
     /**
-     * Send password reset email
+     * Send password reset email — still handled by Firebase client SDK directly
+     * (no auth token needed for this operation).
      */
     suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
         return try {
-            auth.sendPasswordResetEmail(email).await()
+            auth.sendPasswordResetEmail(email)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(DataError.Firebase("reset_error", e.message ?: "Failed to send reset email"))
         }
     }
-    
-    /**
-     * Sign out the current user
-     */
+
+    /** Sign out the current user locally. */
     fun signOut() {
         auth.signOut()
     }
-    
+
     /**
-     * Fetch user data from database (public for repository use)
+     * Fetch user data from gateway GET /users/me (used after sign-in to hydrate the domain model).
      */
     suspend fun fetchUserData(userId: String): Result<User> {
-        return suspendCoroutine { continuation ->
-            database.child("users").child(userId)
-                .addListenerForSingleValueEvent(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        val legacyUser = snapshot.getValue(
-                            com.genzopia.Instagame.LoginActivities.User::class.java
-                        )
-                        
-                        if (legacyUser != null) {
-                            continuation.resume(Result.success(User.fromLegacyUser(legacyUser)))
-                        } else {
-                            continuation.resume(
-                                Result.failure(DataError.NotFound)
-                            )
-                        }
-                    }
-                    
-                    override fun onCancelled(error: DatabaseError) {
-                        continuation.resume(
-                            Result.failure(
-                                DataError.Firebase("db_error", error.message)
-                            )
-                        )
-                    }
-                })
+        return try {
+            val resp = GatewayClient.api.getMyProfile()
+            if (resp.isSuccessful && resp.body() != null) {
+                val p = resp.body()!!
+                Result.success(
+                    User(
+                        userId = p.userId.ifEmpty { userId },
+                        email = "",
+                        fullName = p.full_name,
+                        dateOfBirth = "",
+                        mobileNo = "",
+                        profilePhotoUrl = p.profile_photo_url ?: "",
+                        followers = p.followers_count.toString()
+                    )
+                )
+            } else {
+                Result.failure(DataError.NotFound)
+            }
+        } catch (e: Exception) {
+            Result.failure(DataError.Firebase("fetch_error", e.message ?: "Failed to fetch user"))
         }
     }
-    
-    /**
-     * Observe user data changes
-     */
+
+    /** Observe user data — polls gateway once; real-time updates not needed for profile. */
     fun observeUserData(userId: String): Flow<User> = callbackFlow {
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val legacyUser = snapshot.getValue(
-                    com.genzopia.Instagame.LoginActivities.User::class.java
+        try {
+            val resp = GatewayClient.api.getMyProfile()
+            if (resp.isSuccessful && resp.body() != null) {
+                val p = resp.body()!!
+                trySend(
+                    User(
+                        userId = p.userId.ifEmpty { userId },
+                        email = "",
+                        fullName = p.full_name,
+                        dateOfBirth = "",
+                        mobileNo = "",
+                        profilePhotoUrl = p.profile_photo_url ?: "",
+                        followers = p.followers_count.toString()
+                    )
                 )
-                if (legacyUser != null) {
-                    trySend(User.fromLegacyUser(legacyUser))
-                }
             }
-            
-            override fun onCancelled(error: DatabaseError) {
-                close(DataError.Firebase("db_error", error.message))
-            }
-        }
-        
-        database.child("users").child(userId).addValueEventListener(listener)
-        
-        awaitClose {
-            database.child("users").child(userId).removeEventListener(listener)
-        }
+        } catch (_: Exception) {}
+        awaitClose {}
     }
 }

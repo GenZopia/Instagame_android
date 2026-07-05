@@ -16,14 +16,16 @@ import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.channel_view.Fragment.DetailFragment.DetailsFragment;
 import com.genzopia.Instagame.channel_view.Fragment.GamesFragment.GamesFragment;
 import com.genzopia.Instagame.channel_view.Fragment.VideosFragment.VideosFragment;
+import com.genzopia.Instagame.gateway.ChannelDTO;
+import com.genzopia.Instagame.gateway.FollowResponse;
+import com.genzopia.Instagame.gateway.GatewayClient;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
 
+import androidx.annotation.NonNull;
 import de.hdodenhof.circleimageview.CircleImageView;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class ChannelActivity extends BaseActivity {
 
@@ -40,6 +42,10 @@ public class ChannelActivity extends BaseActivity {
     private VideosFragment videosFragment;
     private DetailsFragment detailsFragment;
     private Fragment currentFragment;
+    // True once we've painted the avatar passed in by the caller. When set, we
+    // don't let the async loadDeveloperData() response overwrite the already
+    // visible, correct profile image.
+    private boolean profilePhotoShown = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,6 +70,18 @@ public class ChannelActivity extends BaseActivity {
         TextView tabGames   = findViewById(R.id.tabGames);
         TextView tabVideos  = findViewById(R.id.tabVideos);
         TextView tabDetails = findViewById(R.id.tabDetails);
+
+        // Efficiency: if the caller (home / reel view) already resolved the
+        // developer's avatar URL, reuse it to paint the profile image instantly.
+        // Because it is the exact same gateway URL, Glide serves it from cache and
+        // no additional network request is made.
+        String preloadedPhoto = getIntent().getStringExtra("developer_photo_url");
+        if (preloadedPhoto != null && !preloadedPhoto.isEmpty()) {
+            // Render with the same Coil ImageLoader the caller (reel / home / etc.)
+            // used, so it loads reliably and is served from Coil's cache.
+            loadProfilePhoto(preloadedPhoto);
+            profilePhotoShown = true;
+        }
 
         loadDeveloperData();
         initializeFragments();
@@ -130,51 +148,31 @@ public class ChannelActivity extends BaseActivity {
             if (followButton != null) followButton.setVisibility(View.GONE);
             return;
         }
-        // Check current follow state
-        FirebaseDatabase.getInstance().getReference("users").child(currentUid)
-                .child("following_list").child(developerId)
-                .addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override public void onDataChange(DataSnapshot snapshot) {
-                        isFollowing = snapshot.exists();
-                        updateFollowButton();
-                    }
-                    @Override public void onCancelled(DatabaseError error) {}
-                });
 
         followButton.setOnClickListener(v -> {
-            if (currentUid == null) return;
             isFollowing = !isFollowing;
             updateFollowButton();
-            // Track follow/unfollow with developer name from channelName TextView
             String devName = channelName != null ? channelName.getText().toString() : "";
             com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackChannelFollowTapped(
-                    developerId,
-                    devName,
-                    isFollowing ? "follow" : "unfollow"
-            );
-            DatabaseReference followRef = FirebaseDatabase.getInstance().getReference("users")
-                    .child(currentUid).child("following_list").child(developerId);
-            DatabaseReference followersCountRef = FirebaseDatabase.getInstance().getReference("users")
-                    .child(developerId).child("followers_count");
-            if (isFollowing) {
-                followRef.setValue(true);
-                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override public void onDataChange(DataSnapshot s) {
-                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 0L;
-                        followersCountRef.setValue(count + 1);
+                    developerId, devName, isFollowing ? "follow" : "unfollow");
+
+            Call<FollowResponse> call = isFollowing
+                    ? GatewayClient.INSTANCE.getCallApi().followUser(developerId)
+                    : GatewayClient.INSTANCE.getCallApi().unfollowUser(developerId);
+
+            call.enqueue(new Callback<FollowResponse>() {
+                @Override
+                public void onResponse(@NonNull Call<FollowResponse> c,
+                                       @NonNull Response<FollowResponse> resp) {
+                    if (!resp.isSuccessful()) {
+                        Log.e("ChannelActivity", "follow/unfollow HTTP " + resp.code());
                     }
-                    @Override public void onCancelled(DatabaseError e) {}
-                });
-            } else {
-                followRef.removeValue();
-                followersCountRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override public void onDataChange(DataSnapshot s) {
-                        long count = s.getValue(Long.class) != null ? s.getValue(Long.class) : 1L;
-                        followersCountRef.setValue(Math.max(0, count - 1));
-                    }
-                    @Override public void onCancelled(DatabaseError e) {}
-                });
-            }
+                }
+                @Override
+                public void onFailure(@NonNull Call<FollowResponse> c, @NonNull Throwable t) {
+                    Log.e("ChannelActivity", "follow/unfollow failed", t);
+                }
+            });
         });
     }
 
@@ -194,74 +192,80 @@ public class ChannelActivity extends BaseActivity {
     }
 
     private void loadDeveloperData() {
-        DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(developerId);
-        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot snapshot) {
-                if (!snapshot.exists()) {
-                    channelName.setText("Developer Not Found");
-                    subscriberCount.setText("0 followers");
-                    return;
-                }
+        GatewayClient.INSTANCE.getCallApi().getChannel(developerId)
+                .enqueue(new Callback<ChannelDTO>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ChannelDTO> call,
+                                           @NonNull Response<ChannelDTO> resp) {
+                        if (!resp.isSuccessful() || resp.body() == null) {
+                            channelName.setText("Error Loading");
+                            subscriberCount.setText("0 followers");
+                            return;
+                        }
+                        ChannelDTO ch = resp.body();
+                        isFollowing = ch.isFollowing();
 
-                // Profile photo
-                String profilePhotoUrl = snapshot.child("profile_photo_url").getValue(String.class);
-                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
-                if (sanitizedPhotoUrl != null) {
-                    Glide.with(ChannelActivity.this).load(sanitizedPhotoUrl)
-                            .placeholder(R.drawable.demo_user).error(R.drawable.demo_user)
-                            .into(profileImage);
-                }
+                        // Only load here if the caller didn't already hand us the
+                        // avatar — avoids overwriting the visible image with a second
+                        // fetch (which is what caused the intermittent placeholder).
+                        if (!profilePhotoShown) {
+                            String sanitizedPhoto = com.genzopia.Instagame.utils.ProfilePhotoUtils
+                                    .sanitize(ch.getProfilePhotoUrl());
+                            if (sanitizedPhoto != null) {
+                                loadProfilePhoto(sanitizedPhoto);
+                                profilePhotoShown = true;
+                            }
+                        }
+                        if (ch.getBannerUrl() != null && !ch.getBannerUrl().isEmpty()
+                                && bannerImage != null) {
+                            Glide.with(ChannelActivity.this).load(ch.getBannerUrl())
+                                    .centerCrop().into(bannerImage);
+                        }
 
-                // Banner photo
-                String bannerUrl = snapshot.child("banner_url").getValue(String.class);
-                if (bannerUrl != null && !bannerUrl.isEmpty() && bannerImage != null) {
-                    Glide.with(ChannelActivity.this).load(bannerUrl)
-                            .centerCrop().into(bannerImage);
-                }
+                        String name = (ch.getFullName() != null && !ch.getFullName().isEmpty())
+                                ? ch.getFullName() : "Unknown Developer";
+                        channelName.setText(name);
+                        subscriberCount.setText(formatCount((int) ch.getFollowersCount())
+                                + " followers  •  " + ch.getVideoCount()
+                                + " videos  •  " + ch.getGameCount() + " games");
 
-                // Name
-                String fullName = snapshot.child("full_name").getValue(String.class);
-                channelName.setText(fullName != null && !fullName.isEmpty() ? fullName : "Unknown Developer");
+                        if (ch.getWebsite() != null && !ch.getWebsite().isEmpty()) {
+                            channelWebsite.setText(ch.getWebsite());
+                            channelWebsite.setVisibility(android.view.View.VISIBLE);
+                        }
+                        if (ch.getStory() != null && !ch.getStory().isEmpty()) {
+                            channelStory.setText(ch.getStory());
+                            channelStory.setVisibility(android.view.View.VISIBLE);
+                        }
+                        updateFollowButton();
+                    }
 
-                // Follower count
-                Long followersCount = snapshot.child("followers_count").getValue(Long.class);
-                if (followersCount == null) {
-                    // fallback to old field
-                    String followersStr = snapshot.child("followers").getValue(String.class);
-                    try { followersCount = followersStr != null ? Long.parseLong(followersStr) : 0L; }
-                    catch (NumberFormatException e) { followersCount = 0L; }
-                }
-
-                int videoCount = snapshot.child("videos").exists()
-                        ? (int) snapshot.child("videos").getChildrenCount() : 0;
-                int gameCount = snapshot.child("games").exists()
-                        ? (int) snapshot.child("games").getChildrenCount() : 0;
-
-                subscriberCount.setText(formatCount(followersCount.intValue()) + " followers  •  "
-                        + videoCount + " videos  •  " + gameCount + " games");
-
-                String website = snapshot.child("website").getValue(String.class);
-                if (website != null && !website.isEmpty()) {
-                    channelWebsite.setText(website);
-                    channelWebsite.setVisibility(android.view.View.VISIBLE);
-                }
-
-                String story = snapshot.child("story").getValue(String.class);
-                if (story != null && !story.isEmpty()) {
-                    channelStory.setText(story);
-                    channelStory.setVisibility(android.view.View.VISIBLE);
-                }
-            }
-
-            @Override
-            public void onCancelled(DatabaseError error) {
-                channelName.setText("Error Loading");
-                subscriberCount.setText("0 followers");
-            }
-        });
+                    @Override
+                    public void onFailure(@NonNull Call<ChannelDTO> call, @NonNull Throwable t) {
+                        Log.e("ChannelActivity", "loadDeveloperData failed", t);
+                        channelName.setText("Error Loading");
+                        subscriberCount.setText("0 followers");
+                    }
+                });
     }
     
+    /**
+     * Loads a profile photo into {@link #profileImage} using the app-wide Coil
+     * ImageLoader configured in MyApplication (which injects x-api-key + Bearer
+     * for gateway media URLs). This is the same loader the reel / home screens
+     * use, so the image renders consistently and is served from cache.
+     */
+    private void loadProfilePhoto(String url) {
+        if (url == null || url.isEmpty() || profileImage == null) return;
+        coil.request.ImageRequest request = new coil.request.ImageRequest.Builder(ChannelActivity.this)
+                .data(url)
+                .placeholder(R.drawable.demo_user)
+                .error(R.drawable.demo_user)
+                .target(profileImage)
+                .build();
+        coil.Coil.imageLoader(ChannelActivity.this).enqueue(request);
+    }
+
     private String formatCount(int count) {
         if (count < 1000) {
             return String.valueOf(count);

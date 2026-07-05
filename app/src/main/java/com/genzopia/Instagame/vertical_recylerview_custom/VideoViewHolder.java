@@ -34,14 +34,12 @@ import androidx.media3.ui.PlayerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
+import com.genzopia.Instagame.gateway.GatewayClient;
+import com.genzopia.Instagame.gateway.LikeResponse;
+import com.genzopia.Instagame.gateway.FollowResponse;
 import com.genzopia.Instagame.ui.components.VideoDetailsBottomSheet;
 import com.genzopia.Instagame.utils.ViewCountManager;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 import androidx.media3.datasource.DefaultDataSource;
@@ -49,6 +47,10 @@ import androidx.media3.exoplayer.source.MediaSource;
 
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class VideoViewHolder extends RecyclerView.ViewHolder {
     FrameLayout videoContainer;
@@ -192,6 +194,11 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
                 // Navigate to ChannelActivity with developer ID
                 Intent intent = new Intent(itemView.getContext(), ChannelActivity.class);
                 intent.putExtra("developer_id", currentItem.developerId);
+                // Pass the same avatar shown on this video so the channel screen
+                // paints it instantly from cache instead of showing a placeholder.
+                if (currentItem.channelIconUrl != null && !currentItem.channelIconUrl.isEmpty()) {
+                    intent.putExtra("developer_photo_url", currentItem.channelIconUrl);
+                }
                 itemView.getContext().startActivity(intent);
             }
         });
@@ -226,80 +233,42 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
 
     private void likeVideoOptimistic(String videoId, String userId) {
-        // Use Firebase transaction for atomic updates
-        DatabaseReference videoRef = FirebaseDatabase.getInstance()
-                .getReference("videos")
-                .child(videoId);
-        
-        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        GatewayClient.INSTANCE.getCallApi().likeReel(videoId).enqueue(new Callback<LikeResponse>() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentLikeCount = mutableData.child("like_count").getValue(String.class);
-                int newLikeCount = 1;
-                if (currentLikeCount != null) {
-                    newLikeCount = Integer.parseInt(currentLikeCount) + 1;
-                }
-                mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - update user's liked videos
-                    DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(userId)
-                            .child("liked_videos")
-                            .child(videoId);
-                    userLikedVideosRef.setValue(true);
-                    
+            public void onResponse(@NonNull Call<LikeResponse> call, @NonNull Response<LikeResponse> resp) {
+                if (resp.isSuccessful() && resp.body() != null) {
                     Toast.makeText(itemView.getContext(), "Liked!", Toast.LENGTH_SHORT).show();
                 } else {
-                    // Rollback UI on failure
                     updateLikeUI(false);
                     Toast.makeText(itemView.getContext(), "Failed to like video", Toast.LENGTH_SHORT).show();
                 }
+                likeButton.setEnabled(true);
+            }
+            @Override
+            public void onFailure(@NonNull Call<LikeResponse> call, @NonNull Throwable t) {
+                updateLikeUI(false);
+                Toast.makeText(itemView.getContext(), "Failed to like video", Toast.LENGTH_SHORT).show();
                 likeButton.setEnabled(true);
             }
         });
     }
 
     private void unlikeVideoOptimistic(String videoId, String userId) {
-        // Use Firebase transaction for atomic updates
-        DatabaseReference videoRef = FirebaseDatabase.getInstance()
-                .getReference("videos")
-                .child(videoId);
-        
-        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        GatewayClient.INSTANCE.getCallApi().unlikeReel(videoId).enqueue(new Callback<LikeResponse>() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentLikeCount = mutableData.child("like_count").getValue(String.class);
-                int newLikeCount = 0;
-                if (currentLikeCount != null) {
-                    newLikeCount = Math.max(0, Integer.parseInt(currentLikeCount) - 1);
-                }
-                mutableData.child("like_count").setValue(String.valueOf(newLikeCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - remove from user's liked videos
-                    DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(userId)
-                            .child("liked_videos")
-                            .child(videoId);
-                    userLikedVideosRef.removeValue();
-                    
+            public void onResponse(@NonNull Call<LikeResponse> call, @NonNull Response<LikeResponse> resp) {
+                if (resp.isSuccessful()) {
                     Toast.makeText(itemView.getContext(), "Unliked", Toast.LENGTH_SHORT).show();
                 } else {
-                    // Rollback UI on failure
                     updateLikeUI(true);
                     Toast.makeText(itemView.getContext(), "Failed to unlike video", Toast.LENGTH_SHORT).show();
                 }
+                likeButton.setEnabled(true);
+            }
+            @Override
+            public void onFailure(@NonNull Call<LikeResponse> call, @NonNull Throwable t) {
+                updateLikeUI(true);
+                Toast.makeText(itemView.getContext(), "Failed to unlike video", Toast.LENGTH_SHORT).show();
                 likeButton.setEnabled(true);
             }
         });
@@ -353,90 +322,42 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
 
     private void followUserOptimistic(String currentUserId, String developerId) {
-        // Use Firebase transaction for atomic updates
-        DatabaseReference developerRef = FirebaseDatabase.getInstance()
-                .getReference("users")
-                .child(developerId);
-        
-        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        GatewayClient.INSTANCE.getCallApi().followUser(developerId).enqueue(new Callback<FollowResponse>() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
-                int newFollowerCount = 1;
-                if (currentFollowerCount != null) {
-                    newFollowerCount = Integer.parseInt(currentFollowerCount) + 1;
-                }
-                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - add to current user's following list
-                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(currentUserId)
-                            .child("following_list")
-                            .child(developerId);
-                    
-                    currentUserFollowingRef.setValue(true).addOnSuccessListener(aVoid -> {
-                        Toast.makeText(itemView.getContext(), "Following", Toast.LENGTH_SHORT).show();
-                    }).addOnFailureListener(e -> {
-                        // Rollback UI on failure
-                        updateFollowUI(false);
-                        Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
-                    });
+            public void onResponse(@NonNull Call<FollowResponse> call, @NonNull Response<FollowResponse> resp) {
+                if (resp.isSuccessful()) {
+                    Toast.makeText(itemView.getContext(), "Following", Toast.LENGTH_SHORT).show();
                 } else {
-                    // Rollback UI on failure
                     updateFollowUI(false);
                     Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
                 }
+                followButton.setEnabled(true);
+            }
+            @Override
+            public void onFailure(@NonNull Call<FollowResponse> call, @NonNull Throwable t) {
+                updateFollowUI(false);
+                Toast.makeText(itemView.getContext(), "Failed to follow", Toast.LENGTH_SHORT).show();
                 followButton.setEnabled(true);
             }
         });
     }
 
     private void unfollowUserOptimistic(String currentUserId, String developerId) {
-        // Use Firebase transaction for atomic updates
-        DatabaseReference developerRef = FirebaseDatabase.getInstance()
-                .getReference("users")
-                .child(developerId);
-        
-        developerRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        GatewayClient.INSTANCE.getCallApi().unfollowUser(developerId).enqueue(new Callback<FollowResponse>() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentFollowerCount = mutableData.child("followers").getValue(String.class);
-                int newFollowerCount = 0;
-                if (currentFollowerCount != null) {
-                    newFollowerCount = Math.max(0, Integer.parseInt(currentFollowerCount) - 1);
-                }
-                mutableData.child("followers").setValue(String.valueOf(newFollowerCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - remove from current user's following list
-                    DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                            .getReference("users")
-                            .child(currentUserId)
-                            .child("following_list")
-                            .child(developerId);
-                    
-                    currentUserFollowingRef.removeValue().addOnSuccessListener(aVoid -> {
-                        Toast.makeText(itemView.getContext(), "Unfollowed", Toast.LENGTH_SHORT).show();
-                    }).addOnFailureListener(e -> {
-                        // Rollback UI on failure
-                        updateFollowUI(true);
-                        Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
-                    });
+            public void onResponse(@NonNull Call<FollowResponse> call, @NonNull Response<FollowResponse> resp) {
+                if (resp.isSuccessful()) {
+                    Toast.makeText(itemView.getContext(), "Unfollowed", Toast.LENGTH_SHORT).show();
                 } else {
-                    // Rollback UI on failure
                     updateFollowUI(true);
                     Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
                 }
+                followButton.setEnabled(true);
+            }
+            @Override
+            public void onFailure(@NonNull Call<FollowResponse> call, @NonNull Throwable t) {
+                updateFollowUI(true);
+                Toast.makeText(itemView.getContext(), "Failed to unfollow", Toast.LENGTH_SHORT).show();
                 followButton.setEnabled(true);
             }
         });
@@ -535,58 +456,19 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
     }
 
     private void incrementShareCount(String videoId) {
-        // Use Firebase transaction for atomic update
-        DatabaseReference videoRef = FirebaseDatabase.getInstance()
-                .getReference("videos")
-                .child(videoId);
-        
-        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
-            @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                String currentShareCount = mutableData.child("share_count").getValue(String.class);
-                int newShareCount = 1;
-                if (currentShareCount != null) {
-                    newShareCount = Integer.parseInt(currentShareCount) + 1;
-                }
-                mutableData.child("share_count").setValue(String.valueOf(newShareCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-            
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, DataSnapshot currentData) {
-                if (committed && error == null) {
-                    // Success - share count updated
-                    // You could also update the UI here if needed
-                } else {
-                    // Handle error silently for share count
-                    // Share functionality still works even if count update fails
-                }
-            }
+        // Share count recorded via gateway — fire and forget
+        GatewayClient.INSTANCE.getCallApi().recordShare(videoId).enqueue(new Callback<Void>() {
+            @Override public void onResponse(@NonNull Call<Void> call, @NonNull Response<Void> resp) {}
+            @Override public void onFailure(@NonNull Call<Void> call, @NonNull Throwable t) {}
         });
     }
 
     private void checkIfLiked(String videoId) {
-        com.google.firebase.auth.FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        if (user == null) return;
-        String currentUserId = user.getUid();
-
-        DatabaseReference userLikedVideosRef = FirebaseDatabase.getInstance()
-                .getReference("users")
-                .child(currentUserId)
-                .child("liked_videos")
-                .child(videoId);
-        
-        userLikedVideosRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                updateLikeUI(snapshot.exists());
-            }
-            
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                updateLikeUI(false);
-            }
-        });
+        // Like state is provided by the gateway in the reel feed (isLiked field on VideoItem).
+        // Use that value directly — no separate Firebase read needed.
+        if (currentItem != null) {
+            updateLikeUI(currentItem.isLiked);
+        }
     }
 
     private void checkFollowState(String developerId) {
@@ -595,41 +477,15 @@ public class VideoViewHolder extends RecyclerView.ViewHolder {
             followButton.setVisibility(View.VISIBLE);
             return;
         }
-        String currentUserId = user.getUid();
-
-        if (currentUserId.equals(developerId)) {
+        if (user.getUid().equals(developerId)) {
             followButton.setVisibility(View.GONE);
             return;
         }
-        
-        // Check if current user is following this developer
-        DatabaseReference currentUserFollowingRef = FirebaseDatabase.getInstance()
-                .getReference("users")
-                .child(currentUserId)
-                .child("following_list")
-                .child(developerId);
-        
-        currentUserFollowingRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                boolean following = snapshot.exists();
-                updateFollowUI(following);
-                
-                // If already following, hide the follow button or show "Following"
-                if (following) {
-                    followButton.setVisibility(View.VISIBLE); // Keep visible but show "Following"
-                } else {
-                    followButton.setVisibility(View.VISIBLE); // Show "Follow" button
-                }
-            }
-            
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                // On error, assume not following
-                updateFollowUI(false);
-                followButton.setVisibility(View.VISIBLE);
-            }
-        });
+        // Follow state is provided by the gateway in the reel feed (isFollowing field on VideoItem).
+        if (currentItem != null) {
+            updateFollowUI(currentItem.isFollowing);
+        }
+        followButton.setVisibility(View.VISIBLE);
     }
 
     private boolean handleProgressLineTouch(MotionEvent event) {

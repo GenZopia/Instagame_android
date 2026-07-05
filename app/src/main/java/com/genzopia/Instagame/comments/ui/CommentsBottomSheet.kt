@@ -29,9 +29,7 @@ import com.genzopia.Instagame.comments.data.CommentsRepository
 import com.genzopia.Instagame.comments.models.Comment
 import com.genzopia.Instagame.comments.models.Reply
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 private val Orange = Color(0xFFFF6B35)
 
@@ -64,14 +62,17 @@ fun CommentsBottomSheet(
     val textColor = if (isDark) Color.White else Color.Black
     val subColor = if (isDark) Color.LightGray else Color.Gray
 
-    // Load current user's profile photo from RTD
+    // Load current user's profile photo from gateway
     var currentUserPhotoUrl by remember { mutableStateOf<String?>(currentUser?.photoUrl?.toString()) }
     LaunchedEffect(currentUser?.uid) {
-        val uid = currentUser?.uid ?: return@LaunchedEffect
-        val snap = FirebaseDatabase.getInstance().getReference("users").child(uid).get().await()
-        val rtdPhoto = snap.child("profile_photo_url").getValue(String::class.java)
-        val sanitized = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rtdPhoto)
-        if (!sanitized.isNullOrBlank()) currentUserPhotoUrl = sanitized
+        if (currentUser?.uid == null) return@LaunchedEffect
+        try {
+            val resp = com.genzopia.Instagame.gateway.GatewayClient.api.getMyProfile()
+            if (resp.isSuccessful) {
+                val sanitized = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(resp.body()?.profile_photo_url)
+                if (!sanitized.isNullOrBlank()) currentUserPhotoUrl = sanitized
+            }
+        } catch (_: Exception) {}
     }
 
     // ── Load comments ──────────────────────────────────────────────────────────
@@ -247,14 +248,19 @@ fun CommentsBottomSheet(
                                     replyingTo = null
                                     scope.launch {
                                         val uid = currentUser.uid
-                                        val userSnap = FirebaseDatabase.getInstance()
-                                            .getReference("users").child(uid).get().await()
-                                        val name = userSnap.child("full_name").getValue(String::class.java)
-                                            ?: userSnap.child("username").getValue(String::class.java)
-                                            ?: currentUser.displayName ?: "User"
-                                        val photo = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(
-                                            userSnap.child("profile_photo_url").getValue(String::class.java)
-                                        ) ?: currentUser.photoUrl?.toString() ?: ""
+                                        // Fetch display name and photo from gateway (no direct Firebase read)
+                                        var name = currentUser.displayName ?: "User"
+                                        var photo = currentUserPhotoUrl ?: ""
+                                        try {
+                                            val resp = com.genzopia.Instagame.gateway.GatewayClient.api.getMyProfile()
+                                            if (resp.isSuccessful) {
+                                                resp.body()?.let {
+                                                    if (it.full_name.isNotBlank()) name = it.full_name
+                                                    val sanitized = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(it.profile_photo_url)
+                                                    if (!sanitized.isNullOrBlank()) photo = sanitized
+                                                }
+                                            }
+                                        } catch (_: Exception) {}
 
                                         if (target != null) {
                                             repository.postReply(

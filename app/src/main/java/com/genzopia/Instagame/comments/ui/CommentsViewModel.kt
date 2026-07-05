@@ -6,8 +6,9 @@ import androidx.lifecycle.ViewModel
 import com.genzopia.Instagame.comments.data.CommentsRepository
 import com.genzopia.Instagame.comments.models.Comment
 import com.genzopia.Instagame.comments.models.Reply
+import com.genzopia.Instagame.gateway.GatewayClient
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.launch
 
 /**
  * Single source of truth — mirrors web's likedVideos Set + optimistic update pattern.
@@ -240,10 +241,16 @@ class CommentsViewModel : ViewModel() {
     }
 
     fun reportComment(commentId: String) {
-        val uid = auth.currentUser?.uid ?: return
         val vid = videoId ?: return
-        FirebaseDatabase.getInstance().getReference("videos").child(vid)
-            .child("comment_reports").child(commentId).child(uid).setValue(true)
+        // Route report through gateway
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            GatewayClient.callApi.reportComment(vid, commentId).enqueue(
+                object : retrofit2.Callback<Void> {
+                    override fun onResponse(call: retrofit2.Call<Void>, response: retrofit2.Response<Void>) {}
+                    override fun onFailure(call: retrofit2.Call<Void>, t: Throwable) {}
+                }
+            )
+        }
     }
 
     fun clearError() { _errorEvent.value = null }
@@ -253,13 +260,20 @@ class CommentsViewModel : ViewModel() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun resolveUserProfile(uid: String, cb: (name: String?, photo: String?) -> Unit) {
-        FirebaseDatabase.getInstance().getReference("users").child(uid)
-            .get().addOnSuccessListener { snap ->
-                val name = snap.child("full_name").getValue(String::class.java)
-                    ?: snap.child("username").getValue(String::class.java)
-                val photo = snap.child("profile_photo_url").getValue(String::class.java)
-                cb(name, photo)
-            }.addOnFailureListener { cb(null, null) }
+        // Use gateway instead of direct Firebase read
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val resp = com.genzopia.Instagame.gateway.GatewayClient.api.getMyProfile()
+                if (resp.isSuccessful) {
+                    val body = resp.body()
+                    cb(body?.full_name, body?.profile_photo_url)
+                } else {
+                    cb(auth.currentUser?.displayName, auth.currentUser?.photoUrl?.toString())
+                }
+            } catch (_: Exception) {
+                cb(auth.currentUser?.displayName, auth.currentUser?.photoUrl?.toString())
+            }
+        }
     }
 
     private fun notifyCommentChanged(comment: Comment) {

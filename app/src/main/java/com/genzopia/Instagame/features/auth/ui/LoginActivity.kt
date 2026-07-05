@@ -9,7 +9,6 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import com.genzopia.Instagame.LoginActivities.ForgotPassword
-import com.genzopia.Instagame.LoginActivities.RegisterActivity
 import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.common.ui.viewModelFactory
 import com.genzopia.Instagame.common.utils.RepositoryProvider
@@ -57,7 +56,8 @@ class LoginActivity : ComponentActivity() {
                             finish()
                         },
                         onNavigateToRegister = {
-                            startActivity(Intent(this, RegisterActivity::class.java))
+                            startActivity(Intent(this,
+                                Class.forName("com.genzopia.Instagame.LoginActivities.RegisterActivity")))
                         },
                         onNavigateToForgotPassword = {
                             startActivity(Intent(this, ForgotPassword::class.java))

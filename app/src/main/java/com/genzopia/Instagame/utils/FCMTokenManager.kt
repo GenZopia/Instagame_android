@@ -8,8 +8,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.genzopia.Instagame.gateway.FcmTokenRequest
+import com.genzopia.Instagame.gateway.GatewayClient
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.messaging.FirebaseMessaging
 
 /**
@@ -54,24 +55,28 @@ object FCMTokenManager {
     }
 
     /**
-     * Updates the FCM token in Firebase Realtime Database for the current user.
-     * On failure, schedules a WorkManager retry. Requirements: 4.2, 7.1
+     * Updates the FCM token via the backend Gateway (POST /users/me/fcm-token).
+     * On failure, schedules a WorkManager retry. Requirements: 12.1, 12.2
      */
     fun updateTokenInDatabase(token: String, context: Context? = null) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: run {
-            Log.d(TAG, "No signed-in user — skipping token DB update")
+            Log.d(TAG, "No signed-in user — skipping token gateway update")
             return
         }
-        FirebaseDatabase.getInstance()
-            .getReference("users")
-            .child(uid)
-            .child("fcm_token")
-            .setValue(token)
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to update FCM token in DB for uid=$uid: ${e.message}", e)
-                // Req 7.1: queue retry when network is available
+        GatewayClient.callApi.registerFcmToken(FcmTokenRequest(token)).enqueue(object : retrofit2.Callback<Void> {
+            override fun onResponse(call: retrofit2.Call<Void>, response: retrofit2.Response<Void>) {
+                if (response.isSuccessful) {
+                    Log.d(TAG, "FCM token registered via gateway for uid=$uid")
+                } else {
+                    Log.e(TAG, "Gateway FCM token HTTP ${response.code()} for uid=$uid")
+                    context?.let { scheduleTokenSync(it) }
+                }
+            }
+            override fun onFailure(call: retrofit2.Call<Void>, t: Throwable) {
+                Log.e(TAG, "Failed to register FCM token via gateway for uid=$uid: ${t.message}", t)
                 context?.let { scheduleTokenSync(it) }
             }
+        })
     }
 
     /** Schedules a WorkManager job to retry token sync when network is available. */

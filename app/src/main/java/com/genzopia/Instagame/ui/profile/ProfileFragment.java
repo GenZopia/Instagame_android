@@ -27,11 +27,7 @@ import com.google.android.material.button.MaterialButton;
 import com.genzopia.Instagame.R;
 import com.genzopia.Instagame.LoginActivities.LoginActivity;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
+
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -58,8 +54,7 @@ public class ProfileFragment extends Fragment {
     private TextView postsCount, followersCount, followingCount;
     private MaterialButton editProfileBtn, genzLabBtn;
     private ImageView menuIcon, videos_ff, games_ff, details_ff;
-    private DatabaseReference userRef;
-    private ValueEventListener userListener;
+
 
     @Nullable
     @Override
@@ -275,118 +270,72 @@ public class ProfileFragment extends Fragment {
     }
 
     private void fetchUserData() {
-        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+        if (com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser() == null) {
             Log.e(TAG, "fetchUserData: currentUser is null — aborting");
             return;
         }
 
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        Log.d(TAG, "fetchUserData: userId = " + userId);
+        com.genzopia.Instagame.gateway.GatewayClient.INSTANCE.getCallApi()
+                .getMyProfile()
+                .enqueue(new retrofit2.Callback<com.genzopia.Instagame.gateway.UserProfileDTO>() {
+                    @Override
+                    public void onResponse(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.UserProfileDTO> call,
+                                           @NonNull retrofit2.Response<com.genzopia.Instagame.gateway.UserProfileDTO> resp) {
+                        if (!resp.isSuccessful() || resp.body() == null || !isAdded()) return;
+                        com.genzopia.Instagame.gateway.UserProfileDTO p = resp.body();
 
-        userRef = FirebaseDatabase.getInstance().getReference()
-                .child("users").child(userId);
+                        String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(p.getProfile_photo_url());
+                        sCachedProfilePhotoUrl = sanitizedPhotoUrl;
+                        if (sanitizedPhotoUrl != null && getActivity() != null) {
+                            com.genzopia.Instagame.glide.GlideImageLoader.load(
+                                requireContext(), sanitizedPhotoUrl,
+                                R.drawable.profile, profileImage);
+                        }
 
-        // Use addListenerForSingleValueEvent instead of addValueEventListener for one-time load
-        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                Log.d(TAG, "onDataChange: snapshot exists = " + dataSnapshot.exists());
-                if (!dataSnapshot.exists() || !isAdded()) {
-                    Log.e(TAG, "onDataChange: snapshot missing or fragment detached");
-                    return;
-                }
+                        sCachedFullName = p.getFull_name();
+                        usernameTop.setText(sCachedFullName);
 
-                // Profile photo - same approach as ChannelActivity
-                String profilePhotoUrl = dataSnapshot.child("profile_photo_url").getValue(String.class);
-                Log.d(TAG, "onDataChange: raw profile_photo_url = '" + profilePhotoUrl + "'");
+                        sCachedBio = p.getBio();
+                        sCachedWebsite = p.getWebsite();
+                        sCachedStory = p.getStory();
 
-                String sanitizedPhotoUrl = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(profilePhotoUrl);
-                Log.d(TAG, "onDataChange: sanitized url = '" + sanitizedPhotoUrl + "'");
+                        bio.setText(sCachedBio != null && !sCachedBio.isEmpty() ? sCachedBio : "Add a bio to tell your story!");
+                        bio.setMaxLines(3);
+                        bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                        bio.post(() -> {
+                            if (bio.getLayout() != null && bio.getLayout().getLineCount() > 3) {
+                                bioExpand.setVisibility(View.VISIBLE);
+                                bioExpand.setText("more");
+                            } else {
+                                bioExpand.setVisibility(View.GONE);
+                            }
+                        });
+                        website.setText(sCachedWebsite != null && !sCachedWebsite.isEmpty() ? sCachedWebsite : "Add your website");
+                        story.setText(sCachedStory != null && !sCachedStory.isEmpty() ? sCachedStory : "Add your story");
 
-                sCachedProfilePhotoUrl = sanitizedPhotoUrl;
-
-                if (sanitizedPhotoUrl != null && getActivity() != null) {
-                    Log.d(TAG, "onDataChange: calling Glide.load() with url = " + sanitizedPhotoUrl);
-                    Glide.with(ProfileFragment.this)
-                            .load(sanitizedPhotoUrl)
-                            .placeholder(R.drawable.profile)
-                            .error(R.drawable.profile)
-                            .listener(new com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable>() {
-                                @Override
-                                public boolean onLoadFailed(@androidx.annotation.Nullable com.bumptech.glide.load.engine.GlideException e,
-                                        Object model, com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
-                                        boolean isFirstResource) {
-                                    Log.e(TAG, "Glide.onLoadFailed: url=" + sanitizedPhotoUrl
-                                            + " error=" + (e != null ? e.getMessage() : "null"));
-                                    if (e != null) e.logRootCauses(TAG);
-                                    return false;
-                                }
-                                @Override
-                                public boolean onResourceReady(android.graphics.drawable.Drawable resource,
-                                        Object model, com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
-                                        com.bumptech.glide.load.DataSource dataSource, boolean isFirstResource) {
-                                    Log.d(TAG, "Glide.onResourceReady: image loaded successfully from " + dataSource);
-                                    return false;
-                                }
-                            })
-                            .into(profileImage);
-                } else {
-                    Log.e(TAG, "onDataChange: sanitizedPhotoUrl is null or activity is null — skipping Glide load");
-                }
-
-                // Username and full name
-                sCachedFullName = dataSnapshot.child("full_name").getValue(String.class);
-                Log.d(TAG, "onDataChange: full_name = '" + sCachedFullName + "'");
-                usernameTop.setText(sCachedFullName);
-
-                // Bio and website
-                sCachedBio = dataSnapshot.child("bio").getValue(String.class);
-                sCachedWebsite = dataSnapshot.child("website").getValue(String.class);
-                sCachedStory = dataSnapshot.child("story").getValue(String.class);
-                bio.setText(sCachedBio != null ? sCachedBio : "Add a bio to tell your story!");
-                bio.setMaxLines(3);
-                bio.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                bio.post(() -> {
-                    if (bio.getLayout() != null && bio.getLayout().getLineCount() > 3) {
-                        bioExpand.setVisibility(View.VISIBLE);
-                        bioExpand.setText("more");
-                    } else {
-                        bioExpand.setVisibility(View.GONE);
+                        sCachedFollowersCount = String.valueOf(p.getFollowers_count());
+                        followersCount.setText(sCachedFollowersCount);
+                        sCachedPostsCount = "0";
+                        sCachedFollowingCount = "0";
+                        postsCount.setText(sCachedPostsCount);
+                        followingCount.setText(sCachedFollowingCount);
+                    }
+                    @Override
+                    public void onFailure(@NonNull retrofit2.Call<com.genzopia.Instagame.gateway.UserProfileDTO> call,
+                                          @NonNull Throwable t) {
+                        Log.e(TAG, "fetchUserData failed: " + t.getMessage());
+                        if (isAdded())
+                            Toast.makeText(getContext(), "Failed to fetch user data", Toast.LENGTH_SHORT).show();
                     }
                 });
-                website.setText(sCachedWebsite != null ? sCachedWebsite : "Add your website");
-                story.setText(sCachedStory != null ? sCachedStory : "Add your story");
-
-                // Stats
-                long posts = dataSnapshot.child("posts").getChildrenCount();
-                String followers = dataSnapshot.child("followers").getValue(String.class);
-                long following = dataSnapshot.child("following").getChildrenCount();
-
-                sCachedPostsCount = String.valueOf(posts);
-                sCachedFollowersCount = followers != null ? followers : "0";
-                sCachedFollowingCount = String.valueOf(following);
-
-                postsCount.setText(sCachedPostsCount);
-                followersCount.setText(sCachedFollowersCount);
-                followingCount.setText(sCachedFollowingCount);
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e(TAG, "onCancelled: " + error.getMessage());
-                Toast.makeText(getContext(), "Failed to fetch user data", Toast.LENGTH_SHORT).show();
-            }
-        });
     }
 
     private void restoreCachedData() {
         // Restore profile photo
         if (sCachedProfilePhotoUrl != null && getActivity() != null) {
-            Glide.with(this)
-                    .load(sCachedProfilePhotoUrl)
-                    .placeholder(R.drawable.profile)
-                    .error(R.drawable.profile)
-                    .into(profileImage);
+            com.genzopia.Instagame.glide.GlideImageLoader.load(
+                requireContext(), sCachedProfilePhotoUrl,
+                R.drawable.profile, profileImage);
         }
 
         // Restore text data
@@ -444,10 +393,8 @@ public class ProfileFragment extends Fragment {
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackLogoutCompleted(sessionDurationMs);
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.clearIdentity();
         clearSharedPreferences();
-        
-        if (auth != null) {
-            auth.signOut();
-        }
+        com.genzopia.Instagame.glide.GlideImageLoader.clearToken();
+        if (auth != null) auth.signOut();
 
         Intent intent = new Intent(requireContext(), LoginActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);

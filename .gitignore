@@ -16,3 +16,7 @@ local.properties
 
 # Sensitive config with API keys
 /.idea/deploymentTargetSelector.xml
+
+# Gateway secrets
+gateway/.env
+gateway/deploy-env.yaml

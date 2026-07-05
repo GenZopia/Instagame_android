@@ -1,6 +1,6 @@
 package com.genzopia.Instagame.onboarding
 
-import ReelViewModel
+import com.genzopia.Instagame.reelview.compose.ReelViewModel
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility

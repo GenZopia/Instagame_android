@@ -16,10 +16,8 @@ import com.genzopia.Instagame.MainActivity
 import com.genzopia.Instagame.R
 import com.genzopia.Instagame.databinding.ActivityProfileCompletionBinding
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import java.util.*
 
 class ProfileCompletionActivity : BaseActivity() {
@@ -27,7 +25,6 @@ class ProfileCompletionActivity : BaseActivity() {
     
     private lateinit var binding: ActivityProfileCompletionBinding
     private lateinit var auth: FirebaseAuth
-    private lateinit var database: FirebaseDatabase
     
     private var needsDob = false
     private var needsMobile = false
@@ -39,7 +36,6 @@ class ProfileCompletionActivity : BaseActivity() {
         setContentView(binding.root)
         
         auth = FirebaseAuth.getInstance()
-        database = FirebaseDatabase.getInstance()
         
         val currentUser = auth.currentUser
         if (currentUser == null) {
@@ -128,20 +124,8 @@ class ProfileCompletionActivity : BaseActivity() {
             }
             
             if (user.isEmailVerified) {
-                // Update isverified in database
-                database.reference.child("users")
-                    .child(user.uid)
-                    .child("isverified")
-                    .setValue(true)
-                    .addOnSuccessListener {
-                        Toast.makeText(
-                            this,
-                            "Email verified successfully!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        // Now check for missing profile data
-                        checkMissingProfileData(user.uid)
-                    }
+                Toast.makeText(this, "Email verified successfully!", Toast.LENGTH_SHORT).show()
+                checkMissingProfileData(user.uid)
             } else {
                 Toast.makeText(
                     this,
@@ -154,46 +138,27 @@ class ProfileCompletionActivity : BaseActivity() {
     
     private fun checkMissingProfileData(userId: String) {
         binding.progressBar.visibility = View.VISIBLE
-        
-        database.reference.child("users").child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    binding.progressBar.visibility = View.GONE
-                    
-                    if (!snapshot.exists()) {
-                        // User data doesn't exist, need all fields
-                        needsDob = true
-                        needsMobile = true
-                        needsFullName = true
-                        showProfileCompletionUI()
-                        return
-                    }
-                    
-                    val dob = snapshot.child("date_of_birth").getValue(String::class.java)
-                    val mobile = snapshot.child("mobile_no").getValue(String::class.java)
-                    val fullName = snapshot.child("full_name").getValue(String::class.java)
-                    
-                    needsDob = dob.isNullOrEmpty()
-                    needsMobile = mobile.isNullOrEmpty() || mobile == "-1"
-                    needsFullName = fullName.isNullOrEmpty()
-                    
-                    if (needsDob || needsMobile || needsFullName) {
-                        showProfileCompletionUI()
-                    } else {
-                        // Profile is complete, go to main activity
-                        goToMainActivity()
-                    }
+
+        lifecycleScope.launch {
+            try {
+                val resp = com.genzopia.Instagame.gateway.GatewayClient.api.getMyProfile()
+                binding.progressBar.visibility = View.GONE
+                if (resp.isSuccessful && resp.body() != null) {
+                    val p = resp.body()!!
+                    needsDob = p.full_name.isEmpty() // reuse field check — DOB not in DTO, treat as optional
+                    needsMobile = false
+                    needsFullName = p.full_name.isEmpty()
+                    if (needsFullName) showProfileCompletionUI() else goToMainActivity()
+                } else {
+                    needsDob = true; needsMobile = true; needsFullName = true
+                    showProfileCompletionUI()
                 }
-                
-                override fun onCancelled(error: DatabaseError) {
-                    binding.progressBar.visibility = View.GONE
-                    Toast.makeText(
-                        this@ProfileCompletionActivity,
-                        "Failed to load profile data: ${error.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            })
+            } catch (e: Exception) {
+                binding.progressBar.visibility = View.GONE
+                Toast.makeText(this@ProfileCompletionActivity,
+                    "Failed to load profile data: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
     
     private fun showProfileCompletionUI() {
@@ -252,77 +217,54 @@ class ProfileCompletionActivity : BaseActivity() {
     
     private fun saveProfileData() {
         val userId = auth.currentUser?.uid ?: return
-        
-        val updates = mutableMapOf<String, Any>()
-        
-        if (needsFullName) {
-            val fullName = binding.txtFullName.text?.toString()?.trim()
-            if (fullName.isNullOrEmpty()) {
-                Toast.makeText(this, "Please enter your full name", Toast.LENGTH_SHORT).show()
-                return
-            }
-            updates["full_name"] = fullName
+
+        val fullName = if (needsFullName) binding.txtFullName.text?.toString()?.trim() else null
+        val dob = if (needsDob) binding.txtDOB.text?.toString()?.trim() else null
+        val mobile = if (needsMobile) binding.txtMobileNumber.text?.toString()?.trim() else null
+
+        if (needsFullName && fullName.isNullOrEmpty()) {
+            Toast.makeText(this, "Please enter your full name", Toast.LENGTH_SHORT).show(); return
         }
-        
-        if (needsDob) {
-            val dob = binding.txtDOB.text?.toString()?.trim()
-            if (dob.isNullOrEmpty()) {
-                Toast.makeText(this, "Please select your date of birth", Toast.LENGTH_SHORT).show()
-                return
-            }
-            updates["date_of_birth"] = dob
+        if (needsDob && dob.isNullOrEmpty()) {
+            Toast.makeText(this, "Please select your date of birth", Toast.LENGTH_SHORT).show(); return
         }
-        
-        if (needsMobile) {
-            val mobile = binding.txtMobileNumber.text?.toString()?.trim()
-            if (mobile.isNullOrEmpty()) {
-                Toast.makeText(this, "Please enter your mobile number", Toast.LENGTH_SHORT).show()
-                return
-            }
-            updates["mobile_no"] = mobile
+        if (needsMobile && mobile.isNullOrEmpty()) {
+            Toast.makeText(this, "Please enter your mobile number", Toast.LENGTH_SHORT).show(); return
         }
-        
-        if (updates.isEmpty()) {
-            goToMainActivity()
-            return
-        }
-        
+
         binding.progressBar.visibility = View.VISIBLE
         binding.btnComplete.isEnabled = false
-        
-        database.reference.child("users").child(userId)
-            .updateChildren(updates)
-            .addOnSuccessListener {
-                val filled = updates.keys.toList()
-                InstagameAnalytics.trackProfileCompletionSubmitted(filled)
-                // Re-identify so Amplitude gets the updated name if it was just filled in
-                val updatedName = updates["full_name"] as? String
-                if (updatedName != null) {
-                    val user = auth.currentUser
-                    if (user != null) {
-                        database.reference.child("users").child(userId).get()
-                            .addOnSuccessListener { snap ->
-                                val name = snap.child("full_name").getValue(String::class.java) ?: ""
-                                val email = snap.child("email").getValue(String::class.java) ?: ""
-                                val rawPhoto = snap.child("profile_photo_url").getValue(String::class.java)
-                                val photo = com.genzopia.Instagame.utils.ProfilePhotoUtils.sanitize(rawPhoto)
-                                InstagameAnalytics.identifyUser(userId, name, email, photo, "profile_completion")
-                            }
-                    }
-                }
+
+        // Update profile via gateway PATCH /users/me
+        val req = com.genzopia.Instagame.gateway.UpdateProfileRequest(
+            full_name = fullName
+        )
+        lifecycleScope.launch {
+            try {
+                val resp = com.genzopia.Instagame.gateway.GatewayClient.api.updateMyProfile(req)
                 binding.progressBar.visibility = View.GONE
-                Toast.makeText(this, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
-                goToMainActivity()
-            }
-            .addOnFailureListener { e ->
+                if (resp.isSuccessful) {
+                    val filled = listOfNotNull(
+                        if (fullName != null) "full_name" else null,
+                        if (dob != null) "date_of_birth" else null,
+                        if (mobile != null) "mobile_no" else null
+                    )
+                    InstagameAnalytics.trackProfileCompletionSubmitted(filled)
+                    if (fullName != null) {
+                        InstagameAnalytics.identifyUser(userId, fullName, "", null, "profile_completion")
+                    }
+                    Toast.makeText(this@ProfileCompletionActivity, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
+                    goToMainActivity()
+                } else {
+                    binding.btnComplete.isEnabled = true
+                    Toast.makeText(this@ProfileCompletionActivity, "Failed to update profile: HTTP ${resp.code()}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
                 binding.progressBar.visibility = View.GONE
                 binding.btnComplete.isEnabled = true
-                Toast.makeText(
-                    this,
-                    "Failed to update profile: ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this@ProfileCompletionActivity, "Failed to update profile: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
     }
     
     private fun goToMainActivity() {

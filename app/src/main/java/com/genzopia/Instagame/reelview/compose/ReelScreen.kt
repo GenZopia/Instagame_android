@@ -2,13 +2,11 @@
 
 package com.genzopia.Instagame.reelview.compose
 
-import ReelViewModel
 import com.genzopia.Instagame.VideoPlayer
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,15 +51,9 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.MutableData
-import com.google.firebase.database.Transaction
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PageSize
-import androidx.compose.foundation.verticalScroll
 import com.genzopia.Instagame.utils.GameShareHelper
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -341,6 +333,8 @@ fun ReelItem(
     viewModel: ReelViewModel,
     modifier: Modifier = Modifier
 ) {
+    val coroutineScope = rememberCoroutineScope()
+
     val (defaultIsLiked, defaultLikeCount) = remember(reel.videoId) {
         viewModel.getLikeState(reel.videoId, reel.isLiked, reel.likeCount.toIntOrNull() ?: 0)
     }
@@ -599,32 +593,28 @@ fun ReelItem(
                     )
                 }
 
-                val videoRef = FirebaseDatabase.getInstance().reference
-                    .child("videos").child(reel.videoId).child("like_count")
-                val userLikedRef = FirebaseDatabase.getInstance().reference
-                    .child("users").child(currentUserId)
-                    .child("liked_videos").child(reel.videoId)
-
-                val onFailure: (Exception) -> Unit = { e ->
-                    // FIX 6: revert to the ORIGINAL values (before this tap)
+                // Route through gateway — idempotent, server-enforced (Req 3.1–3.3)
+                val onFailure: (String) -> Unit = { msg ->
                     isLiked = !newLikedState
                     likeCount = likeCount + if (newLikedState) -1 else 1
                     viewModel.updateLikeState(reel.videoId, !newLikedState, likeCount)
-                    Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed: $msg", Toast.LENGTH_SHORT).show()
                 }
 
-                if (newLikedState) {
-                    videoRef.setValue(newLikeCount.toString())
-                        .addOnSuccessListener { userLikedRef.setValue(true) }
-                        .addOnFailureListener { onFailure(it) }
-                } else {
-                    videoRef.setValue(newLikeCount.toString())
-                        .addOnSuccessListener { userLikedRef.removeValue() }
-                        .addOnFailureListener { onFailure(it) }
+                coroutineScope.launch {
+                    try {
+                        val resp = if (newLikedState)
+                            com.genzopia.Instagame.gateway.GatewayClient.api.likeReel(reel.videoId)
+                        else
+                            com.genzopia.Instagame.gateway.GatewayClient.api.unlikeReel(reel.videoId)
+                        if (!resp.isSuccessful) onFailure("HTTP ${resp.code()}")
+                    } catch (e: Exception) {
+                        onFailure(e.message ?: "network error")
+                    }
                 }
             },
             onFollowClick = {
-                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
                 if (currentUserId == null) {
                     Toast.makeText(context, "Please login to follow", Toast.LENGTH_SHORT).show()
                     return@ReelOverlay
@@ -644,49 +634,26 @@ fun ReelItem(
                     action = if (newFollowState) "follow" else "unfollow"
                 )
 
-                val db = FirebaseDatabase.getInstance().reference
-                val followingRef = db.child("users").child(currentUserId)
-                    .child("following_list").child(reel.developerId)
-                val followersCountRef = db.child("users").child(reel.developerId)
-                    .child("followers_count")
-
-                if (newFollowState) {
-                    followingRef.setValue(true)
-                        .addOnSuccessListener {
-                            followersCountRef.runTransaction(object : Transaction.Handler {
-                                override fun doTransaction(currentData: MutableData): Transaction.Result {
-                                    currentData.value = (currentData.getValue(Int::class.java) ?: 0) + 1
-                                    return Transaction.success(currentData)
-                                }
-                                override fun onComplete(error: DatabaseError?, committed: Boolean, snapshot: DataSnapshot?) {
-                                    if (committed) Toast.makeText(context, "Following ${reel.developerName}", Toast.LENGTH_SHORT).show()
-                                }
-                            })
-                        }
-                        .addOnFailureListener { e ->
+                // Route through gateway — idempotent, self-follow prevented server-side (Req 5.1–5.5)
+                coroutineScope.launch {
+                    try {
+                        val resp = if (newFollowState)
+                            com.genzopia.Instagame.gateway.GatewayClient.api.followUser(reel.developerId)
+                        else
+                            com.genzopia.Instagame.gateway.GatewayClient.api.unfollowUser(reel.developerId)
+                        if (resp.isSuccessful) {
+                            val msg = if (newFollowState) "Following ${reel.developerName}" else "Unfollowed ${reel.developerName}"
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        } else {
                             isFollowing = !newFollowState
                             viewModel.updateFollowState(reel.developerId, !newFollowState)
-                            Toast.makeText(context, "Failed to follow: ${e.message}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Failed: HTTP ${resp.code()}", Toast.LENGTH_SHORT).show()
                         }
-                } else {
-                    followingRef.removeValue()
-                        .addOnSuccessListener {
-                            followersCountRef.runTransaction(object : Transaction.Handler {
-                                override fun doTransaction(currentData: MutableData): Transaction.Result {
-                                    val count = currentData.getValue(Int::class.java) ?: 0
-                                    currentData.value = if (count > 0) count - 1 else 0
-                                    return Transaction.success(currentData)
-                                }
-                                override fun onComplete(error: DatabaseError?, committed: Boolean, snapshot: DataSnapshot?) {
-                                    if (committed) Toast.makeText(context, "Unfollowed ${reel.developerName}", Toast.LENGTH_SHORT).show()
-                                }
-                            })
-                        }
-                        .addOnFailureListener { e ->
-                            isFollowing = !newFollowState
-                            viewModel.updateFollowState(reel.developerId, !newFollowState)
-                            Toast.makeText(context, "Failed to unfollow: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
+                    } catch (e: Exception) {
+                        isFollowing = !newFollowState
+                        viewModel.updateFollowState(reel.developerId, !newFollowState)
+                        Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             onShareClick = {
@@ -742,6 +709,7 @@ fun ReelOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showDetailsSheet by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
@@ -778,6 +746,9 @@ fun ReelOverlay(
                             val intent = Intent(context, com.genzopia.Instagame.channel_view.ChannelActivity::class.java)
                             intent.putExtra("developer_id", reel.developerId)
                             intent.putExtra("user_id", reel.developerId)
+                            // Reuse the avatar already loaded in the reel to avoid a
+                            // second image fetch in ChannelActivity (served from cache).
+                            intent.putExtra("developer_photo_url", reel.developerPhotoUrl)
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             android.widget.Toast.makeText(context, "Error opening channel", android.widget.Toast.LENGTH_SHORT).show()
@@ -884,15 +855,11 @@ fun ReelOverlay(
                         reel.gameName,
                         reel.gameImageUrl
                     )
-                    com.google.firebase.database.FirebaseDatabase.getInstance().reference
-                        .child("videos").child(reel.videoId).child("share_count")
-                        .runTransaction(object : com.google.firebase.database.Transaction.Handler {
-                            override fun doTransaction(currentData: com.google.firebase.database.MutableData): com.google.firebase.database.Transaction.Result {
-                                currentData.value = (currentData.getValue(Int::class.java) ?: 0) + 1
-                                return com.google.firebase.database.Transaction.success(currentData)
-                            }
-                            override fun onComplete(error: com.google.firebase.database.DatabaseError?, committed: Boolean, snapshot: com.google.firebase.database.DataSnapshot?) {}
-                        })
+                    // Record share via gateway — server-enforced atomic increment
+                    coroutineScope.launch {
+                        try { com.genzopia.Instagame.gateway.GatewayClient.api.recordShare(reel.videoId) }
+                        catch (_: Exception) {}
+                    }
                 }
             )
             // Details button
@@ -905,15 +872,13 @@ fun ReelOverlay(
     }
 
     // Show sheet immediately with data already in ReelData (instant open).
-    // Firebase fetch runs in background to fill in the game image URL.
+    // Gateway fetch runs in background to fill in the game image URL if missing.
     var detailsGame by remember {
         mutableStateOf<com.genzopia.Instagame.features.home.ui.HomeGameItem?>(null)
     }
 
-    // Show sheet immediately with known data, fetch image in background if missing
     LaunchedEffect(showDetailsSheet) {
         if (showDetailsSheet && reel.gameId.isNotEmpty() && detailsGame == null) {
-            // Always show instantly
             detailsGame = com.genzopia.Instagame.features.home.ui.HomeGameItem(
                 gameId = reel.gameId,
                 gameName = reel.gameName.ifEmpty { reel.title },
@@ -923,36 +888,21 @@ fun ReelOverlay(
                 developerName = reel.developerName,
                 developerPhotoUrl = reel.developerPhotoUrl ?: ""
             )
-            // If image not yet resolved, fetch it in background and update
+            // If image not yet resolved, fetch via gateway and update
             if (reel.gameImageUrl.isEmpty()) {
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance()
-                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
-                    db.getReference("games").child(reel.gameId)
-                        .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-                            override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
-                                val photoId = snap.child("photo_id").getValue(String::class.java) ?: ""
-                                val gameName = snap.child("game_name").getValue(String::class.java) ?: reel.gameName
-                                val description = snap.child("description").getValue(String::class.java) ?: reel.description
-                                if (photoId.isNotEmpty()) {
-                                    db.getReference("photos").child(photoId)
-                                        .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
-                                            override fun onDataChange(photoSnap: com.google.firebase.database.DataSnapshot) {
-                                                val fileExt = photoSnap.child("file_ext").getValue(String::class.java)
-                                                    ?: photoSnap.child("file_name").getValue(String::class.java)
-                                                        ?.substringAfterLast('.', "jpg") ?: "jpg"
-                                                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                    val imageUrl = com.genzopia.Instagame.utils.PhotoUrlResolver.resolveSync(photoId, fileExt) ?: ""
-                                                    detailsGame = detailsGame?.copy(imageUrl = imageUrl, gameName = gameName, description = description)
-                                                    cont.resume(Unit) {}
-                                                }
-                                            }
-                                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { cont.resume(Unit) {} }
-                                        })
-                                } else { cont.resume(Unit) {} }
-                            }
-                            override fun onCancelled(e: com.google.firebase.database.DatabaseError) { cont.resume(Unit) {} }
-                        })
-                }
+                try {
+                    val resp = com.genzopia.Instagame.gateway.GatewayClient.api.getGames()
+                    if (resp.isSuccessful) {
+                        val game = resp.body()?.data?.find { it.gameId == reel.gameId }
+                        if (game != null) {
+                            detailsGame = detailsGame?.copy(
+                                imageUrl = game.imageUrl,
+                                gameName = game.gameName.ifEmpty { detailsGame!!.gameName },
+                                description = game.description.ifEmpty { detailsGame!!.description }
+                            )
+                        }
+                    }
+                } catch (_: Exception) {}
             }
         }
     }

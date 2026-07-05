@@ -1,10 +1,14 @@
 package com.genzopia.Instagame.utils;
 
 import android.util.Log;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
+import com.genzopia.Instagame.gateway.GatewayClient;
 import java.util.HashMap;
 import java.util.Map;
+
+import androidx.annotation.NonNull;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class ViewCountManager {
     private static final String TAG = "ViewCountManager";
@@ -88,79 +92,24 @@ public class ViewCountManager {
     }
     
     /**
-     * Increment view count in Firebase Realtime Database using a transaction
-     * to prevent lost updates when multiple devices watch simultaneously.
+     * Increment view count via the backend Gateway (POST /reels/{videoId}/view).
+     * Requirements: 4.1
      */
     private static void incrementViewCountInFirebase(String videoId) {
-        DatabaseReference videoRef = FirebaseDatabase.getInstance()
-                .getReference("videos")
-                .child(videoId)
-                .child("view_count");
-
-        videoRef.runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        GatewayClient.INSTANCE.getCallApi().recordView(videoId).enqueue(new Callback<Void>() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(
-                    com.google.firebase.database.MutableData mutableData) {
-                String current = mutableData.getValue(String.class);
-                long newCount = 1;
-                if (current != null && !current.isEmpty()) {
-                    try { newCount = Long.parseLong(current) + 1; }
-                    catch (NumberFormatException ignored) { newCount = 1; }
-                }
-                mutableData.setValue(String.valueOf(newCount));
-                return com.google.firebase.database.Transaction.success(mutableData);
-            }
-
-            @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error,
-                                   boolean committed,
-                                   com.google.firebase.database.DataSnapshot snapshot) {
-                if (committed && error == null) {
-                    Log.d(TAG, "View count incremented for " + videoId);
+            public void onResponse(@NonNull Call<Void> call, @NonNull Response<Void> response) {
+                if (response.isSuccessful()) {
+                    Log.d(TAG, "View count recorded via gateway for " + videoId);
                 } else {
-                    Log.e(TAG, "View count transaction failed for " + videoId +
-                            (error != null ? ": " + error.getMessage() : ""));
-                    // Reset so the next playback can retry
+                    Log.e(TAG, "Gateway recordView HTTP " + response.code() + " for " + videoId);
                     viewedVideos.remove(videoId);
                 }
             }
-        });
-    }
-    
-    /**
-     * Get current view count for a video
-     * @param videoId The unique video ID
-     * @param callback Callback to receive the view count
-     */
-    public static void getViewCount(String videoId, ViewCountCallback callback) {
-        if (videoId == null) {
-            callback.onError("Invalid video ID");
-            return;
-        }
-        
-        final String finalVideoId = videoId;
-        final ViewCountCallback finalCallback = callback;
-        
-        DatabaseReference videoRef = FirebaseDatabase.getInstance()
-                .getReference("videos")
-                .child(videoId)
-                .child("view_count");
-        
-        videoRef.get().addOnCompleteListener(task -> {
-            if (task.isSuccessful()) {
-                String viewCount = task.getResult().getValue(String.class);
-                if (viewCount != null && !viewCount.isEmpty()) {
-                    try {
-                        long count = Long.parseLong(viewCount);
-                        finalCallback.onSuccess(count);
-                    } catch (NumberFormatException e) {
-                        finalCallback.onError("Invalid view count format");
-                    }
-                } else {
-                    finalCallback.onSuccess(0);
-                }
-            } else {
-                finalCallback.onError("Failed to get view count");
+            @Override
+            public void onFailure(@NonNull Call<Void> call, @NonNull Throwable t) {
+                Log.e(TAG, "Gateway recordView failed for " + videoId + ": " + t.getMessage());
+                viewedVideos.remove(videoId);
             }
         });
     }

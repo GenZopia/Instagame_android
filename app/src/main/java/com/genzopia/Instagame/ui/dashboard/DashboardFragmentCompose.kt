@@ -1,6 +1,6 @@
 package com.genzopia.Instagame.ui.dashboard
 
-import ReelViewModel
+import com.genzopia.Instagame.reelview.compose.ReelViewModel
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
