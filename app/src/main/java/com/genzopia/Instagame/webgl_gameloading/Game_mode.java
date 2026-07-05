@@ -32,7 +32,6 @@ import com.genzopia.Instagame.gateway.LaunchUrlResponse;
 import com.google.firebase.auth.FirebaseAuth;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -45,16 +44,65 @@ public class Game_mode extends BaseActivity {
     private static final int CAMERA_PERMISSION_REQUEST = 100;
     private static final int MICROPHONE_PERMISSION_REQUEST = 101;
 
-    // ── Ad blacklist — used in both shouldInterceptRequest & shouldOverrideUrlLoading ──
+    // ================================================================
+    // Ad / tracker / telemetry blacklist.
+    // Used in both shouldInterceptRequest() and shouldOverrideUrlLoading().
+    //
+    // NOTE: Do NOT add "config.uca.cloud.unity3d.com" or other Unity
+    // *remote-config* endpoints here — some Unity WebGL games fetch
+    // required settings from them and blocking it can break the game.
+    // Only telemetry/ads/analytics endpoints are listed below.
+    // ================================================================
     private static final String[] AD_DOMAINS = {
+
+            // ---- Google / DoubleClick ad stack ----
             "doubleclick.net", "googlesyndication.com", "googleadservices.com",
             "googletagmanager.com", "google-analytics.com", "pagead2.googlesyndication.com",
-            "adservice.google.com", "recaptcha.net", "hcaptcha.com",
+            "adservice.google.com", "adservice.google.co.in", "recaptcha.net", "hcaptcha.com",
+            "googletagservices.com", "google.com/pagead",
+
+            // ---- Generic programmatic / display ad exchanges ----
             "adnxs.com", "adsrvr.org", "moatads.com", "outbrain.com", "taboola.com",
             "popads.net", "popcash.net", "propellerads.com", "adcash.com",
             "hilltopads.net", "trafficjunky.com", "exoclick.com", "juicyads.com",
             "clickadu.com", "adsterra.com", "yllix.com", "revcontent.com",
-            "mgid.com", "valueimpression.com", "ero-advertising.com"
+            "mgid.com", "valueimpression.com", "ero-advertising.com",
+            "criteo.com", "criteo.net", "smartadserver.com", "rubiconproject.com",
+            "pubmatic.com", "openx.net", "casalemedia.com", "adform.net",
+            "bidswitch.net", "contextweb.com", "sovrn.com", "sharethrough.com",
+
+            // ---- Unity Ads / Unity telemetry (confirmed cdp.cloud.unity3d.com
+            //      from live capture, plus documented Unity ad/mediation hosts) ----
+            "unityads.unity3d.com", "configv2.unityads.unity3d.com",
+            "cdp.cloud.unity3d.com", "events.mz.unity3d.com",
+            "gw-is.iads.unity3d.com", "gw-rv.iads.unity3d.com",
+            "gw.mediation.unity3d.com", "i-sdk.mediation.unity3d.com",
+            "o-iab.mediation.unity3d.com", "o-sdk.mediation.unity3d.com",
+            "o.iads.unity3d.com", "scar.unityads.unity3d.com",
+            "auction.unityads.unity3d.com", "thind.unityads.unity3d.com",
+
+            // ---- Major mobile ad networks / mediation platforms ----
+            "applovin.com", "applvn.com", "safedk.com",              // AppLovin (+ SDK wrapper)
+            "ironsrc.com", "ironsource.com", "supersonicads.com",     // ironSource / LevelPlay
+            "vungle.com",                                             // Vungle
+            "chartboost.com",                                         // Chartboost
+            "adcolony.com", "adc-ads.com",                            // AdColony
+            "inmobi.com", "inmobicdn.net",                            // InMobi
+            "pangleglobal.com", "byteoversea.com", "pangle-ads.com",  // Pangle (ByteDance)
+            "tapjoy.com", "tjtapjoy.net", "ultimateadds.com",          // Tapjoy
+            "fyber.com", "digitalturbine.com", "inner-active.mobi",   // Fyber / DT Exchange
+            "mopub.com",                                              // MoPub (legacy, still called by some SDKs)
+            "startapp.com", "startappservice.com",                    // StartApp
+            "yandex.ru/ads", "mobileads.yandex.net",                  // Yandex Mobile Ads
+            "appodeal.com", "bidmachine.io",                          // Appodeal / BidMachine
+            "smaato.net",                                             // Smaato
+
+            // ---- Facebook / Meta Audience Network ----
+            "facebook.com/audience", "an.facebook.com", "fbcdn-audience.net",
+
+            // ---- Misc trackers / analytics sometimes bundled in HTML5 game SDKs ----
+            "scorecardresearch.com", "quantserve.com", "yieldmo.com",
+            "adtelligent.com", "gumgum.com", "media.net", "amazon-adsystem.com"
     };
 
     private ActivityGameModeBinding binding;
@@ -91,7 +139,7 @@ public class Game_mode extends BaseActivity {
         Log.d(TAG, "Game ID: " + gameId);
         Log.d(TAG, "Current User ID: " + currentUserId);
 
-        // Track launch initiated — game name resolved later from Firebase
+        // Track launch initiated ? game name resolved later from Firebase
         String launchSource = getIntent().getStringExtra("launch_source");
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackGameLaunchInitiated(
                 gameId != null ? gameId : "",
@@ -110,7 +158,7 @@ public class Game_mode extends BaseActivity {
             finish();
             return;
         }
-        // Gateway handles both direct game_link and signed URL — no direct Firebase read needed
+        // Gateway handles both direct game_link and signed URL ? no direct Firebase read needed
         gameUrlFetchStartMs = System.currentTimeMillis();
         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
                 .trackGameUrlFetchStarted(gameId, gameName);
@@ -191,7 +239,7 @@ public class Game_mode extends BaseActivity {
                 });
     }
 
-    // ── Helper: check if a URL belongs to an ad domain ──────────────────────
+    // ---- Helper: check if a URL/host belongs to an ad/tracker domain ----
     private boolean isAdDomain(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
@@ -212,7 +260,7 @@ public class Game_mode extends BaseActivity {
 
             WebSettings webSettings = webView.getSettings();
 
-            // ── Core settings ────────────────────────────────────────────────
+            // ---- Core settings ----
             webSettings.setJavaScriptEnabled(true);
             webSettings.setDomStorageEnabled(true);
             webSettings.setDatabaseEnabled(true);
@@ -226,8 +274,8 @@ public class Game_mode extends BaseActivity {
             webSettings.setAllowContentAccess(true);
             webSettings.setUserAgentString(webSettings.getUserAgentString() + " Desktop");
 
-            // ── Block popups & new windows ───────────────────────────────────
-            webSettings.setJavaScriptCanOpenWindowsAutomatically(false); // was true — changed!
+            // ---- Block popups & new windows ----
+            webSettings.setJavaScriptCanOpenWindowsAutomatically(false); // was true ? changed!
             webSettings.setSupportMultipleWindows(false);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -237,10 +285,10 @@ public class Game_mode extends BaseActivity {
                 webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null);
             }
 
-            // ── WebViewClient ────────────────────────────────────────────────
+            // ---- WebViewClient ----
             webView.setWebViewClient(new WebViewClient() {
 
-                // Block ad network requests before they load
+                // Block ad/tracker network requests before they load
                 @Override
                 public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                     String url = request.getUrl().toString();
@@ -254,7 +302,7 @@ public class Game_mode extends BaseActivity {
                     return super.shouldInterceptRequest(view, request);
                 }
 
-                // Block ad redirects — blacklist only, allow all game URLs freely
+                // Block ad redirects ? blacklist only, allow all game URLs freely
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     String host = request.getUrl().getHost();
@@ -265,7 +313,7 @@ public class Game_mode extends BaseActivity {
                         return false;
                     }
 
-                    // Block known ad domains
+                    // Block known ad/tracker domains
                     if (isAdDomain(host)) {
                         Log.d(TAG, "[AdBlock] Blocked navigation: " + host);
                         return true;
@@ -287,7 +335,7 @@ public class Game_mode extends BaseActivity {
                         com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE
                                 .trackGameLoaded(gameId, gameName, orient, loadDuration);
                         com.genzopia.Instagame.analytics.SessionTracker.INSTANCE.onGamePlayed();
-                        // Start actual play timer — excludes loading time
+                        // Start actual play timer ? excludes loading time
                         gamePlayStartMs = System.currentTimeMillis();
                         gamePageLoadStartMs = 0; // fire only once
                     }
@@ -300,10 +348,10 @@ public class Game_mode extends BaseActivity {
                 }
             });
 
-            // ── WebChromeClient ──────────────────────────────────────────────
+            // ---- WebChromeClient ----
             webView.setWebChromeClient(new WebChromeClient() {
 
-                // Only grant camera/mic — deny notification/location used by ads
+                // Only grant camera/mic ? deny notification/location used by ads
                 @Override
                 public void onPermissionRequest(PermissionRequest request) {
                     Log.d(TAG, "Permission requested: " + java.util.Arrays.toString(request.getResources()));
@@ -477,7 +525,7 @@ public class Game_mode extends BaseActivity {
         return gameId;
     }
 
-    // ── Immersive fullscreen helpers ─────────────────────────────────────────
+    // ---- Immersive fullscreen helpers ----
 
     /**
      * Hides both the status bar and the navigation bar so the game occupies
@@ -502,17 +550,17 @@ public class Game_mode extends BaseActivity {
                             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_FULLSCREEN);
         }
-        
+
         // Ensure window attributes are set for true fullscreen
         getWindow().setFlags(
                 android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
-        
+
         // For devices with display cutouts (notches), extend into cutout area
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             android.view.WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
-            layoutParams.layoutInDisplayCutoutMode = 
+            layoutParams.layoutInDisplayCutoutMode =
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             getWindow().setAttributes(layoutParams);
         }

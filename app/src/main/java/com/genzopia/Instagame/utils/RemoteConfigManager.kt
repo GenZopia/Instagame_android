@@ -25,16 +25,18 @@ class RemoteConfigManager {
             override fun onResponse(call: Call<AppConfigResponse>, response: Response<AppConfigResponse>) {
                 if (response.isSuccessful && response.body() != null) {
                     config = response.body()!!
-                    Log.d(TAG, "App config fetched: force=${config.force_popup_minimum_version} smooth=${config.smooth_popup_minimum_version}")
+                    Log.d(TAG, "✅ Config fetched — raw: force='${config.force_popup_minimum_version}' smooth='${config.smooth_popup_minimum_version}'")
+                    Log.d(TAG, "   parsed: forceMin=${parseVersionCode(config.force_popup_minimum_version)} smoothMin=${parseVersionCode(config.smooth_popup_minimum_version)} appVersionCode=${BuildConfig.VERSION_CODE}")
+                    Log.d(TAG, "   result: isForceRequired=${isForceUpdateRequired()} isSmoothAvailable=${isSmoothUpdateAvailable()}")
                     onComplete(true)
                 } else {
-                    Log.w(TAG, "App config fetch failed HTTP ${response.code()} — using defaults")
+                    Log.w(TAG, "❌ Config fetch failed HTTP ${response.code()} — using defaults (force='${config.force_popup_minimum_version}' smooth='${config.smooth_popup_minimum_version}')")
                     onComplete(false)
                 }
             }
 
             override fun onFailure(call: Call<AppConfigResponse>, t: Throwable) {
-                Log.e(TAG, "App config fetch failed: ${t.message} — using defaults")
+                Log.e(TAG, "❌ Config fetch failed: ${t.message} — using defaults")
                 onComplete(false)
             }
         })

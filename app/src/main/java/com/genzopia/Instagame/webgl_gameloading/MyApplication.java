@@ -38,6 +38,10 @@ public class MyApplication extends Application {
     private static volatile RemoteConfigManager remoteConfigManager;
     private static final List<Runnable> readyCallbacks = new ArrayList<>();
     private static final Object lock = new Object();
+    // Tracked by ActivityLifecycleCallbacks — the currently resumed FragmentActivity (if any)
+    private androidx.fragment.app.FragmentActivity currentActivity = null;
+    // Prevents smooth update dialog from showing more than once per app session
+    private boolean smoothUpdateShownThisSession = false;
 
     public static boolean isPrefetchDone() { return prefetchDone; }
     public static boolean isConfigDone() { return configDone; }
@@ -99,44 +103,79 @@ public class MyApplication extends Application {
     /**
      * Registers an ActivityLifecycleCallbacks that watches for the first resumed
      * FragmentActivity after config is loaded. If a force-update is required it shows
-     * ForceUpdateDialog on that activity — regardless of which activity was launched
-     * (splash, deep link, notification, etc.).
+     * ForceUpdateDialog on that activity — regardless of which activity was launched.
+     * Also handles smooth-update: shown in MainActivity once per every 3 app opens.
      */
     private void registerForceUpdateEnforcer() {
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override
             public void onActivityResumed(android.app.Activity activity) {
                 if (!(activity instanceof androidx.fragment.app.FragmentActivity)) return;
+                currentActivity = (androidx.fragment.app.FragmentActivity) activity;
                 if (!configDone) return;
-                RemoteConfigManager rcm = remoteConfigManager;
-                if (rcm == null || !rcm.isForceUpdateRequired()) return;
+                showUpdateDialogsIfNeeded(currentActivity);
+            }
 
-                androidx.fragment.app.FragmentActivity fa = (androidx.fragment.app.FragmentActivity) activity;
-                // Don't stack duplicate dialogs
-                if (fa.getSupportFragmentManager().findFragmentByTag(ForceUpdateDialog.TAG) != null) return;
-
-                String minVersion = rcm.getForceMinVersionString();
-                ForceUpdateDialog.newInstance(minVersion)
-                        .show(fa.getSupportFragmentManager(), ForceUpdateDialog.TAG);
+            @Override public void onActivityPaused(android.app.Activity a) {
+                if (a == currentActivity) currentActivity = null;
             }
 
             @Override public void onActivityCreated(android.app.Activity a, Bundle b) {}
             @Override public void onActivityStarted(android.app.Activity a) {}
-            @Override public void onActivityPaused(android.app.Activity a) {}
             @Override public void onActivityStopped(android.app.Activity a) {}
             @Override public void onActivitySaveInstanceState(android.app.Activity a, Bundle b) {}
             @Override public void onActivityDestroyed(android.app.Activity a) {}
         });
     }
 
+    private void showUpdateDialogsIfNeeded(androidx.fragment.app.FragmentActivity activity) {
+        RemoteConfigManager rcm = remoteConfigManager;
+        if (rcm == null) return;
+
+        // Force update — blocks everything, shown on any activity
+        if (rcm.isForceUpdateRequired()) {
+            if (activity.getSupportFragmentManager()
+                    .findFragmentByTag(com.genzopia.Instagame.ForceUpdateDialog.TAG) != null) return;
+            com.genzopia.Instagame.ForceUpdateDialog.newInstance(rcm.getForceMinVersionString())
+                    .show(activity.getSupportFragmentManager(), com.genzopia.Instagame.ForceUpdateDialog.TAG);
+            return;
+        }
+
+        // Smooth update — only shown in MainActivity, once every 3 app opens, once per session
+        if (smoothUpdateShownThisSession) return;
+        if (!(activity instanceof com.genzopia.Instagame.MainActivity)) return;
+        if (!rcm.isSmoothUpdateAvailable()) return;
+        if (activity.getSupportFragmentManager()
+                .findFragmentByTag(com.genzopia.Instagame.SmoothUpdateDialog.TAG) != null) return;
+        if (!shouldShowSmoothUpdateThisOpen()) return;
+
+        smoothUpdateShownThisSession = true;
+        com.genzopia.Instagame.SmoothUpdateDialog.newInstance(rcm.getSmoothMinVersionString())
+                .show(activity.getSupportFragmentManager(), com.genzopia.Instagame.SmoothUpdateDialog.TAG);
+    }
+
+    /** Returns true once every 3 app opens. Counter stored in SharedPreferences. */
+    private boolean shouldShowSmoothUpdateThisOpen() {
+        android.content.SharedPreferences prefs =
+                getSharedPreferences("update_prefs", android.content.Context.MODE_PRIVATE);
+        int count = prefs.getInt("app_open_count", 0) + 1;
+        prefs.edit().putInt("app_open_count", count % 3).apply();
+        return count % 3 == 0;
+    }
+
     @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private void startAppPrefetch() {
-        // Remote config
+        // Remote config — no UI blocked on this; when it's done, show update dialogs if needed
         remoteConfigManager = new RemoteConfigManager();
         remoteConfigManager.fetchConfig(success -> {
             Log.d("MyApplication", "Remote config done, success=" + success);
             configDone = true;
             notifyIfReady();
+            // If an activity is already in the foreground, check for updates now
+            if (currentActivity != null) {
+                new android.os.Handler(android.os.Looper.getMainLooper())
+                        .post(() -> showUpdateDialogsIfNeeded(currentActivity));
+            }
             return kotlin.Unit.INSTANCE;
         });
 

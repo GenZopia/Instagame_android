@@ -2,8 +2,6 @@ package com.genzopia.Instagame;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
@@ -19,7 +17,6 @@ import com.genzopia.Instagame.common.BaseActivity;
 import com.genzopia.Instagame.databinding.ActivityMainBinding;
 import com.genzopia.Instagame.onboarding.TutorialController;
 import com.genzopia.Instagame.utils.NotificationPermissionManager;
-import com.genzopia.Instagame.webgl_gameloading.MyApplication;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.firebase.auth.FirebaseAuth;
 
@@ -27,23 +24,15 @@ public class MainActivity extends BaseActivity {
 
     private ActivityMainBinding binding;
     private static final String TAG = "MainActivity";
-    private static final long MAX_WAIT_MS = 3_000;
     private static boolean isAppInForeground = true;
     private NotificationPermissionManager notificationPermissionManager;
 
-    private volatile boolean dataReady = false;
-    private boolean hasRouted = false;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Install splash screen before super.onCreate so the OS icon shows immediately
+        // Install splash — OS dismisses it as soon as the first frame is drawn (no artificial wait)
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
-        super.onCreate(savedInstanceState);
-
-        // Keep splash visible until remote config + prefetch are done (or timeout)
-        splashScreen.setKeepOnScreenCondition(() -> !dataReady);
         splashScreen.setOnExitAnimationListener(provider -> provider.remove());
+        super.onCreate(savedInstanceState);
 
         // Analytics
         android.net.Uri deepLinkUri = getIntent().getData();
@@ -54,45 +43,9 @@ public class MainActivity extends BaseActivity {
                         ? deepLinkUri.getLastPathSegment() : null
         );
 
-        // If user is not logged in, route to LoginActivity immediately (no need to wait for data)
         if (FirebaseAuth.getInstance().getCurrentUser() == null) {
-            dataReady = true;
             routeToLogin();
             return;
-        }
-
-        // Hard timeout — don't block the user if network is down
-        final long startMs = System.currentTimeMillis();
-        handler.postDelayed(() -> {
-            Log.w(TAG, "Splash timeout — proceeding without full data");
-            dataReady = true;
-            onDataReady(startMs);
-        }, MAX_WAIT_MS);
-
-        // Proceed as soon as remote config is done
-        MyApplication.whenReady(() -> {
-            long totalMs = System.currentTimeMillis() - startMs;
-            Log.d(TAG, "App data ready in " + totalMs + "ms");
-            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashLoadTime(0, totalMs, totalMs);
-            com.genzopia.Instagame.analytics.InstagameAnalytics.INSTANCE.trackSplashCompleted(totalMs, true);
-            dataReady = true;
-            onDataReady(startMs);
-        });
-    }
-
-    private void onDataReady(long startMs) {
-        if (hasRouted) return;
-        hasRouted = true;
-        handler.removeCallbacksAndMessages(null);
-
-        // Write smooth-update flag for onResume to pick up
-        com.genzopia.Instagame.utils.RemoteConfigManager rcm = MyApplication.getRemoteConfigManager();
-        if (rcm != null) {
-            boolean showSmooth = rcm.isSmoothUpdateAvailable() && shouldShowSmoothUpdate();
-            getSharedPreferences("update_prefs", MODE_PRIVATE).edit()
-                    .putBoolean("pending_smooth_update", showSmooth)
-                    .putString("smooth_min_version", rcm.getSmoothMinVersionString())
-                    .apply();
         }
 
         setupMainUI();
@@ -277,15 +230,6 @@ public class MainActivity extends BaseActivity {
         intent.removeExtra("notification_target_id");
     }
 
-    // ── Smooth-update counter ─────────────────────────────────────────────
-
-    private boolean shouldShowSmoothUpdate() {
-        android.content.SharedPreferences prefs = getSharedPreferences("update_prefs", MODE_PRIVATE);
-        int count = prefs.getInt("app_open_count", 0) + 1;
-        prefs.edit().putInt("app_open_count", count % 3).apply();
-        return count % 3 == 0;
-    }
-
     // ── Navigation helpers (called from other fragments) ──────────────────
 
     public void navigateToDashboard() {
@@ -347,21 +291,6 @@ public class MainActivity extends BaseActivity {
         super.onResume();
         isAppInForeground = true;
         sendBroadcast(new Intent("com.genzopia.Instagame.ACTION_RESUME_VIDEOS"));
-
-        // Show smooth update dialog if flagged during onDataReady
-        android.content.SharedPreferences prefs = getSharedPreferences("update_prefs", MODE_PRIVATE);
-        if (prefs.getBoolean("pending_smooth_update", false)) {
-            prefs.edit().putBoolean("pending_smooth_update", false).apply();
-            String minVersion = prefs.getString("smooth_min_version", "");
-            SmoothUpdateDialog.newInstance(minVersion != null ? minVersion : "")
-                    .show(getSupportFragmentManager(), SmoothUpdateDialog.TAG);
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        handler.removeCallbacksAndMessages(null);
     }
 
     public static boolean isAppInForeground() {

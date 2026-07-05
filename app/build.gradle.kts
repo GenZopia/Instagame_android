@@ -15,9 +15,6 @@ android {
         versionCode = 10
         versionName = "10.0"
 
-        val fileUploadApiKey: String = (project.findProperty("file_upload_api_key") as String?) ?: ""
-        buildConfigField("String", "FILE_UPLOAD_API_KEY", "\"$fileUploadApiKey\"") // kept for legacy; no longer used in APK
-
         val amplitudeApiKey: String = (project.findProperty("amplitude_api_key") as String?) ?: ""
         buildConfigField("String", "AMPLITUDE_API_KEY", "\"$amplitudeApiKey\"")
 
