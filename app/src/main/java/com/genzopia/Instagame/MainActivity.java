@@ -15,6 +15,7 @@ import androidx.navigation.ui.NavigationUI;
 import com.google.firebase.auth.FirebaseAuth;
 
 import com.genzopia.Instagame.databinding.ActivityMainBinding;
+import com.genzopia.Instagame.utils.NotificationPermissionManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 public class MainActivity extends BaseActivity {
@@ -22,6 +23,7 @@ public class MainActivity extends BaseActivity {
     private ActivityMainBinding binding;
     private static final String TAG = "MainActivity";
     private static boolean isAppInForeground = true;
+    private NotificationPermissionManager notificationPermissionManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +34,18 @@ public class MainActivity extends BaseActivity {
 
         // Register FCM token on app start (only if permission is granted)
         com.genzopia.Instagame.utils.FCMTokenManager.INSTANCE.registerToken(this);
+
+        // Request notification permission right after login (once per session / 30-day retry)
+        notificationPermissionManager = new NotificationPermissionManager(this);
+        if (notificationPermissionManager.shouldRequestPermission()) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                        this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        NotificationPermissionManager.REQUEST_CODE_NOTIFICATION_PERMISSION
+                );
+            }
+        }
         
         // Check if we have a game deeplink BEFORE setting up navigation
         // This prevents default navigation to dashboard (ReelView)
@@ -233,6 +247,26 @@ public class MainActivity extends BaseActivity {
         }
     }
     
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @androidx.annotation.NonNull String[] permissions,
+                                           @androidx.annotation.NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NotificationPermissionManager.REQUEST_CODE_NOTIFICATION_PERMISSION) {
+            boolean granted = grantResults.length > 0 &&
+                    grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            notificationPermissionManager.handlePermissionResult(granted);
+            if (!granted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                if (!androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                        this, android.Manifest.permission.POST_NOTIFICATIONS)) {
+                    notificationPermissionManager.markPermanentlyDenied();
+                }
+            }
+            if (granted) {
+                com.genzopia.Instagame.utils.FCMTokenManager.INSTANCE.registerToken(this);
+            }
+        }
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
